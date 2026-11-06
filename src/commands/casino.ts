@@ -119,11 +119,12 @@ function bjEmbed(
 }
 
 /**
- * One compact OwO-style embed for a blackjack game state: a single small
- * strip image (dealer row on top, player row below, ~60px per card) with
- * the newly dealt cards flipping. The dealer's hole card stays face-down
- * until the hand is over. When a card has no rendered flip GIF the strip
- * cannot be built and the reply falls back to the text-only embed.
+ * One compact OwO-style embed for a blackjack game state: a single wide
+ * strip image (dealer row on top, player row below, ~100px per card,
+ * ~560px-wide file, transparent background) with the newly dealt cards
+ * flipping. The dealer's hole card stays face-down until the hand is
+ * over. When a card has no rendered flip GIF the strip cannot be built
+ * and the reply falls back to the text-only embed.
  */
 async function bjReplyPayload(
   game: BlackjackGame,

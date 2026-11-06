@@ -4,29 +4,43 @@ import GIFEncoder from "gif-encoder-2";
 import { flipGifExists, flipGifPath } from "./cards.js";
 
 /**
- * OwO-style compact card displays: one small strip image per embed.
+ * OwO-style compact card displays: one wide strip image per embed.
  *
- * Discord embeds show a single image, so each hand is composed into one
- * small strip (cards side by side with a slight overlap, like a fanned
- * hand, ~60px per card) and both hands go into one image with the dealer
- * on top and the player below. Newly dealt cards keep their animation:
- * the strip is itself an animated GIF in which the new card flips from
- * its back to its face while the other cards stay face-up. A settled
- * hand is a static one-frame strip. All frames come from the pre-rendered
- * flip GIFs in assets/cards/flips/ (rendered from Ronit's
- * playing-cards.html); the strip is composed at reply time with pure-JS
- * GIF decode/encode (gifuct-js + gif-encoder-2) — no native canvas.
+ * Discord upscales a NARROW image to the full message width on phones,
+ * which is why the old ~106px strip came out huge and blurry. So the
+ * strip file is WIDE (~560px): each hand is one row of ~100px cards,
+ * centred in the frame, and Discord displays it near its native size —
+ * small on screen AND sharp (the cards are rendered at 2x and downscaled
+ * with Lanczos). The strip background is TRANSPARENT (GIF transparency),
+ * not a green felt box, so it blends into Discord's dark embed and each
+ * card stands on its own with a small gap between cards.
+ *
+ * Newly dealt cards keep their animation: the strip is itself an animated
+ * GIF in which the new card flips from its back to its face while the
+ * other cards stay face-up — and it plays ONCE (no loop extension),
+ * ending with all cards face-up. A settled hand is a static one-frame
+ * strip. All frames come from the pre-rendered flip GIFs in
+ * assets/cards/flips/ (rendered from Ronit's playing-cards.html at 2x,
+ * downscaled sharp to 100px, transparent corners); the strip is composed
+ * at reply time with pure-JS GIF decode/encode (gifuct-js +
+ * gif-encoder-2) — no native canvas.
  */
 
-export const STRIP_CARD_W = 60;
-export const STRIP_CARD_H = 84;
-/** px between the left edges of neighbouring cards (14px overlap). */
-export const STRIP_STEP = 46;
+export const STRIP_CARD_W = 100;
+export const STRIP_CARD_H = 140;
+/** px between the left edges of neighbouring cards: 100px card + 12px gap. */
+export const STRIP_STEP = 112;
 /** px between the dealer row and the player row. */
-export const STRIP_ROW_GAP = 10;
-/** Green felt, matching the capture stage in scripts/capture_flips.py. */
-export const STRIP_FELT: [number, number, number] = [0x0a, 0x2c, 0x21];
+export const STRIP_ROW_GAP = 12;
+/**
+ * Minimum strip width in the file. Hands are centred in this frame, so
+ * even a 2-card hand ships as a ~560px-wide file and Discord does not
+ * upscale it ~3x. Wider hands grow the canvas as needed.
+ */
+export const STRIP_MIN_WIDTH = 560;
 export const STRIP_FRAME_MS = 95;
+/** Magenta marks transparent pixels for the GIF encoder (see encodeGif). */
+const TRANSPARENT_RGB = 0xff00ff;
 
 export interface StripCard {
   /** Card code, e.g. "AS", "10H". */
@@ -49,22 +63,18 @@ export interface StripResult {
 /** Composited RGBA frames of one card's flip GIF (back -> flip -> face). */
 const frameCache = new Map<string, Buffer[]>();
 
-function loadCardFrames(code: string): Buffer[] | null {
-  const cached = frameCache.get(code);
-  if (cached) return cached;
-  if (!flipGifExists(code)) return null;
-  const buf = readFileSync(flipGifPath(code));
-  const gif = parseGIF(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+/**
+ * Decode a GIF buffer into composited RGBA frames (one Buffer per frame,
+ * each width*height*4 bytes, transparent where the GIF is transparent).
+ * Exported for tests.
+ */
+export function decodeGifFrames(buf: Buffer): { width: number; height: number; frames: Buffer[] } {
+  const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+  const gif = parseGIF(ab);
   const frames = decompressFrames(gif, true);
   const w = gif.lsd.width;
   const h = gif.lsd.height;
-  const canvas = new Uint8ClampedArray(w * h * 4);
-  for (let i = 0; i < w * h; i++) {
-    canvas[i * 4] = STRIP_FELT[0];
-    canvas[i * 4 + 1] = STRIP_FELT[1];
-    canvas[i * 4 + 2] = STRIP_FELT[2];
-    canvas[i * 4 + 3] = 255;
-  }
+  const canvas = new Uint8ClampedArray(w * h * 4); // transparent
   const out: Buffer[] = [];
   for (const f of frames) {
     const { left, top, width, height } = f.dims;
@@ -82,22 +92,51 @@ function loadCardFrames(code: string): Buffer[] | null {
     }
     out.push(Buffer.from(canvas));
   }
-  if (out.length === 0) return null;
-  frameCache.set(code, out);
-  return out;
+  return { width: w, height: h, frames: out };
 }
 
+function loadCardFrames(code: string): Buffer[] | null {
+  const cached = frameCache.get(code);
+  if (cached) return cached;
+  if (!flipGifExists(code)) return null;
+  const { frames } = decodeGifFrames(readFileSync(flipGifPath(code)));
+  if (frames.length === 0) return null;
+  frameCache.set(code, frames);
+  return frames;
+}
+
+/** Paste a card frame onto the canvas, skipping transparent pixels so an
+ * overlapping card never erases the card beneath it. */
 function paste(dst: Uint8ClampedArray, dstW: number, src: Buffer, dx: number, dy: number): void {
   for (let y = 0; y < STRIP_CARD_H; y++) {
     for (let x = 0; x < STRIP_CARD_W; x++) {
       const si = (y * STRIP_CARD_W + x) * 4;
+      if (src[si + 3] === 0) continue;
       const di = ((dy + y) * dstW + (dx + x)) * 4;
       dst[di] = src[si];
       dst[di + 1] = src[si + 1];
       dst[di + 2] = src[si + 2];
-      dst[di + 3] = src[si + 3];
+      dst[di + 3] = 255;
     }
   }
+}
+
+/**
+ * Mark transparent pixels magenta for the GIF encoder: gif-encoder-2
+ * only makes pixels transparent when their RGB matches the colour given
+ * to setTransparent, so transparent pixels must carry that exact RGB.
+ * Magenta never appears on a real card, so no real pixel is affected.
+ */
+function magentaTransparent(f: Buffer): Buffer {
+  const out = Buffer.from(f);
+  for (let i = 0; i < out.length; i += 4) {
+    if (out[i + 3] === 0) {
+      out[i] = 255;
+      out[i + 1] = 0;
+      out[i + 2] = 255;
+    }
+  }
+  return out;
 }
 
 function encodeGif(width: number, height: number, frames: Buffer[]): Promise<Buffer> {
@@ -109,20 +148,31 @@ function encodeGif(width: number, height: number, frames: Buffer[]): Promise<Buf
     stream.on("error", rejectPromise);
     stream.on("end", () => resolvePromise(Buffer.concat(chunks)));
     enc.start();
-    enc.setRepeat(0);
+    // -1: no NETSCAPE2.0 loop extension — the strip plays exactly once
+    // and stops on the final frame (all cards face-up). 0 would loop
+    // forever; the encoder only writes the extension when repeat >= 0.
+    enc.setRepeat(-1);
+    // Transparent background: pixels whose RGB is magenta become the
+    // GIF's transparent index (see magentaTransparent above). The
+    // bundled gif-encoder-2 types omit setTransparent, so call it
+    // through a cast — the method exists at runtime (verified in
+    // node_modules/gif-encoder-2/src/GIFEncoder.js).
+    (enc as unknown as { setTransparent(color: number): void }).setTransparent(TRANSPARENT_RGB);
     enc.setDelay(STRIP_FRAME_MS);
     enc.setQuality(10);
-    for (const f of frames) enc.addFrame(f);
+    for (const f of frames) enc.addFrame(magentaTransparent(f));
     enc.finish();
   });
 }
 
 /**
- * Compose rows of cards into one strip image. Each row is a hand; cards
- * sit side by side with a slight overlap. Cards marked `animate` flip
- * through their frames; the rest show their face (or the back when
- * `faceDown`). Returns null when any card has no rendered flip GIF —
- * the caller then falls back to a text-only embed.
+ * Compose rows of cards into one wide strip image. Each row is a hand;
+ * cards sit side by side with a small gap, and rows are centred in a
+ * frame at least STRIP_MIN_WIDTH wide so Discord displays the strip
+ * near its native size instead of upscaling a narrow image. Cards
+ * marked `animate` flip through their frames; the rest show their face
+ * (or the back when `faceDown`). Returns null when any card has no
+ * rendered flip GIF — the caller then falls back to a text-only embed.
  */
 export async function composeHandStrip(rows: StripCard[][]): Promise<StripResult | null> {
   const loaded = new Map<string, Buffer[]>();
@@ -135,10 +185,11 @@ export async function composeHandStrip(rows: StripCard[][]): Promise<StripResult
       }
     }
   }
-  const width = Math.max(
+  const naturalWidth = Math.max(
     0,
     ...rows.map((row) => (row.length === 0 ? 0 : STRIP_CARD_W + (row.length - 1) * STRIP_STEP)),
   );
+  const width = Math.max(STRIP_MIN_WIDTH, naturalWidth);
   const height = rows.length * STRIP_CARD_H + Math.max(0, rows.length - 1) * STRIP_ROW_GAP;
   if (width === 0 || height === 0) return null;
 
@@ -151,15 +202,11 @@ export async function composeHandStrip(rows: StripCard[][]): Promise<StripResult
 
   const frames: Buffer[] = [];
   for (let i = 0; i < frameCount; i++) {
-    const canvas = new Uint8ClampedArray(width * height * 4);
-    for (let p = 0; p < width * height; p++) {
-      canvas[p * 4] = STRIP_FELT[0];
-      canvas[p * 4 + 1] = STRIP_FELT[1];
-      canvas[p * 4 + 2] = STRIP_FELT[2];
-      canvas[p * 4 + 3] = 255;
-    }
+    const canvas = new Uint8ClampedArray(width * height * 4); // transparent
     rows.forEach((row, r) => {
       const y = r * (STRIP_CARD_H + STRIP_ROW_GAP);
+      const rowWidth = row.length === 0 ? 0 : STRIP_CARD_W + (row.length - 1) * STRIP_STEP;
+      const x0 = Math.floor((width - rowWidth) / 2);
       row.forEach((card, c) => {
         const cardFrames = loaded.get(card.code) as Buffer[];
         const src = card.animate
@@ -167,7 +214,7 @@ export async function composeHandStrip(rows: StripCard[][]): Promise<StripResult
           : card.faceDown
             ? cardFrames[0] as Buffer
             : cardFrames[cardFrames.length - 1] as Buffer;
-        paste(canvas, width, src, c * STRIP_STEP, y);
+        paste(canvas, width, src, x0 + c * STRIP_STEP, y);
       });
     });
     frames.push(Buffer.from(canvas));
