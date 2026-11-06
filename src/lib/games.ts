@@ -13,12 +13,12 @@ export const TRIVIA_TIME_LIMIT_MS = 30_000;
 // Points helper (shared by trivia / guesshero rewards).
 // ---------------------------------------------------------------------------
 
-export function awardPoints(db: SelenaDb, guildId: string, userId: string, delta: number, reason: string): void {
-  db.prepare(
+export async function awardPoints(db: SelenaDb, guildId: string, userId: string, delta: number, reason: string): Promise<void> {
+  await db.prepare(
     `INSERT INTO users (guild_id, user_id, points, xp, level) VALUES (?, ?, ?, 0, 0)
-     ON CONFLICT(guild_id, user_id) DO UPDATE SET points = points + excluded.points`,
+     ON CONFLICT(guild_id, user_id) DO UPDATE SET points = users.points + excluded.points`,
   ).run(guildId, userId, delta);
-  db.prepare(
+  await db.prepare(
     "INSERT INTO point_ledger (guild_id, user_id, delta, reason, created_at) VALUES (?, ?, ?, ?, ?)",
   ).run(guildId, userId, delta, reason, Date.now());
 }
@@ -353,15 +353,15 @@ export function pickWinners<T>(entries: readonly T[], count: number, rand: () =>
 // Polls — vote upsert + counting (one vote per user, stored in poll_votes).
 // ---------------------------------------------------------------------------
 
-export function recordPollVote(db: SelenaDb, pollId: number, userId: string, optionIndex: number): void {
-  db.prepare(
+export async function recordPollVote(db: SelenaDb, pollId: number, userId: string, optionIndex: number): Promise<void> {
+  await db.prepare(
     `INSERT INTO poll_votes (poll_id, user_id, option_index) VALUES (?, ?, ?)
      ON CONFLICT(poll_id, user_id) DO UPDATE SET option_index = excluded.option_index`,
   ).run(pollId, userId, optionIndex);
 }
 
-export function getPollCounts(db: SelenaDb, pollId: number, optionCount: number): number[] {
-  const rows = db
+export async function getPollCounts(db: SelenaDb, pollId: number, optionCount: number): Promise<number[]> {
+  const rows = await db
     .prepare("SELECT option_index, COUNT(*) AS c FROM poll_votes WHERE poll_id = ? GROUP BY option_index")
     .all(pollId) as { option_index: number; c: number }[];
   const counts = Array<number>(optionCount).fill(0);

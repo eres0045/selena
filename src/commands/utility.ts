@@ -16,21 +16,21 @@ function build(name: string, description: string, add: (b: SlashCommandBuilder) 
 // Pure DB helpers (exported so tests can exercise them without Discord).
 // ---------------------------------------------------------------------------
 
-export function setAfk(db: Parameters<typeof getUserXp>[0], guildId: string, userId: string, reason: string | null, nowMs = Date.now()): void {
-  db.prepare(
+export async function setAfk(db: Parameters<typeof getUserXp>[0], guildId: string, userId: string, reason: string | null, nowMs = Date.now()): Promise<void> {
+  await db.prepare(
     `INSERT INTO users (guild_id, user_id, afk_reason, afk_since) VALUES (?, ?, ?, ?)
      ON CONFLICT(guild_id, user_id) DO UPDATE SET afk_reason = excluded.afk_reason, afk_since = excluded.afk_since`,
   ).run(guildId, userId, reason, reason ? nowMs : null);
 }
 
-export function getAfk(db: Parameters<typeof getUserXp>[0], guildId: string, userId: string): { reason: string | null; since: number | null } {
-  const row = db.prepare("SELECT afk_reason, afk_since FROM users WHERE guild_id = ? AND user_id = ?").get(guildId, userId) as
+export async function getAfk(db: Parameters<typeof getUserXp>[0], guildId: string, userId: string): Promise<{ reason: string | null; since: number | null }> {
+  const row = await db.prepare("SELECT afk_reason, afk_since FROM users WHERE guild_id = ? AND user_id = ?").get(guildId, userId) as
     | { afk_reason: string | null; afk_since: number | null }
     | undefined;
   return { reason: row?.afk_reason ?? null, since: row?.afk_since ?? null };
 }
 
-export function createReminder(
+export async function createReminder(
   db: Parameters<typeof getUserXp>[0],
   guildId: string,
   userId: string,
@@ -38,9 +38,9 @@ export function createReminder(
   text: string,
   minutes: number,
   nowMs = Date.now(),
-): { id: number; dueAt: number } {
+): Promise<{ id: number; dueAt: number }> {
   const dueAt = nowMs + Math.floor(minutes) * 60_000;
-  const r = db
+  const r = await db
     .prepare("INSERT INTO reminders (guild_id, user_id, channel_id, text, due_at, delivered, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)")
     .run(guildId, userId, channelId, text, dueAt, nowMs);
   return { id: Number(r.lastInsertRowid), dueAt };
@@ -52,8 +52,8 @@ export interface LeaderboardEntry {
   points: number;
 }
 
-export function topByXp(db: Parameters<typeof getUserXp>[0], guildId: string, limit = 10): LeaderboardEntry[] {
-  return db
+export async function topByXp(db: Parameters<typeof getUserXp>[0], guildId: string, limit = 10): Promise<LeaderboardEntry[]> {
+  return await db
     .prepare("SELECT user_id, xp, points FROM users WHERE guild_id = ? ORDER BY xp DESC, user_id ASC LIMIT ?")
     .all(guildId, limit) as unknown as LeaderboardEntry[];
 }
@@ -95,8 +95,8 @@ export const commands: Command[] = [
     }),
     async execute(interaction, ctx) {
       const target = interaction.options.getUser("user") ?? interaction.user;
-      const { xp, level } = getUserXp(ctx.db, ctx.guildId, target.id);
-      const afk = getAfk(ctx.db, ctx.guildId, target.id);
+      const { xp, level } = await getUserXp(ctx.db, ctx.guildId, target.id);
+      const afk = await getAfk(ctx.db, ctx.guildId, target.id);
       const embed = selenaEmbed(`User info — ${target.username}`, `ID: \`${target.id}\``)
         .addFields(
           { name: "Level", value: String(level), inline: true },
@@ -124,10 +124,10 @@ export const commands: Command[] = [
       const guild = (interaction as unknown as { guild?: { memberCount?: number; channels?: { cache?: { size?: number } } } }).guild;
       const memberCount =
         guild?.memberCount ??
-        Number(ctx.db.prepare("SELECT COUNT(*) AS c FROM users WHERE guild_id = ?").get(ctx.guildId)?.c ?? 0);
+        Number((await ctx.db.prepare("SELECT COUNT(*) AS c FROM users WHERE guild_id = ?").get(ctx.guildId))?.c ?? 0);
       const channelCount = guild?.channels?.cache?.size;
-      const topXp = topByXp(ctx.db, ctx.guildId, 5);
-      const topPoints = ctx.db
+      const topXp = await topByXp(ctx.db, ctx.guildId, 5);
+      const topPoints = await ctx.db
         .prepare("SELECT user_id, points FROM users WHERE guild_id = ? ORDER BY points DESC, user_id ASC LIMIT 5")
         .all(ctx.guildId) as { user_id: string; points: number }[];
       const embed = selenaEmbed("Server stats")
@@ -154,7 +154,7 @@ export const commands: Command[] = [
     }),
     async execute(interaction, ctx) {
       const reason = interaction.options.getString("reason");
-      setAfk(ctx.db, ctx.guildId, interaction.user.id, reason);
+      await setAfk(ctx.db, ctx.guildId, interaction.user.id, reason);
       if (reason) {
         await interaction.reply({
           embeds: [selenaEmbed("You're now AFK", `Reason: ${reason}`).toJSON()],
@@ -181,7 +181,7 @@ export const commands: Command[] = [
         return;
       }
       const channelId = (interaction as unknown as { channelId?: string }).channelId ?? "";
-      const { id, dueAt } = createReminder(ctx.db, ctx.guildId, interaction.user.id, channelId, text, minutes);
+      const { id, dueAt } = await createReminder(ctx.db, ctx.guildId, interaction.user.id, channelId, text, minutes);
       await interaction.reply({
         embeds: [selenaEmbed("Reminder set", `I'll remind you in ${minutes} minute(s) (<t:${Math.floor(dueAt / 1000)}:R>): ${text}\nReminder #${id}`).toJSON()],
         ephemeral: true,
@@ -194,7 +194,7 @@ export const commands: Command[] = [
     }),
     async execute(interaction, ctx) {
       const target = interaction.options.getUser("user") ?? interaction.user;
-      const { xp } = getUserXp(ctx.db, ctx.guildId, target.id);
+      const { xp } = await getUserXp(ctx.db, ctx.guildId, target.id);
       const card = rankCard(xp);
       const embed = selenaEmbed(`Rank — ${target.username}`)
         .addFields(
@@ -209,7 +209,7 @@ export const commands: Command[] = [
     data: build("leaderboard-xp", "Top 10 members by XP", (b) => {
     }),
     async execute(interaction, ctx) {
-      const top = topByXp(ctx.db, ctx.guildId, 10);
+      const top = await topByXp(ctx.db, ctx.guildId, 10);
       if (top.length === 0) {
         await interaction.reply({ embeds: [selenaEmbed("XP leaderboard", "No XP earned yet — say something in chat to start earning.").toJSON()] });
         return;

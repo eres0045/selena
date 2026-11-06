@@ -16,7 +16,7 @@ function build(name: string, description: string, add: (b: SlashCommandBuilder) 
 // Pure DB helpers (exported so tests can exercise them without Discord).
 // ---------------------------------------------------------------------------
 
-export function recordModAction(
+export async function recordModAction(
   db: SelenaDb,
   guildId: string,
   userId: string,
@@ -24,8 +24,8 @@ export function recordModAction(
   action: string,
   reason: string | null,
   nowMs = Date.now(),
-): number {
-  const r = db
+): Promise<number> {
+  const r = await db
     .prepare(
       "INSERT INTO mod_actions (guild_id, user_id, moderator_id, action, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
     )
@@ -33,18 +33,18 @@ export function recordModAction(
   return Number(r.lastInsertRowid);
 }
 
-export function warnUser(
+export async function warnUser(
   db: SelenaDb,
   guildId: string,
   userId: string,
   moderatorId: string,
   reason: string,
   nowMs = Date.now(),
-): number {
-  const r = db
+): Promise<number> {
+  const r = await db
     .prepare("INSERT INTO warnings (guild_id, user_id, moderator_id, reason, created_at) VALUES (?, ?, ?, ?, ?)")
     .run(guildId, userId, moderatorId, reason, nowMs);
-  recordModAction(db, guildId, userId, moderatorId, "warn", reason, nowMs);
+  await recordModAction(db, guildId, userId, moderatorId, "warn", reason, nowMs);
   return Number(r.lastInsertRowid);
 }
 
@@ -56,8 +56,8 @@ export interface WarningRow {
   created_at: number;
 }
 
-export function listWarnings(db: SelenaDb, guildId: string, userId: string): WarningRow[] {
-  return db
+export async function listWarnings(db: SelenaDb, guildId: string, userId: string): Promise<WarningRow[]> {
+  return await db
     .prepare("SELECT id, user_id, moderator_id, reason, created_at FROM warnings WHERE guild_id = ? AND user_id = ? ORDER BY created_at DESC, id DESC")
     .all(guildId, userId) as unknown as WarningRow[];
 }
@@ -71,8 +71,8 @@ export interface ModActionRow {
   created_at: number;
 }
 
-export function listModActions(db: SelenaDb, guildId: string, limit = 10): ModActionRow[] {
-  return db
+export async function listModActions(db: SelenaDb, guildId: string, limit = 10): Promise<ModActionRow[]> {
+  return await db
     .prepare("SELECT id, user_id, moderator_id, action, reason, created_at FROM mod_actions WHERE guild_id = ? ORDER BY created_at DESC, id DESC LIMIT ?")
     .all(guildId, limit) as unknown as ModActionRow[];
 }
@@ -87,13 +87,13 @@ export interface TicketRow {
   closed_at: number | null;
 }
 
-export function openTicket(db: SelenaDb, guildId: string, userId: string, reason: string | null, nowMs = Date.now()): TicketRow {
-  const existing = db
+export async function openTicket(db: SelenaDb, guildId: string, userId: string, reason: string | null, nowMs = Date.now()): Promise<TicketRow> {
+  const existing = await db
     .prepare("SELECT id, channel_id, user_id, reason, status, created_at, closed_at FROM tickets WHERE guild_id = ? AND user_id = ? AND status = 'open' ORDER BY created_at DESC LIMIT 1")
     .get(guildId, userId) as unknown as TicketRow | undefined;
   if (existing) return existing;
   const channelId = `ticket-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-  const r = db
+  const r = await db
     .prepare("INSERT INTO tickets (guild_id, channel_id, user_id, reason, status, created_at) VALUES (?, ?, ?, ?, 'open', ?)")
     .run(guildId, channelId, userId, reason, nowMs);
   return {
@@ -107,32 +107,32 @@ export function openTicket(db: SelenaDb, guildId: string, userId: string, reason
   };
 }
 
-export function closeTicket(db: SelenaDb, guildId: string, userId: string, nowMs = Date.now()): TicketRow | null {
-  const open = db
+export async function closeTicket(db: SelenaDb, guildId: string, userId: string, nowMs = Date.now()): Promise<TicketRow | null> {
+  const open = await db
     .prepare("SELECT id, channel_id, user_id, reason, status, created_at, closed_at FROM tickets WHERE guild_id = ? AND user_id = ? AND status = 'open' ORDER BY created_at DESC LIMIT 1")
     .get(guildId, userId) as unknown as TicketRow | undefined;
   if (!open) return null;
-  db.prepare("UPDATE tickets SET status = 'closed', closed_at = ? WHERE id = ?").run(nowMs, open.id);
+  await db.prepare("UPDATE tickets SET status = 'closed', closed_at = ? WHERE id = ?").run(nowMs, open.id);
   return { ...open, status: "closed", closed_at: nowMs };
 }
 
-export function setReactionRole(
+export async function setReactionRole(
   db: SelenaDb,
   guildId: string,
   channelId: string,
   messageId: string,
   emoji: string,
   roleId: string,
-): void {
-  db.prepare(
+): Promise<void> {
+  await db.prepare(
     `INSERT INTO reaction_roles (guild_id, channel_id, message_id, emoji, role_id)
      VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(guild_id, message_id, emoji) DO UPDATE SET role_id = excluded.role_id, channel_id = excluded.channel_id`,
   ).run(guildId, channelId, messageId, emoji, roleId);
 }
 
-export function getReactionRole(db: SelenaDb, guildId: string, messageId: string, emoji: string): string | null {
-  const row = db
+export async function getReactionRole(db: SelenaDb, guildId: string, messageId: string, emoji: string): Promise<string | null> {
+  const row = await db
     .prepare("SELECT role_id FROM reaction_roles WHERE guild_id = ? AND message_id = ? AND emoji = ?")
     .get(guildId, messageId, emoji) as { role_id: string } | undefined;
   return row?.role_id ?? null;
@@ -191,7 +191,7 @@ export const commands: Command[] = [
         await interaction.reply({ embeds: [errorEmbed("A user and a reason are required.").toJSON()], ephemeral: true });
         return;
       }
-      const id = warnUser(ctx.db, ctx.guildId, target.id, interaction.user.id, reason);
+      const id = await warnUser(ctx.db, ctx.guildId, target.id, interaction.user.id, reason);
       await interaction.reply({
         embeds: [selenaEmbed("User warned", `**${target.username}** warned (#${id}).\nReason: ${reason}`).toJSON()],
         ephemeral: true,
@@ -213,7 +213,7 @@ export const commands: Command[] = [
         await interaction.reply({ embeds: [errorEmbed("A user, a duration and a reason are required.").toJSON()], ephemeral: true });
         return;
       }
-      recordModAction(ctx.db, ctx.guildId, target.id, interaction.user.id, "mute", `${reason} (${minutes}m)`);
+      await recordModAction(ctx.db, ctx.guildId, target.id, interaction.user.id, "mute", `${reason} (${minutes}m)`);
       const note = await tryGuildAction(interaction, async (guild) => {
         const g = guild as unknown as {
           members: { fetch: (id: string) => Promise<{ timeout: (ms: number, reason: string) => Promise<void> }> };
@@ -242,7 +242,7 @@ export const commands: Command[] = [
         await interaction.reply({ embeds: [errorEmbed("A user, a duration and a reason are required.").toJSON()], ephemeral: true });
         return;
       }
-      recordModAction(ctx.db, ctx.guildId, target.id, interaction.user.id, "timeout", `${reason} (${minutes}m)`);
+      await recordModAction(ctx.db, ctx.guildId, target.id, interaction.user.id, "timeout", `${reason} (${minutes}m)`);
       const note = await tryGuildAction(interaction, async (guild) => {
         const g = guild as unknown as {
           members: { fetch: (id: string) => Promise<{ timeout: (ms: number, reason: string) => Promise<void> }> };
@@ -269,7 +269,7 @@ export const commands: Command[] = [
         await interaction.reply({ embeds: [errorEmbed("A user and a reason are required.").toJSON()], ephemeral: true });
         return;
       }
-      recordModAction(ctx.db, ctx.guildId, target.id, interaction.user.id, "kick", reason);
+      await recordModAction(ctx.db, ctx.guildId, target.id, interaction.user.id, "kick", reason);
       const note = await tryGuildAction(interaction, async (guild) => {
         const g = guild as unknown as {
           members: { fetch: (id: string) => Promise<{ kick: (reason: string) => Promise<void> }> };
@@ -298,7 +298,7 @@ export const commands: Command[] = [
         await interaction.reply({ embeds: [errorEmbed("A user and a reason are required.").toJSON()], ephemeral: true });
         return;
       }
-      recordModAction(ctx.db, ctx.guildId, target.id, interaction.user.id, "ban", `${reason} (delete ${deleteDays}d)`);
+      await recordModAction(ctx.db, ctx.guildId, target.id, interaction.user.id, "ban", `${reason} (delete ${deleteDays}d)`);
       const note = await tryGuildAction(interaction, async (guild) => {
         const g = guild as unknown as {
           members: { ban: (id: string, opts: { reason: string; deleteMessageDays: number }) => Promise<void> };
@@ -324,7 +324,7 @@ export const commands: Command[] = [
         await interaction.reply({ embeds: [errorEmbed("A user ID is required.").toJSON()], ephemeral: true });
         return;
       }
-      recordModAction(ctx.db, ctx.guildId, userId, interaction.user.id, "unban", reason);
+      await recordModAction(ctx.db, ctx.guildId, userId, interaction.user.id, "unban", reason);
       const note = await tryGuildAction(interaction, async (guild) => {
         const g = guild as unknown as {
           members: { unban: (id: string, reason: string) => Promise<void> };
@@ -348,7 +348,7 @@ export const commands: Command[] = [
         await interaction.reply({ embeds: [errorEmbed("A user is required.").toJSON()], ephemeral: true });
         return;
       }
-      const rows = listWarnings(ctx.db, ctx.guildId, target.id);
+      const rows = await listWarnings(ctx.db, ctx.guildId, target.id);
       if (rows.length === 0) {
         await interaction.reply({
           embeds: [selenaEmbed("Warnings", `**${target.username}** has no warnings.`).toJSON()],
@@ -372,7 +372,7 @@ export const commands: Command[] = [
     async execute(interaction, ctx) {
       if (!hasPerm(interaction, "ModerateMembers")) return deny(interaction, "ModerateMembers");
       const limit = interaction.options.getInteger("limit") ?? 10;
-      const rows = listModActions(ctx.db, ctx.guildId, limit);
+      const rows = await listModActions(ctx.db, ctx.guildId, limit);
       if (rows.length === 0) {
         await interaction.reply({
           embeds: [selenaEmbed("Mod log", "No moderation actions recorded yet.").toJSON()],
@@ -407,7 +407,7 @@ export const commands: Command[] = [
           await interaction.reply({ embeds: [errorEmbed("A reason is required to open a ticket.").toJSON()], ephemeral: true });
           return;
         }
-        const ticket = openTicket(ctx.db, ctx.guildId, interaction.user.id, reason);
+        const ticket = await openTicket(ctx.db, ctx.guildId, interaction.user.id, reason);
         // Runtime channel creation is best-effort; the ticket row is the
         // source of truth and exists either way.
         let channelNote = "Ticket recorded — a staff channel will be created when run on a live server.";
@@ -416,7 +416,7 @@ export const commands: Command[] = [
           if (guild?.channels) {
             const ch = await guild.channels.create({ name: `ticket-${ticket.id}`, reason });
             channelNote = `Ticket channel: <#${ch.id}>`;
-            ctx.db.prepare("UPDATE tickets SET channel_id = ? WHERE id = ?").run(ch.id, ticket.id);
+            await ctx.db.prepare("UPDATE tickets SET channel_id = ? WHERE id = ?").run(ch.id, ticket.id);
           }
         } catch (e) {
           channelNote = `Ticket recorded, but channel creation failed: ${e instanceof Error ? e.message : String(e)}`;
@@ -428,7 +428,7 @@ export const commands: Command[] = [
         return;
       }
       if (action === "close") {
-        const closed = closeTicket(ctx.db, ctx.guildId, interaction.user.id);
+        const closed = await closeTicket(ctx.db, ctx.guildId, interaction.user.id);
         if (!closed) {
           await interaction.reply({ embeds: [errorEmbed("You have no open ticket to close.").toJSON()], ephemeral: true });
           return;
@@ -458,7 +458,7 @@ export const commands: Command[] = [
         return;
       }
       const channelId = (interaction as unknown as { channelId?: string }).channelId ?? "";
-      setReactionRole(ctx.db, ctx.guildId, channelId, messageId, emoji, role.id);
+      await setReactionRole(ctx.db, ctx.guildId, channelId, messageId, emoji, role.id);
       await interaction.reply({
         embeds: [selenaEmbed("Reaction role saved", `Reacting ${emoji} on message \`${messageId}\` grants **${role.name}**.`).toJSON()],
         ephemeral: true,

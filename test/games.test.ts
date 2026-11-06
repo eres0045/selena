@@ -72,7 +72,7 @@ function payloadText(payload: unknown): string {
 
 let db: SelenaDb;
 
-beforeEach(() => {
+beforeEach(async () => {
   db = getTestDb();
   resetGameState();
 });
@@ -98,8 +98,8 @@ function buttonText(btn: FakeButton): string {
   return btn.replies.map((r) => payloadText(r.payload)).join("\n");
 }
 
-function userPoints(userId: string): number {
-  const row = db
+async function userPoints(userId: string): Promise<number> {
+  const row = await db
     .prepare("SELECT points FROM users WHERE guild_id = ? AND user_id = ?")
     .get("guild-1", userId) as { points: number } | undefined;
   return Number(row?.points ?? 0);
@@ -112,7 +112,7 @@ const OPP = { id: "user-2", username: "opponent" };
 // ---------------------------------------------------------------------------
 
 describe("tic-tac-toe logic", () => {
-  it("detects a row win for X", () => {
+  it("detects a row win for X", async () => {
     const board = emptyTttBoard();
     board[0] = "X";
     board[1] = "X";
@@ -120,7 +120,7 @@ describe("tic-tac-toe logic", () => {
     expect(tttWinner(board)).toBe("X");
   });
 
-  it("detects a diagonal win for O", () => {
+  it("detects a diagonal win for O", async () => {
     const board = emptyTttBoard();
     board[0] = "O";
     board[4] = "O";
@@ -128,7 +128,7 @@ describe("tic-tac-toe logic", () => {
     expect(tttWinner(board)).toBe("O");
   });
 
-  it("detects a column win", () => {
+  it("detects a column win", async () => {
     const board = emptyTttBoard();
     board[1] = "X";
     board[4] = "X";
@@ -136,7 +136,7 @@ describe("tic-tac-toe logic", () => {
     expect(tttWinner(board)).toBe("X");
   });
 
-  it("detects a draw on a full board with no winner", () => {
+  it("detects a draw on a full board with no winner", async () => {
     const board: TttBoard = [
       "X", "O", "X",
       "X", "O", "O",
@@ -145,14 +145,14 @@ describe("tic-tac-toe logic", () => {
     expect(tttWinner(board)).toBe("draw");
   });
 
-  it("returns null mid-game", () => {
+  it("returns null mid-game", async () => {
     const board = emptyTttBoard();
     board[0] = "X";
     board[4] = "O";
     expect(tttWinner(board)).toBeNull();
   });
 
-  it("rejects moves on taken or out-of-range cells", () => {
+  it("rejects moves on taken or out-of-range cells", async () => {
     const board = emptyTttBoard();
     const next = tttApplyMove(board, 0, "X");
     expect(next).not.toBeNull();
@@ -177,21 +177,21 @@ function dropSeq(board: C4Board, moves: [number, "R" | "Y"][]): C4Board {
 }
 
 describe("connect 4 logic", () => {
-  it("detects a horizontal win", () => {
+  it("detects a horizontal win", async () => {
     const board = dropSeq(emptyC4Board(), [
       [0, "R"], [1, "R"], [2, "R"], [3, "R"],
     ]);
     expect(c4Winner(board)).toBe("R");
   });
 
-  it("detects a vertical win", () => {
+  it("detects a vertical win", async () => {
     const board = dropSeq(emptyC4Board(), [
       [0, "Y"], [0, "Y"], [0, "Y"], [0, "Y"],
     ]);
     expect(c4Winner(board)).toBe("Y");
   });
 
-  it("detects a diagonal win", () => {
+  it("detects a diagonal win", async () => {
     const board = dropSeq(emptyC4Board(), [
       [0, "R"],
       [1, "Y"], [1, "R"],
@@ -201,12 +201,12 @@ describe("connect 4 logic", () => {
     expect(c4Winner(board)).toBe("R");
   });
 
-  it("returns null with no four in a row", () => {
+  it("returns null with no four in a row", async () => {
     const board = dropSeq(emptyC4Board(), [[0, "R"], [1, "Y"], [2, "R"]]);
     expect(c4Winner(board)).toBeNull();
   });
 
-  it("returns null when a column is full or out of range", () => {
+  it("returns null when a column is full or out of range", async () => {
     let board = emptyC4Board();
     for (let i = 0; i < 6; i++) {
       const res = c4Drop(board, 0, i % 2 === 0 ? "R" : "Y");
@@ -224,7 +224,7 @@ describe("connect 4 logic", () => {
 // ---------------------------------------------------------------------------
 
 describe("rpsOutcome", () => {
-  it("covers all nine matchups", () => {
+  it("covers all nine matchups", async () => {
     const beats: Record<RpsChoice, RpsChoice> = { rock: "scissors", paper: "rock", scissors: "paper" };
     const choices: RpsChoice[] = ["rock", "paper", "scissors"];
     for (const a of choices) {
@@ -241,23 +241,23 @@ describe("rpsOutcome", () => {
 // ---------------------------------------------------------------------------
 
 describe("trivia banks", () => {
-  it("has at least 20 MLBB and 20 general questions", () => {
+  it("has at least 20 MLBB and 20 general questions", async () => {
     expect(MLBB_QUESTIONS.length).toBeGreaterThanOrEqual(20);
     expect(GENERAL_QUESTIONS.length).toBeGreaterThanOrEqual(20);
   });
 
-  it("every question has 4 distinct options and a valid answerIndex", () => {
+  it("every question has 4 distinct options and a valid answerIndex", async () => {
     expect(validateBank(MLBB_QUESTIONS)).toEqual([]);
     expect(validateBank(GENERAL_QUESTIONS)).toEqual([]);
   });
 
-  it("checks answers correctly", () => {
+  it("checks answers correctly", async () => {
     const q = MLBB_QUESTIONS[0]!;
     expect(isTriviaAnswerCorrect(q, q.answerIndex)).toBe(true);
     expect(isTriviaAnswerCorrect(q, (q.answerIndex + 1) % 4)).toBe(false);
   });
 
-  it("picks a question from the requested bank", () => {
+  it("picks a question from the requested bank", async () => {
     expect(MLBB_QUESTIONS).toContain(pickTriviaQuestion("mlbb"));
     expect(GENERAL_QUESTIONS).toContain(pickTriviaQuestion("general"));
   });
@@ -268,7 +268,7 @@ describe("trivia banks", () => {
 // ---------------------------------------------------------------------------
 
 describe("word chain", () => {
-  it("accepts a valid first word", () => {
+  it("accepts a valid first word", async () => {
     const state = createWordChain();
     const res = submitWord(state, "apple");
     expect(res.ok).toBe(true);
@@ -276,19 +276,19 @@ describe("word chain", () => {
     expect(res.state.moves).toBe(1);
   });
 
-  it("accepts a word starting with the last letter", () => {
+  it("accepts a word starting with the last letter", async () => {
     const s1 = submitWord(createWordChain(), "apple").state;
     expect(submitWord(s1, "elephant").ok).toBe(true);
   });
 
-  it("rejects a word with the wrong starting letter", () => {
+  it("rejects a word with the wrong starting letter", async () => {
     const s1 = submitWord(createWordChain(), "apple").state;
     const res = submitWord(s1, "banana");
     expect(res.ok).toBe(false);
     expect(res.reason).toMatch(/must start with "E"/i);
   });
 
-  it("rejects repeats", () => {
+  it("rejects repeats", async () => {
     // apple -> egg -> grape leaves the chain on "e", so "egg" is both a
     // legal next letter and a repeat.
     const s1 = submitWord(createWordChain(), "apple").state;
@@ -299,14 +299,14 @@ describe("word chain", () => {
     expect(res.reason).toMatch(/already used/i);
   });
 
-  it("rejects short words and non-letters", () => {
+  it("rejects short words and non-letters", async () => {
     const state = createWordChain();
     expect(submitWord(state, "ab").ok).toBe(false);
     expect(submitWord(state, "hello1").ok).toBe(false);
     expect(submitWord(state, "hello world").ok).toBe(false);
   });
 
-  it("does not mutate the input state", () => {
+  it("does not mutate the input state", async () => {
     const state = createWordChain();
     submitWord(state, "apple");
     expect(state.used).toEqual([]);
@@ -319,7 +319,7 @@ describe("word chain", () => {
 // ---------------------------------------------------------------------------
 
 describe("guess the hero", () => {
-  it("picks a hero with role, lane and a written clue", () => {
+  it("picks a hero with role, lane and a written clue", async () => {
     const hero = pickGuessHero(mulberry32(3));
     expect(hero.hero.length).toBeGreaterThan(0);
     expect(hero.role.length).toBeGreaterThan(0);
@@ -327,7 +327,7 @@ describe("guess the hero", () => {
     expect(hero.clue.length).toBeGreaterThan(20);
   });
 
-  it("matches guesses case-insensitively", () => {
+  it("matches guesses case-insensitively", async () => {
     const hero = { hero: "Selena", role: "x", lane: "y", clue: "z" };
     expect(checkGuess(hero, "selena")).toBe(true);
     expect(checkGuess(hero, "  SELENA  ")).toBe(true);
@@ -342,18 +342,18 @@ describe("guess the hero", () => {
 describe("pickWinners", () => {
   const entries = ["a", "b", "c", "d", "e"];
 
-  it("picks the requested count, all unique and from the entries", () => {
+  it("picks the requested count, all unique and from the entries", async () => {
     const winners = pickWinners(entries, 2, mulberry32(11));
     expect(winners).toHaveLength(2);
     expect(new Set(winners).size).toBe(2);
     for (const w of winners) expect(entries).toContain(w);
   });
 
-  it("is deterministic with a seeded rand", () => {
+  it("is deterministic with a seeded rand", async () => {
     expect(pickWinners(entries, 3, mulberry32(99))).toEqual(pickWinners(entries, 3, mulberry32(99)));
   });
 
-  it("returns all entries when count exceeds them, and none for count 0", () => {
+  it("returns all entries when count exceeds them, and none for count 0", async () => {
     expect(pickWinners(entries, 10, mulberry32(1)).sort()).toEqual([...entries].sort());
     expect(pickWinners(entries, 0)).toEqual([]);
     expect(pickWinners([], 2)).toEqual([]);
@@ -365,7 +365,7 @@ describe("pickWinners", () => {
 // ---------------------------------------------------------------------------
 
 describe("poll votes", () => {
-  it("counts votes per option (pure)", () => {
+  it("counts votes per option (pure)", async () => {
     expect(
       countPollVotes(
         [{ option_index: 0 }, { option_index: 0 }, { option_index: 1 }],
@@ -374,16 +374,16 @@ describe("poll votes", () => {
     ).toEqual([2, 1, 0]);
   });
 
-  it("upserts one vote per user and counts from the DB", () => {
-    db.prepare(
+  it("upserts one vote per user and counts from the DB", async () => {
+    await db.prepare(
       "INSERT INTO polls (guild_id, channel_id, message_id, question, options_json, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
     ).run("guild-1", "", null, "Best lane?", JSON.stringify(["Mid", "Gold", "EXP"]), "user-1", Date.now());
     const pollId = 1;
-    recordPollVote(db, pollId, "user-1", 0);
-    recordPollVote(db, pollId, "user-2", 1);
-    recordPollVote(db, pollId, "user-1", 1); // change vote
-    expect(getPollCounts(db, pollId, 3)).toEqual([0, 2, 0]);
-    const rows = db.prepare("SELECT COUNT(*) AS c FROM poll_votes WHERE poll_id = ?").get(pollId) as { c: number };
+    await recordPollVote(db, pollId, "user-1", 0);
+    await recordPollVote(db, pollId, "user-2", 1);
+    await recordPollVote(db, pollId, "user-1", 1); // change vote
+    expect(await getPollCounts(db, pollId, 3)).toEqual([0, 2, 0]);
+    const rows = await db.prepare("SELECT COUNT(*) AS c FROM poll_votes WHERE poll_id = ?").get(pollId) as { c: number };
     expect(rows.c).toBe(2);
   });
 });
@@ -582,7 +582,7 @@ describe("trivia button handler", () => {
       userId: "user-9",
     });
     await buttonHandlers["selena:trivia"]!(btn, { db, guildId: "guild-1" });
-    expect(userPoints("user-9")).toBe(TRIVIA_POINTS);
+    expect(await userPoints("user-9")).toBe(TRIVIA_POINTS);
     expect(buttonText(btn)).toMatch(/got it right/);
   });
 
@@ -592,7 +592,7 @@ describe("trivia button handler", () => {
     const wrong = (game.question.answerIndex + 1) % 4;
     const btn = new FakeButton({ customId: `selena:trivia:${game.id}:${wrong}`, userId: "user-9" });
     await buttonHandlers["selena:trivia"]!(btn, { db, guildId: "guild-1" });
-    expect(userPoints("user-9")).toBe(0);
+    expect(await userPoints("user-9")).toBe(0);
     expect(buttonText(btn)).toMatch(/got it wrong/);
     const second = new FakeButton({
       customId: `selena:trivia:${game.id}:${game.question.answerIndex}`,
@@ -666,7 +666,7 @@ describe("/guesshero command", () => {
     expect(replyText(wrong)).toMatch(/2.*attempts left/);
     const right = await run("guesshero", { guess: round.hero.hero.toLowerCase() });
     expect(replyText(right)).toMatch(/Correct!/);
-    expect(userPoints("user-1")).toBe(GUESS_HERO_POINTS);
+    expect(await userPoints("user-1")).toBe(GUESS_HERO_POINTS);
     expect(guessHeroRounds.has("guild-1:user-1")).toBe(false);
   });
 
@@ -689,7 +689,7 @@ describe("/giveaway command", () => {
   it("creates a giveaway row and replies with an entry button", async () => {
     const fake = await run("giveaway", { prize: "1000 Diamonds", duration: 60, winners: 2 });
     expect(replyText(fake)).toMatch(/1000 Diamonds/);
-    const row = db.prepare("SELECT * FROM giveaways WHERE id = 1").get() as Record<string, unknown>;
+    const row = await db.prepare("SELECT * FROM giveaways WHERE id = 1").get() as Record<string, unknown>;
     expect(row.prize).toBe("1000 Diamonds");
     expect(row.winners_count).toBe(2);
     expect(Number(row.ended)).toBe(0);
@@ -721,7 +721,7 @@ describe("giveaway button handler", () => {
     expect(buttonText(await join("user-2"))).toMatch(/You're in!/);
     expect(buttonText(await join("user-2"))).toMatch(/already entered/i);
     expect(buttonText(await join("user-3"))).toMatch(/You're in!/);
-    const rows = db.prepare("SELECT COUNT(*) AS c FROM giveaway_entries WHERE giveaway_id = 1").get() as {
+    const rows = await db.prepare("SELECT COUNT(*) AS c FROM giveaway_entries WHERE giveaway_id = 1").get() as {
       c: number;
     };
     expect(rows.c).toBe(2);
@@ -743,7 +743,7 @@ describe("/poll command", () => {
     const fake = await run("poll", { question: "Best lane?", option1: "Mid", option2: "Gold" });
     expect(replyText(fake)).toMatch(/Best lane\?/);
     expect(replyText(fake)).toMatch(/0 total votes/);
-    const row = db.prepare("SELECT * FROM polls WHERE id = 1").get() as Record<string, unknown>;
+    const row = await db.prepare("SELECT * FROM polls WHERE id = 1").get() as Record<string, unknown>;
     expect(JSON.parse(row.options_json as string)).toEqual(["Mid", "Gold"]);
   });
 
@@ -775,7 +775,7 @@ describe("poll button handler", () => {
     await vote(1, "user-3");
     const changed = await vote(1, "user-2"); // user-2 switches Mid -> Gold
     expect(buttonText(changed)).toMatch(/Gold.*2 votes/);
-    expect(getPollCounts(db, 1, 3)).toEqual([0, 2, 0]);
+    expect(await getPollCounts(db, 1, 3)).toEqual([0, 2, 0]);
   });
 
   it("errors for an unknown poll", async () => {

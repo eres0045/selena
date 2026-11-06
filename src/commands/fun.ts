@@ -234,7 +234,7 @@ export const commands: Command[] = [
     }),
     async execute(interaction, ctx) {
       const target = interaction.options.getUser("user") ?? interaction.user;
-      const profile = getProfileData(ctx.db, ctx.guildId, target.id);
+      const profile = await getProfileData(ctx.db, ctx.guildId, target.id);
       const embed = selenaEmbed(`👤 ${target.username}'s Profile`)
         .addFields(
           { name: "Points", value: fmt(profile.points), inline: true },

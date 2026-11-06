@@ -19,7 +19,7 @@ function execCmd(cmds: Command[], name: string, opts: Record<string, unknown> = 
 }
 
 describe("levels math", () => {
-  it("xpForLevel follows 5L^2 + 50L + 100 (level 0 = 0)", () => {
+  it("xpForLevel follows 5L^2 + 50L + 100 (level 0 = 0)", async () => {
     expect(xpForLevel(0)).toBe(0);
     expect(xpForLevel(1)).toBe(155);
     expect(xpForLevel(2)).toBe(220);
@@ -28,7 +28,7 @@ describe("levels math", () => {
     expect(xpForLevel(10)).toBe(1100);
   });
 
-  it("levelFromXp inverts the curve at exact thresholds", () => {
+  it("levelFromXp inverts the curve at exact thresholds", async () => {
     expect(levelFromXp(0)).toBe(0);
     expect(levelFromXp(154)).toBe(0);
     expect(levelFromXp(155)).toBe(1);
@@ -39,7 +39,7 @@ describe("levels math", () => {
     expect(levelFromXp(-5)).toBe(0);
   });
 
-  it("rankCard reports level, next threshold and progress", () => {
+  it("rankCard reports level, next threshold and progress", async () => {
     const fresh = rankCard(0);
     expect(fresh).toMatchObject({ level: 0, xp: 0, xpForNext: 155, progress: 0 });
     const mid = rankCard(155 + 32); // halfway-ish through level 1 (span 65)
@@ -51,37 +51,37 @@ describe("levels math", () => {
 });
 
 describe("awardXp + cooldown", () => {
-  it("awards XP, levels up at the threshold, then enforces the 60s cooldown", () => {
+  it("awards XP, levels up at the threshold, then enforces the 60s cooldown", async () => {
     const db = getTestDb();
     resetXpCooldowns();
-    const first = awardXp(db, GUILD, "user-1", 200, 1_000);
+    const first = await awardXp(db, GUILD, "user-1", 200, 1_000);
     expect(first).toMatchObject({ leveledUp: true, newLevel: 1, xp: 200, awarded: 200 });
-    const during = awardXp(db, GUILD, "user-1", 50, 1_000 + 30_000);
+    const during = await awardXp(db, GUILD, "user-1", 50, 1_000 + 30_000);
     expect(during).toMatchObject({ leveledUp: false, awarded: 0, xp: 200 });
-    const after = awardXp(db, GUILD, "user-1", 50, 1_000 + 60_000);
+    const after = await awardXp(db, GUILD, "user-1", 50, 1_000 + 60_000);
     expect(after).toMatchObject({ awarded: 50, xp: 250 });
     // different user / guild is not affected by the first user's cooldown
-    const other = awardXp(db, GUILD, "user-2", 10, 1_000 + 30_000);
+    const other = await awardXp(db, GUILD, "user-2", 10, 1_000 + 30_000);
     expect(other.awarded).toBe(10);
     resetXpCooldowns();
   });
 });
 
 describe("automod pure functions", () => {
-  it("containsBannedWord matches whole words, case-insensitively", () => {
+  it("containsBannedWord matches whole words, case-insensitively", async () => {
     expect(containsBannedWord("this has badword1 in it", ["badword1"])).toBe(true);
     expect(containsBannedWord("BADWORD1!", ["badword1"])).toBe(true);
     expect(containsBannedWord("badword12 is not a match", ["badword1"])).toBe(false);
     expect(containsBannedWord("clean message", ["badword1"])).toBe(false);
   });
 
-  it("isSpam counts messages inside the window", () => {
+  it("isSpam counts messages inside the window", async () => {
     expect(isSpam([1000, 2000, 3000, 4000, 5000], 5000, 5)).toBe(true);
     expect(isSpam([1000, 2000, 3000, 4000], 5000, 5)).toBe(false);
     expect(isSpam([0, 100_000], 5000, 2)).toBe(false);
   });
 
-  it("containsLink flags URLs except allow-listed hosts", () => {
+  it("containsLink flags URLs except allow-listed hosts", async () => {
     expect(containsLink("see https://example.com/x")).toBe(true);
     expect(containsLink("see www.example.com")).toBe(true);
     expect(containsLink("no links here")).toBe(false);
@@ -90,15 +90,15 @@ describe("automod pure functions", () => {
     expect(containsLink("see https://evil.com and https://discord.gg/abc", ["discord.gg"])).toBe(true);
   });
 
-  it("checkStarboard posts once at threshold and records stars", () => {
+  it("checkStarboard posts once at threshold and records stars", async () => {
     const db = getTestDb();
-    const below = checkStarboard(db, GUILD, "msg-1", 2);
+    const below = await checkStarboard(db, GUILD, "msg-1", 2);
     expect(below).toMatchObject({ shouldPost: false, threshold: 3 });
-    const at = checkStarboard(db, GUILD, "msg-1", 3);
+    const at = await checkStarboard(db, GUILD, "msg-1", 3);
     expect(at.shouldPost).toBe(true);
     // simulate the entrypoint recording the post, then a 4th star arrives
-    db.prepare("UPDATE starboard_posts SET starboard_message_id = 'sb-1' WHERE guild_id = ? AND message_id = ?").run(GUILD, "msg-1");
-    const again = checkStarboard(db, GUILD, "msg-1", 4);
+    await db.prepare("UPDATE starboard_posts SET starboard_message_id = 'sb-1' WHERE guild_id = ? AND message_id = ?").run(GUILD, "msg-1");
+    const again = await checkStarboard(db, GUILD, "msg-1", 4);
     expect(again).toMatchObject({ shouldPost: false, alreadyPosted: true, stars: 4 });
   });
 });
@@ -107,7 +107,7 @@ describe("utility commands", () => {
   it("/rank shows level + progress from stored XP", async () => {
     const db = getTestDb();
     resetXpCooldowns();
-    awardXp(db, GUILD, "user-1", 200, 1000);
+    await awardXp(db, GUILD, "user-1", 200, 1000);
     const fake = new FakeChatInput({ commandName: "rank", options: {} });
     const cmd = utilityCommands.find((c) => c.data.name === "rank")!;
     await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(fake, { db, guildId: GUILD });
@@ -123,9 +123,9 @@ describe("utility commands", () => {
 
     const db = getTestDb();
     resetXpCooldowns();
-    awardXp(db, GUILD, "user-a", 500, 1000);
-    awardXp(db, GUILD, "user-b", 200, 1000);
-    expect(topByXp(db, GUILD, 10).map((u) => u.user_id)).toEqual(["user-a", "user-b"]);
+    await awardXp(db, GUILD, "user-a", 500, 1000);
+    await awardXp(db, GUILD, "user-b", 200, 1000);
+    expect((await topByXp(db, GUILD, 10)).map((u) => u.user_id)).toEqual(["user-a", "user-b"]);
     const fake = new FakeChatInput({ commandName: "leaderboard-xp", options: {} });
     const cmd = utilityCommands.find((c) => c.data.name === "leaderboard-xp")!;
     await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(fake, { db, guildId: GUILD });
@@ -137,11 +137,11 @@ describe("utility commands", () => {
     const set = execCmd(utilityCommands, "afk", { reason: "lunch" });
     await set.promise;
     expect(set.fake.allText()).toContain("AFK");
-    expect(getAfk(set.db, GUILD, "user-1").reason).toBe("lunch");
+    expect((await getAfk(set.db, GUILD, "user-1")).reason).toBe("lunch");
 
     const db = set.db;
-    setAfk(db, GUILD, "user-1", null);
-    expect(getAfk(db, GUILD, "user-1").reason).toBeNull();
+    await setAfk(db, GUILD, "user-1", null);
+    expect((await getAfk(db, GUILD, "user-1")).reason).toBeNull();
 
     const clear = execCmd(utilityCommands, "afk", {});
     await clear.promise;
@@ -151,9 +151,9 @@ describe("utility commands", () => {
   it("/remind stores a row with due_at = now + minutes", async () => {
     const db = getTestDb();
     const now = 1_700_000_000_000;
-    const { id, dueAt } = createReminder(db, GUILD, "user-1", "chan-1", "drink water", 30, now);
+    const { id, dueAt } = await createReminder(db, GUILD, "user-1", "chan-1", "drink water", 30, now);
     expect(dueAt).toBe(now + 30 * 60_000);
-    const row = db.prepare("SELECT * FROM reminders WHERE id = ?").get(id) as Record<string, unknown>;
+    const row = await db.prepare("SELECT * FROM reminders WHERE id = ?").get(id) as Record<string, unknown>;
     expect(row.text).toBe("drink water");
     expect(row.delivered).toBe(0);
 
@@ -170,8 +170,8 @@ describe("utility commands", () => {
   it("/serverstats reads seeded users and leaderboards", async () => {
     const db = getTestDb();
     resetXpCooldowns();
-    awardXp(db, GUILD, "user-a", 300, 1000);
-    db.prepare("UPDATE users SET points = 42 WHERE guild_id = ? AND user_id = ?").run(GUILD, "user-a");
+    await awardXp(db, GUILD, "user-a", 300, 1000);
+    await db.prepare("UPDATE users SET points = 42 WHERE guild_id = ? AND user_id = ?").run(GUILD, "user-a");
     const fake = new FakeChatInput({ commandName: "serverstats", options: {} });
     const cmd = utilityCommands.find((c) => c.data.name === "serverstats")!;
     await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(fake, { db, guildId: GUILD });

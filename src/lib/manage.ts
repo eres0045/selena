@@ -50,14 +50,14 @@ export interface SquadWithCount extends SquadRow {
   memberCount: number;
 }
 
-export function resolveSquad(db: SelenaDb, guildId: string, ref: string): SquadRow | undefined {
+export async function resolveSquad(db: SelenaDb, guildId: string, ref: string): Promise<SquadRow | undefined> {
   const trimmed = ref.trim();
   let row: Record<string, unknown> | undefined;
   if (/^\d+$/.test(trimmed)) {
-    row = db.prepare("SELECT * FROM squads WHERE guild_id = ? AND id = ?").get(guildId, Number(trimmed));
+    row = await db.prepare("SELECT * FROM squads WHERE guild_id = ? AND id = ?").get(guildId, Number(trimmed));
   }
   if (!row) {
-    row = db
+    row = await db
       .prepare("SELECT * FROM squads WHERE guild_id = ? AND LOWER(name) = LOWER(?)")
       .get(guildId, trimmed);
   }
@@ -72,24 +72,24 @@ export function resolveSquad(db: SelenaDb, guildId: string, ref: string): SquadR
   };
 }
 
-export function createSquad(
+export async function createSquad(
   db: SelenaDb,
   guildId: string,
   name: string,
   captainId?: string | null,
   nowMs: number = Date.now(),
-): Result<{ squadId: number; squad: SquadRow }> {
+): Promise<Result<{ squadId: number; squad: SquadRow }>> {
   const clean = name.trim();
   if (!clean) return err("Squad name can't be empty.");
   if (clean.length > 64) return err("Squad name must be 64 characters or fewer.");
-  if (resolveSquad(db, guildId, clean)) return err(`A squad named "${clean}" already exists.`);
-  const r = db
+  if (await resolveSquad(db, guildId, clean)) return err(`A squad named "${clean}" already exists.`);
+  const r = await db
     .prepare("INSERT INTO squads (guild_id, name, captain_id, kind, created_at) VALUES (?, ?, ?, 'squad', ?)")
     .run(guildId, clean, captainId ?? null, nowMs);
-  const squad = resolveSquad(db, guildId, String(r.lastInsertRowid));
+  const squad = await resolveSquad(db, guildId, String(r.lastInsertRowid));
   if (!squad) return err("Failed to create squad.");
   if (captainId) {
-    db.prepare("INSERT OR REPLACE INTO squad_members (squad_id, user_id, role) VALUES (?, ?, 'captain')").run(
+    await db.prepare("INSERT INTO squad_members (squad_id, user_id, role) VALUES (?, ?, 'captain') ON CONFLICT (squad_id, user_id) DO UPDATE SET role = EXCLUDED.role").run(
       squad.id,
       captainId,
     );
@@ -97,12 +97,12 @@ export function createSquad(
   return { ok: true, squadId: squad.id, squad };
 }
 
-export function listSquads(db: SelenaDb, guildId: string): SquadWithCount[] {
-  const rows = db
+export async function listSquads(db: SelenaDb, guildId: string): Promise<SquadWithCount[]> {
+  const rows = await db
     .prepare(
-      `SELECT s.*, COUNT(sm.user_id) AS member_count FROM squads s
+      `SELECT s.id, s.guild_id, s.name, s.captain_id, s.kind, s.created_at, COUNT(sm.user_id) AS member_count FROM squads s
        LEFT JOIN squad_members sm ON sm.squad_id = s.id
-       WHERE s.guild_id = ? GROUP BY s.id ORDER BY s.name ASC`,
+       WHERE s.guild_id = ? GROUP BY s.id, s.guild_id, s.name, s.captain_id, s.kind, s.created_at ORDER BY s.name ASC`,
     )
     .all(guildId);
   return rows.map((r) => ({
@@ -116,18 +116,18 @@ export function listSquads(db: SelenaDb, guildId: string): SquadWithCount[] {
   }));
 }
 
-export function addSquadMember(
+export async function addSquadMember(
   db: SelenaDb,
   guildId: string,
   squadRef: string,
   userId: string,
   role: string,
-): Result<{ squad: SquadRow }> {
-  const squad = resolveSquad(db, guildId, squadRef);
+): Promise<Result<{ squad: SquadRow }>> {
+  const squad = await resolveSquad(db, guildId, squadRef);
   if (!squad) return err(`Squad "${squadRef}" not found.`);
   const cleanRole = role.trim();
   if (!cleanRole) return err("Role can't be empty.");
-  db.prepare("INSERT OR REPLACE INTO squad_members (squad_id, user_id, role) VALUES (?, ?, ?)").run(
+  await db.prepare("INSERT INTO squad_members (squad_id, user_id, role) VALUES (?, ?, ?) ON CONFLICT (squad_id, user_id) DO UPDATE SET role = EXCLUDED.role").run(
     squad.id,
     userId,
     cleanRole,
@@ -135,29 +135,30 @@ export function addSquadMember(
   return { ok: true, squad };
 }
 
-export function removeSquadMember(
+export async function removeSquadMember(
   db: SelenaDb,
   guildId: string,
   squadRef: string,
   userId: string,
-): Result<{ squad: SquadRow }> {
-  const squad = resolveSquad(db, guildId, squadRef);
+): Promise<Result<{ squad: SquadRow }>> {
+  const squad = await resolveSquad(db, guildId, squadRef);
   if (!squad) return err(`Squad "${squadRef}" not found.`);
-  const r = db
+  const r = await db
     .prepare("DELETE FROM squad_members WHERE squad_id = ? AND user_id = ?")
     .run(squad.id, userId);
   if (r.changes === 0) return err(`<@${userId}> is not a member of "${squad.name}".`);
   return { ok: true, squad };
 }
 
-export function listSquadMembers(
+export async function listSquadMembers(
   db: SelenaDb,
   squadId: number,
-): Array<{ userId: string; role: string }> {
-  return db
-    .prepare("SELECT user_id, role FROM squad_members WHERE squad_id = ? ORDER BY role, user_id")
-    .all(squadId)
-    .map((r) => ({ userId: String(r.user_id), role: String(r.role) }));
+): Promise<Array<{ userId: string; role: string }>> {
+  return (
+    await db
+      .prepare("SELECT user_id, role FROM squad_members WHERE squad_id = ? ORDER BY role, user_id")
+      .all(squadId)
+  ).map((r) => ({ userId: String(r.user_id), role: String(r.role) }));
 }
 
 // ---------------------------------------------------------------------------
@@ -172,10 +173,10 @@ export interface LineupCard {
   other: Array<{ userId: string; role: string }>;
 }
 
-export function lineupCard(db: SelenaDb, squadId: number): LineupCard | undefined {
-  const squad = db.prepare("SELECT * FROM squads WHERE id = ?").get(squadId);
+export async function lineupCard(db: SelenaDb, squadId: number): Promise<LineupCard | undefined> {
+  const squad = await db.prepare("SELECT * FROM squads WHERE id = ?").get(squadId);
   if (!squad) return undefined;
-  const members = listSquadMembers(db, squadId);
+  const members = await listSquadMembers(db, squadId);
   const card: LineupCard = {
     squad: {
       id: Number(squad.id),
@@ -199,24 +200,24 @@ export function lineupCard(db: SelenaDb, squadId: number): LineupCard | undefine
   return card;
 }
 
-export function assignLineup(
+export async function assignLineup(
   db: SelenaDb,
   guildId: string,
   squadRef: string,
   userId: string,
   lineup: string,
-): Result<{ squad: SquadRow; card: LineupCard }> {
+): Promise<Result<{ squad: SquadRow; card: LineupCard }>> {
   if (!LINEUP_ROLES.includes(lineup as LineupRole)) {
     return err(`Lineup must be one of: ${LINEUP_ROLES.join(", ")}.`);
   }
-  const squad = resolveSquad(db, guildId, squadRef);
+  const squad = await resolveSquad(db, guildId, squadRef);
   if (!squad) return err(`Squad "${squadRef}" not found.`);
-  db.prepare("INSERT OR REPLACE INTO squad_members (squad_id, user_id, role) VALUES (?, ?, ?)").run(
+  await db.prepare("INSERT INTO squad_members (squad_id, user_id, role) VALUES (?, ?, ?) ON CONFLICT (squad_id, user_id) DO UPDATE SET role = EXCLUDED.role").run(
     squad.id,
     userId,
     lineup,
   );
-  const card = lineupCard(db, squad.id);
+  const card = await lineupCard(db, squad.id);
   if (!card) return err("Failed to load lineup.");
   return { ok: true, squad, card };
 }
@@ -276,7 +277,7 @@ export interface ScrimRow {
   no: number;
 }
 
-export function scheduleScrim(
+export async function scheduleScrim(
   db: SelenaDb,
   guildId: string,
   opponent: string,
@@ -284,12 +285,12 @@ export function scheduleScrim(
   timeStr: string,
   createdBy: string,
   nowMs: number = Date.now(),
-): Result<{ scrimId: number; scheduledAt: number }> {
+): Promise<Result<{ scrimId: number; scheduledAt: number }>> {
   const clean = opponent.trim();
   if (!clean) return err("Opponent can't be empty.");
   const parsed = parseScrimDate(dateStr, timeStr, nowMs);
   if (!parsed.ok) return parsed;
-  const r = db
+  const r = await db
     .prepare(
       "INSERT INTO scrims (guild_id, opponent, scheduled_at, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
     )
@@ -297,8 +298,8 @@ export function scheduleScrim(
   return { ok: true, scrimId: Number(r.lastInsertRowid), scheduledAt: parsed.scheduledAt };
 }
 
-export function getRsvpCounts(db: SelenaDb, scrimId: number): { yes: number; no: number } {
-  const rows = db
+export async function getRsvpCounts(db: SelenaDb, scrimId: number): Promise<{ yes: number; no: number }> {
+  const rows = await db
     .prepare("SELECT attending, COUNT(*) AS n FROM scrim_rsvps WHERE scrim_id = ? GROUP BY attending")
     .all(scrimId);
   let yes = 0;
@@ -310,38 +311,40 @@ export function getRsvpCounts(db: SelenaDb, scrimId: number): { yes: number; no:
   return { yes, no };
 }
 
-export function listScrims(db: SelenaDb, guildId: string, nowMs: number = Date.now()): ScrimRow[] {
-  const rows = db
+export async function listScrims(db: SelenaDb, guildId: string, nowMs: number = Date.now()): Promise<ScrimRow[]> {
+  const rows = await db
     .prepare(
       "SELECT * FROM scrims WHERE guild_id = ? AND scheduled_at >= ? ORDER BY scheduled_at ASC",
     )
     .all(guildId, nowMs);
-  return rows.map((r) => {
-    const counts = getRsvpCounts(db, Number(r.id));
-    return {
+  const out: ScrimRow[] = [];
+  for (const r of rows) {
+    const counts = await getRsvpCounts(db, Number(r.id));
+    out.push({
       id: Number(r.id),
       opponent: String(r.opponent),
       scheduledAt: Number(r.scheduled_at),
       createdBy: String(r.created_by),
       yes: counts.yes,
       no: counts.no,
-    };
-  });
+    });
+  }
+  return out;
 }
 
-export function upsertRsvp(
+export async function upsertRsvp(
   db: SelenaDb,
   scrimId: number,
   userId: string,
   attending: boolean,
-): Result<{ yes: number; no: number }> {
-  const scrim = db.prepare("SELECT id FROM scrims WHERE id = ?").get(scrimId);
+): Promise<Result<{ yes: number; no: number }>> {
+  const scrim = await db.prepare("SELECT id FROM scrims WHERE id = ?").get(scrimId);
   if (!scrim) return err(`Scrim #${scrimId} not found.`);
-  db.prepare(
+  await db.prepare(
     `INSERT INTO scrim_rsvps (scrim_id, user_id, attending) VALUES (?, ?, ?)
      ON CONFLICT(scrim_id, user_id) DO UPDATE SET attending = excluded.attending`,
   ).run(scrimId, userId, attending ? 1 : 0);
-  return { ok: true, ...getRsvpCounts(db, scrimId) };
+  return { ok: true, ...(await getRsvpCounts(db, scrimId)) };
 }
 
 // ---------------------------------------------------------------------------
@@ -384,13 +387,13 @@ function toTryoutRow(row: Record<string, unknown>): TryoutRow {
   };
 }
 
-export function submitTryout(
+export async function submitTryout(
   db: SelenaDb,
   guildId: string,
   userId: string,
   input: TryoutInput,
   nowMs: number = Date.now(),
-): Result<{ tryoutId: number; tryout: TryoutRow }> {
+): Promise<Result<{ tryoutId: number; tryout: TryoutRow }>> {
   const ign = input.ign.trim();
   const mlbbId = input.mlbbId.trim();
   const role = input.role.trim();
@@ -407,41 +410,41 @@ export function submitTryout(
       `Rank "${rankRaw}" isn't valid — use one of: ${TRYOUT_RANKS.join(", ")}.`,
     );
   }
-  const r = db
+  const r = await db
     .prepare(
       `INSERT INTO tryouts (guild_id, user_id, ign, mlbb_id, role, rank_name, heroes, status, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
     )
     .run(guildId, userId, ign, mlbbId, role, rank, heroes, nowMs);
-  const row = db.prepare("SELECT * FROM tryouts WHERE id = ?").get(Number(r.lastInsertRowid));
+  const row = await db.prepare("SELECT * FROM tryouts WHERE id = ?").get(Number(r.lastInsertRowid));
   if (!row) return err("Failed to log tryout.");
   return { ok: true, tryoutId: Number(r.lastInsertRowid), tryout: toTryoutRow(row) };
 }
 
-export function getTryout(db: SelenaDb, guildId: string, tryoutId: number): TryoutRow | undefined {
-  const row = db.prepare("SELECT * FROM tryouts WHERE guild_id = ? AND id = ?").get(guildId, tryoutId);
+export async function getTryout(db: SelenaDb, guildId: string, tryoutId: number): Promise<TryoutRow | undefined> {
+  const row = await db.prepare("SELECT * FROM tryouts WHERE guild_id = ? AND id = ?").get(guildId, tryoutId);
   return row ? toTryoutRow(row) : undefined;
 }
 
-export function decideTryout(
+export async function decideTryout(
   db: SelenaDb,
   guildId: string,
   tryoutId: number,
   decision: "accepted" | "rejected",
-): Result<{ tryout: TryoutRow; roleIntent: string | null }> {
-  const tryout = getTryout(db, guildId, tryoutId);
+): Promise<Result<{ tryout: TryoutRow; roleIntent: string | null }>> {
+  const tryout = await getTryout(db, guildId, tryoutId);
   if (!tryout) return err(`Tryout #${tryoutId} not found.`);
   if (tryout.status !== "pending") return err(`Tryout #${tryoutId} was already ${tryout.status}.`);
-  db.prepare("UPDATE tryouts SET status = ? WHERE id = ?").run(decision, tryoutId);
-  const updated = getTryout(db, guildId, tryoutId);
+  await db.prepare("UPDATE tryouts SET status = ? WHERE id = ?").run(decision, tryoutId);
+  const updated = await getTryout(db, guildId, tryoutId);
   if (!updated) return err("Failed to update tryout.");
   // Role assignment itself happens at runtime; this records the intent.
   return { ok: true, tryout: updated, roleIntent: decision === "accepted" ? "Tryout" : null };
 }
 
 /** Staff channel configured for this guild, if any (tryout posts go there at runtime). */
-export function getStaffChannelId(db: SelenaDb, guildId: string): string | null {
-  const row = db.prepare("SELECT staff_channel_id FROM guild_settings WHERE guild_id = ?").get(guildId);
+export async function getStaffChannelId(db: SelenaDb, guildId: string): Promise<string | null> {
+  const row = await db.prepare("SELECT staff_channel_id FROM guild_settings WHERE guild_id = ?").get(guildId);
   if (!row || row.staff_channel_id === null || row.staff_channel_id === undefined) return null;
   return String(row.staff_channel_id);
 }
@@ -489,13 +492,13 @@ function toMatchRow(row: Record<string, unknown>): MatchRow {
   };
 }
 
-export function createBracket(
+export async function createBracket(
   db: SelenaDb,
   guildId: string,
   name: string,
   teams: string[],
   nowMs: number = Date.now(),
-): Result<{ bracketId: number; matches: MatchRow[] }> {
+): Promise<Result<{ bracketId: number; matches: MatchRow[] }>> {
   const cleanName = name.trim();
   if (!cleanName) return err("Bracket name can't be empty.");
   const cleanTeams = teams.map((t) => t.trim()).filter((t) => t.length > 0);
@@ -512,43 +515,43 @@ export function createBracket(
       `Team count must be a power of two (2, 4, 8, 16) — got ${cleanTeams.length}. Add or remove teams.`,
     );
   }
-  const b = db
+  const b = await db
     .prepare("INSERT INTO brackets (guild_id, name, state, created_at) VALUES (?, ?, 'open', ?)")
     .run(guildId, cleanName, nowMs);
   const bracketId = Number(b.lastInsertRowid);
-  cleanTeams.forEach((team, i) => {
-    db.prepare("INSERT INTO bracket_entries (bracket_id, seed, team_name) VALUES (?, ?, ?)").run(
-      bracketId,
-      i + 1,
-      team,
-    );
-  });
+  for (let i = 0; i < cleanTeams.length; i++) {
+    await db
+      .prepare("INSERT INTO bracket_entries (bracket_id, seed, team_name) VALUES (?, ?, ?)")
+      .run(bracketId, i + 1, cleanTeams[i]);
+  }
   const matches: MatchRow[] = [];
   for (let slot = 0; slot < cleanTeams.length / 2; slot++) {
     const teamA = cleanTeams[slot * 2] as string;
     const teamB = cleanTeams[slot * 2 + 1] as string;
-    const m = db
+    const m = await db
       .prepare(
         "INSERT INTO matches (bracket_id, round, slot, team_a, team_b, created_at) VALUES (?, 1, ?, ?, ?, ?)",
       )
       .run(bracketId, slot, teamA, teamB, nowMs);
-    const row = db.prepare("SELECT * FROM matches WHERE id = ?").get(Number(m.lastInsertRowid));
+    const row = await db.prepare("SELECT * FROM matches WHERE id = ?").get(Number(m.lastInsertRowid));
     if (row) matches.push(toMatchRow(row));
   }
   return { ok: true, bracketId, matches };
 }
 
-export function getBracket(db: SelenaDb, bracketId: number): BracketState | undefined {
-  const bracket = db.prepare("SELECT * FROM brackets WHERE id = ?").get(bracketId);
+export async function getBracket(db: SelenaDb, bracketId: number): Promise<BracketState | undefined> {
+  const bracket = await db.prepare("SELECT * FROM brackets WHERE id = ?").get(bracketId);
   if (!bracket) return undefined;
-  const entries = db
-    .prepare("SELECT team_name FROM bracket_entries WHERE bracket_id = ? ORDER BY seed ASC")
-    .all(bracketId)
-    .map((r) => String(r.team_name));
-  const matches = db
-    .prepare("SELECT * FROM matches WHERE bracket_id = ? ORDER BY round ASC, slot ASC")
-    .all(bracketId)
-    .map(toMatchRow);
+  const entries = (
+    await db
+      .prepare("SELECT team_name FROM bracket_entries WHERE bracket_id = ? ORDER BY seed ASC")
+      .all(bracketId)
+  ).map((r) => String(r.team_name));
+  const matches = (
+    await db
+      .prepare("SELECT * FROM matches WHERE bracket_id = ? ORDER BY round ASC, slot ASC")
+      .all(bracketId)
+  ).map(toMatchRow);
   return {
     id: Number(bracket.id),
     name: String(bracket.name),
@@ -559,7 +562,7 @@ export function getBracket(db: SelenaDb, bracketId: number): BracketState | unde
   };
 }
 
-export function reportMatch(
+export async function reportMatch(
   db: SelenaDb,
   guildId: string,
   bracketId: number,
@@ -569,8 +572,8 @@ export function reportMatch(
   scoreB: number,
   reportedBy?: string,
   nowMs: number = Date.now(),
-): Result<{ match: MatchRow; advancedTo: MatchRow | null; bracketComplete: boolean }> {
-  const bracket = getBracket(db, bracketId);
+): Promise<Result<{ match: MatchRow; advancedTo: MatchRow | null; bracketComplete: boolean }>> {
+  const bracket = await getBracket(db, bracketId);
   if (!bracket) return err(`Bracket #${bracketId} not found.`);
   const match = bracket.matches.find((m) => m.id === matchId);
   if (!match) return err(`Match #${matchId} not found in bracket #${bracketId}.`);
@@ -584,16 +587,16 @@ export function reportMatch(
   if (!Number.isInteger(scoreA) || scoreA < 0 || !Number.isInteger(scoreB) || scoreB < 0) {
     return err("Scores must be whole numbers (0 or more).");
   }
-  db.prepare(
+  await db.prepare(
     "UPDATE matches SET winner = ?, score_a = ?, score_b = ?, reported_by = ? WHERE id = ?",
   ).run(cleanWinner, scoreA, scoreB, reportedBy ?? null, matchId);
-  const updatedRow = db.prepare("SELECT * FROM matches WHERE id = ?").get(matchId);
+  const updatedRow = await db.prepare("SELECT * FROM matches WHERE id = ?").get(matchId);
   const updated = updatedRow ? toMatchRow(updatedRow) : match;
 
   let advancedTo: MatchRow | null = null;
   let bracketComplete = false;
   if (match.round >= bracket.totalRounds) {
-    db.prepare("UPDATE brackets SET state = 'complete' WHERE id = ?").run(bracketId);
+    await db.prepare("UPDATE brackets SET state = 'complete' WHERE id = ?").run(bracketId);
     bracketComplete = true;
   } else {
     // Advance only when BOTH feeder matches of the next-round slot are decided.
@@ -605,12 +608,12 @@ export function reportMatch(
       const highWinner = match.slot === lowSlot ? sibling.winner : cleanWinner;
       const nextSlot = Math.floor(match.slot / 2);
       const nextRound = match.round + 1;
-      const m = db
+      const m = await db
         .prepare(
           "INSERT INTO matches (bracket_id, round, slot, team_a, team_b, created_at) VALUES (?, ?, ?, ?, ?, ?)",
         )
         .run(bracketId, nextRound, nextSlot, lowWinner, highWinner, nowMs);
-      const row = db.prepare("SELECT * FROM matches WHERE id = ?").get(Number(m.lastInsertRowid));
+      const row = await db.prepare("SELECT * FROM matches WHERE id = ?").get(Number(m.lastInsertRowid));
       if (row) advancedTo = toMatchRow(row);
     }
   }
@@ -625,11 +628,11 @@ export interface StandingEntry {
 }
 
 /** Season standings: wins per team across decided matches in the guild. */
-export function seasonStandings(db: SelenaDb, guildId: string, bracketId?: number): StandingEntry[] {
+export async function seasonStandings(db: SelenaDb, guildId: string, bracketId?: number): Promise<StandingEntry[]> {
   const bracketFilter = bracketId !== undefined ? "AND m.bracket_id = ?" : "";
   const params: unknown[] = [guildId];
   if (bracketId !== undefined) params.push(bracketId);
-  const winRows = db
+  const winRows = await db
     .prepare(
       `SELECT m.winner AS team, COUNT(*) AS wins FROM matches m
        JOIN brackets b ON b.id = m.bracket_id
@@ -637,7 +640,7 @@ export function seasonStandings(db: SelenaDb, guildId: string, bracketId?: numbe
        GROUP BY m.winner`,
     )
     .all(...params);
-  const playedRows = db
+  const playedRows = await db
     .prepare(
       `SELECT team, COUNT(*) AS played FROM (
          SELECT team_a AS team FROM matches m JOIN brackets b ON b.id = m.bracket_id
@@ -645,7 +648,7 @@ export function seasonStandings(db: SelenaDb, guildId: string, bracketId?: numbe
          UNION ALL
          SELECT team_b AS team FROM matches m JOIN brackets b ON b.id = m.bracket_id
          WHERE b.guild_id = ? AND m.winner IS NOT NULL ${bracketFilter}
-       ) GROUP BY team`,
+       ) AS played_teams GROUP BY team`,
     )
     .all(...params, ...params);
   const wins = new Map<string, number>();

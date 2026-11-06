@@ -8,7 +8,7 @@ import { buttonHandlers, commands, modalHandlers } from "../src/commands/manage.
 let db: SelenaDb;
 let ctx: CommandContext;
 
-beforeEach(() => {
+beforeEach(async () => {
   db = getTestDb();
   ctx = { db, guildId: "guild-1" };
   lib.clearDraft("guild:guild-1");
@@ -50,31 +50,31 @@ const NOW = Date.UTC(2026, 10, 6, 12, 0); // 2026-11-06 12:00 UTC
 // ---------------------------------------------------------------------------
 
 describe("squads (lib)", () => {
-  it("creates a squad and lists it with member counts", () => {
-    const r = lib.createSquad(db, "guild-1", "Zenith A", "user-cap", NOW);
+  it("creates a squad and lists it with member counts", async () => {
+    const r = await lib.createSquad(db, "guild-1", "Zenith A", "user-cap", NOW);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.squad.name).toBe("Zenith A");
-    const squads = lib.listSquads(db, "guild-1");
+    const squads = await lib.listSquads(db, "guild-1");
     expect(squads).toHaveLength(1);
     expect(squads[0]!.memberCount).toBe(1); // captain auto-added
     expect(squads[0]!.captain_id).toBe("user-cap");
   });
 
-  it("rejects duplicate names (case-insensitive) and empty names", () => {
-    expect(lib.createSquad(db, "guild-1", "Zenith A", null, NOW).ok).toBe(true);
-    expect(lib.createSquad(db, "guild-1", "zenith a", null, NOW)).toMatchObject({ ok: false });
-    expect(lib.createSquad(db, "guild-1", "   ", null, NOW)).toMatchObject({ ok: false });
+  it("rejects duplicate names (case-insensitive) and empty names", async () => {
+    expect((await lib.createSquad(db, "guild-1", "Zenith A", null, NOW)).ok).toBe(true);
+    expect(await lib.createSquad(db, "guild-1", "zenith a", null, NOW)).toMatchObject({ ok: false });
+    expect(await lib.createSquad(db, "guild-1", "   ", null, NOW)).toMatchObject({ ok: false });
   });
 
-  it("adds and removes members", () => {
-    lib.createSquad(db, "guild-1", "Zenith A", null, NOW);
-    expect(lib.addSquadMember(db, "guild-1", "Zenith A", "user-1", "member").ok).toBe(true);
-    expect(lib.addSquadMember(db, "guild-1", "Nope", "user-1", "member")).toMatchObject({ ok: false });
-    expect(lib.listSquadMembers(db, 1)).toEqual([{ userId: "user-1", role: "member" }]);
-    expect(lib.removeSquadMember(db, "guild-1", "Zenith A", "user-1").ok).toBe(true);
-    expect(lib.removeSquadMember(db, "guild-1", "Zenith A", "user-1")).toMatchObject({ ok: false });
-    expect(lib.listSquadMembers(db, 1)).toEqual([]);
+  it("adds and removes members", async () => {
+    await lib.createSquad(db, "guild-1", "Zenith A", null, NOW);
+    expect((await lib.addSquadMember(db, "guild-1", "Zenith A", "user-1", "member")).ok).toBe(true);
+    expect(await lib.addSquadMember(db, "guild-1", "Nope", "user-1", "member")).toMatchObject({ ok: false });
+    expect(await lib.listSquadMembers(db, 1)).toEqual([{ userId: "user-1", role: "member" }]);
+    expect((await lib.removeSquadMember(db, "guild-1", "Zenith A", "user-1")).ok).toBe(true);
+    expect(await lib.removeSquadMember(db, "guild-1", "Zenith A", "user-1")).toMatchObject({ ok: false });
+    expect(await lib.listSquadMembers(db, 1)).toEqual([]);
   });
 });
 
@@ -83,11 +83,11 @@ describe("squads (lib)", () => {
 // ---------------------------------------------------------------------------
 
 describe("lineups (lib)", () => {
-  it("assigns members to lineups and builds the lineup card", () => {
-    lib.createSquad(db, "guild-1", "Zenith A", null, NOW);
-    expect(lib.assignLineup(db, "guild-1", "Zenith A", "u1", "Main Lineup").ok).toBe(true);
-    expect(lib.assignLineup(db, "guild-1", "Zenith A", "u2", "Prime").ok).toBe(true);
-    const r = lib.assignLineup(db, "guild-1", "Zenith A", "u3", "Tryout");
+  it("assigns members to lineups and builds the lineup card", async () => {
+    await lib.createSquad(db, "guild-1", "Zenith A", null, NOW);
+    expect((await lib.assignLineup(db, "guild-1", "Zenith A", "u1", "Main Lineup")).ok).toBe(true);
+    expect((await lib.assignLineup(db, "guild-1", "Zenith A", "u2", "Prime")).ok).toBe(true);
+    const r = await lib.assignLineup(db, "guild-1", "Zenith A", "u3", "Tryout");
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.card.main).toEqual(["u1"]);
@@ -100,10 +100,10 @@ describe("lineups (lib)", () => {
     expect(text).toContain("Tryout");
   });
 
-  it("rejects invalid lineups and missing squads", () => {
-    lib.createSquad(db, "guild-1", "Zenith A", null, NOW);
-    expect(lib.assignLineup(db, "guild-1", "Zenith A", "u1", "Bench")).toMatchObject({ ok: false });
-    expect(lib.assignLineup(db, "guild-1", "Ghost", "u1", "Prime")).toMatchObject({ ok: false });
+  it("rejects invalid lineups and missing squads", async () => {
+    await lib.createSquad(db, "guild-1", "Zenith A", null, NOW);
+    expect(await lib.assignLineup(db, "guild-1", "Zenith A", "u1", "Bench")).toMatchObject({ ok: false });
+    expect(await lib.assignLineup(db, "guild-1", "Ghost", "u1", "Prime")).toMatchObject({ ok: false });
   });
 });
 
@@ -112,13 +112,13 @@ describe("lineups (lib)", () => {
 // ---------------------------------------------------------------------------
 
 describe("scrims (lib)", () => {
-  it("parses valid future dates", () => {
+  it("parses valid future dates", async () => {
     const r = lib.parseScrimDate("2026-11-08", "20:30", NOW);
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.scheduledAt).toBe(Date.UTC(2026, 10, 8, 20, 30));
   });
 
-  it("rejects past dates, garbage input, and impossible dates", () => {
+  it("rejects past dates, garbage input, and impossible dates", async () => {
     expect(lib.parseScrimDate("2026-11-05", "20:30", NOW)).toMatchObject({ ok: false });
     expect(lib.parseScrimDate("2026-11-06", "12:00", NOW)).toMatchObject({ ok: false }); // == now
     expect(lib.parseScrimDate("08/11/2026", "20:30", NOW)).toMatchObject({ ok: false });
@@ -128,18 +128,18 @@ describe("scrims (lib)", () => {
     expect(lib.parseScrimDate("2026-11-08", "24:00", NOW)).toMatchObject({ ok: false });
   });
 
-  it("schedules, lists, and tracks RSVPs with upsert", () => {
-    const s = lib.scheduleScrim(db, "guild-1", "Team X", "2026-11-08", "20:30", "user-1", NOW);
+  it("schedules, lists, and tracks RSVPs with upsert", async () => {
+    const s = await lib.scheduleScrim(db, "guild-1", "Team X", "2026-11-08", "20:30", "user-1", NOW);
     expect(s.ok).toBe(true);
     if (!s.ok) return;
-    expect(lib.listScrims(db, "guild-1", NOW)).toHaveLength(1);
-    expect(lib.listScrims(db, "guild-1", NOW)[0]!.opponent).toBe("Team X");
-    const r1 = lib.upsertRsvp(db, s.scrimId, "u1", true);
+    expect(await lib.listScrims(db, "guild-1", NOW)).toHaveLength(1);
+    expect((await lib.listScrims(db, "guild-1", NOW))[0]!.opponent).toBe("Team X");
+    const r1 = await lib.upsertRsvp(db, s.scrimId, "u1", true);
     expect(r1).toMatchObject({ ok: true, yes: 1, no: 0 });
-    const r2 = lib.upsertRsvp(db, s.scrimId, "u1", false); // change of mind: still one row
+    const r2 = await lib.upsertRsvp(db, s.scrimId, "u1", false); // change of mind: still one row
     expect(r2).toMatchObject({ ok: true, yes: 0, no: 1 });
-    expect(lib.upsertRsvp(db, 999, "u1", true)).toMatchObject({ ok: false });
-    expect(lib.scheduleScrim(db, "guild-1", "Team Y", "2020-01-01", "10:00", "user-1", NOW)).toMatchObject({ ok: false });
+    expect(await lib.upsertRsvp(db, 999, "u1", true)).toMatchObject({ ok: false });
+    expect(await lib.scheduleScrim(db, "guild-1", "Team Y", "2020-01-01", "10:00", "user-1", NOW)).toMatchObject({ ok: false });
   });
 });
 
@@ -150,38 +150,38 @@ describe("scrims (lib)", () => {
 describe("tryouts (lib)", () => {
   const input = { ign: "Eres", mlbbId: "12345", role: "Jungler", rank: "Mythic", heroes: "Ling, Selena" };
 
-  it("submits a valid tryout as pending", () => {
-    const r = lib.submitTryout(db, "guild-1", "user-1", input, NOW);
+  it("submits a valid tryout as pending", async () => {
+    const r = await lib.submitTryout(db, "guild-1", "user-1", input, NOW);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.tryout.status).toBe("pending");
     expect(r.tryout.rank_name).toBe("Mythic");
   });
 
-  it("rejects bad ranks and empty fields", () => {
-    expect(lib.submitTryout(db, "guild-1", "user-1", { ...input, rank: "Immortal" }, NOW)).toMatchObject({ ok: false });
-    expect(lib.submitTryout(db, "guild-1", "user-1", { ...input, ign: "  " }, NOW)).toMatchObject({ ok: false });
-    expect(lib.submitTryout(db, "guild-1", "user-1", { ...input, heroes: "" }, NOW)).toMatchObject({ ok: false });
-    expect(lib.submitTryout(db, "guild-1", "user-1", { ...input, mlbbId: "" }, NOW)).toMatchObject({ ok: false });
+  it("rejects bad ranks and empty fields", async () => {
+    expect(await lib.submitTryout(db, "guild-1", "user-1", { ...input, rank: "Immortal" }, NOW)).toMatchObject({ ok: false });
+    expect(await lib.submitTryout(db, "guild-1", "user-1", { ...input, ign: "  " }, NOW)).toMatchObject({ ok: false });
+    expect(await lib.submitTryout(db, "guild-1", "user-1", { ...input, heroes: "" }, NOW)).toMatchObject({ ok: false });
+    expect(await lib.submitTryout(db, "guild-1", "user-1", { ...input, mlbbId: "" }, NOW)).toMatchObject({ ok: false });
   });
 
-  it("accepts canonical rank case-insensitively", () => {
-    const r = lib.submitTryout(db, "guild-1", "user-1", { ...input, rank: "mythical glory" }, NOW);
+  it("accepts canonical rank case-insensitively", async () => {
+    const r = await lib.submitTryout(db, "guild-1", "user-1", { ...input, rank: "mythical glory" }, NOW);
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.tryout.rank_name).toBe("Mythical Glory");
   });
 
-  it("accept/reject updates status once, with Tryout role intent on accept", () => {
-    const created = lib.submitTryout(db, "guild-1", "user-1", input, NOW);
+  it("accept/reject updates status once, with Tryout role intent on accept", async () => {
+    const created = await lib.submitTryout(db, "guild-1", "user-1", input, NOW);
     expect(created.ok).toBe(true);
     if (!created.ok) return;
-    const accepted = lib.decideTryout(db, "guild-1", created.tryoutId, "accepted");
+    const accepted = await lib.decideTryout(db, "guild-1", created.tryoutId, "accepted");
     expect(accepted).toMatchObject({ ok: true, roleIntent: "Tryout" });
-    expect(lib.decideTryout(db, "guild-1", created.tryoutId, "rejected")).toMatchObject({ ok: false });
-    const created2 = lib.submitTryout(db, "guild-1", "user-2", input, NOW);
+    expect(await lib.decideTryout(db, "guild-1", created.tryoutId, "rejected")).toMatchObject({ ok: false });
+    const created2 = await lib.submitTryout(db, "guild-1", "user-2", input, NOW);
     if (!created2.ok) return;
-    expect(lib.decideTryout(db, "guild-1", created2.tryoutId, "rejected")).toMatchObject({ ok: true, roleIntent: null });
-    expect(lib.decideTryout(db, "guild-1", 999, "accepted")).toMatchObject({ ok: false });
+    expect(await lib.decideTryout(db, "guild-1", created2.tryoutId, "rejected")).toMatchObject({ ok: true, roleIntent: null });
+    expect(await lib.decideTryout(db, "guild-1", 999, "accepted")).toMatchObject({ ok: false });
   });
 });
 
@@ -190,8 +190,8 @@ describe("tryouts (lib)", () => {
 // ---------------------------------------------------------------------------
 
 describe("brackets (lib)", () => {
-  it("creates round-1 matches seeded in given order", () => {
-    const r = lib.createBracket(db, "guild-1", "Zenith Cup", ["Alpha", "Beta", "Gamma", "Delta"], NOW);
+  it("creates round-1 matches seeded in given order", async () => {
+    const r = await lib.createBracket(db, "guild-1", "Zenith Cup", ["Alpha", "Beta", "Gamma", "Delta"], NOW);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.matches).toHaveLength(2);
@@ -200,31 +200,31 @@ describe("brackets (lib)", () => {
     expect(r.matches.every((m) => m.round === 1)).toBe(true);
   });
 
-  it("rejects non-power-of-two, duplicate, too-few and too-many teams", () => {
-    expect(lib.createBracket(db, "guild-1", "Cup", ["A", "B", "C"], NOW)).toMatchObject({ ok: false });
-    expect(lib.createBracket(db, "guild-1", "Cup", ["A", "B", "C", "D", "E"], NOW)).toMatchObject({ ok: false });
-    expect(lib.createBracket(db, "guild-1", "Cup", ["A", "A", "B", "C"], NOW)).toMatchObject({ ok: false });
-    expect(lib.createBracket(db, "guild-1", "Cup", ["A"], NOW)).toMatchObject({ ok: false });
-    expect(lib.createBracket(db, "guild-1", "Cup", Array.from({ length: 17 }, (_, i) => `T${i}`), NOW)).toMatchObject({ ok: false });
+  it("rejects non-power-of-two, duplicate, too-few and too-many teams", async () => {
+    expect(await lib.createBracket(db, "guild-1", "Cup", ["A", "B", "C"], NOW)).toMatchObject({ ok: false });
+    expect(await lib.createBracket(db, "guild-1", "Cup", ["A", "B", "C", "D", "E"], NOW)).toMatchObject({ ok: false });
+    expect(await lib.createBracket(db, "guild-1", "Cup", ["A", "A", "B", "C"], NOW)).toMatchObject({ ok: false });
+    expect(await lib.createBracket(db, "guild-1", "Cup", ["A"], NOW)).toMatchObject({ ok: false });
+    expect(await lib.createBracket(db, "guild-1", "Cup", Array.from({ length: 17 }, (_, i) => `T${i}`), NOW)).toMatchObject({ ok: false });
   });
 
-  it("advances winners through a 4-team bracket to completion", () => {
-    const created = lib.createBracket(db, "guild-1", "Zenith Cup", ["Alpha", "Beta", "Gamma", "Delta"], NOW);
+  it("advances winners through a 4-team bracket to completion", async () => {
+    const created = await lib.createBracket(db, "guild-1", "Zenith Cup", ["Alpha", "Beta", "Gamma", "Delta"], NOW);
     expect(created.ok).toBe(true);
     if (!created.ok) return;
     const [semi1, semi2] = created.matches;
     // Wrong winner rejected
-    expect(lib.reportMatch(db, "guild-1", created.bracketId, semi1!.id, "Gamma", 2, 1)).toMatchObject({ ok: false });
+    expect(await lib.reportMatch(db, "guild-1", created.bracketId, semi1!.id, "Gamma", 2, 1)).toMatchObject({ ok: false });
     // Semi 1: Alpha wins — no final yet (sibling undecided)
-    const r1 = lib.reportMatch(db, "guild-1", created.bracketId, semi1!.id, "Alpha", 2, 1, "user-1", NOW);
+    const r1 = await lib.reportMatch(db, "guild-1", created.bracketId, semi1!.id, "Alpha", 2, 1, "user-1", NOW);
     expect(r1.ok).toBe(true);
     if (!r1.ok) return;
     expect(r1.advancedTo).toBeNull();
     expect(r1.bracketComplete).toBe(false);
     // Already-reported rejected
-    expect(lib.reportMatch(db, "guild-1", created.bracketId, semi1!.id, "Alpha", 2, 0)).toMatchObject({ ok: false });
+    expect(await lib.reportMatch(db, "guild-1", created.bracketId, semi1!.id, "Alpha", 2, 0)).toMatchObject({ ok: false });
     // Semi 2: Gamma wins — final is created (Alpha vs Gamma)
-    const r2 = lib.reportMatch(db, "guild-1", created.bracketId, semi2!.id, "Gamma", 2, 0, "user-1", NOW);
+    const r2 = await lib.reportMatch(db, "guild-1", created.bracketId, semi2!.id, "Gamma", 2, 0, "user-1", NOW);
     expect(r2.ok).toBe(true);
     if (!r2.ok) return;
     expect(r2.advancedTo).not.toBeNull();
@@ -232,30 +232,30 @@ describe("brackets (lib)", () => {
     expect(r2.advancedTo!.team_b).toBe("Gamma");
     expect(r2.advancedTo!.round).toBe(2);
     // Final: Alpha wins — bracket complete
-    const r3 = lib.reportMatch(db, "guild-1", created.bracketId, r2.advancedTo!.id, "Alpha", 3, 2, "user-1", NOW);
+    const r3 = await lib.reportMatch(db, "guild-1", created.bracketId, r2.advancedTo!.id, "Alpha", 3, 2, "user-1", NOW);
     expect(r3).toMatchObject({ ok: true, bracketComplete: true });
-    expect(lib.getBracket(db, created.bracketId)!.state).toBe("complete");
+    expect((await lib.getBracket(db, created.bracketId))!.state).toBe("complete");
     // Bad scores / missing match rejected
-    expect(lib.reportMatch(db, "guild-1", created.bracketId, r2.advancedTo!.id, "Alpha", -1, 2)).toMatchObject({ ok: false });
-    expect(lib.reportMatch(db, "guild-1", created.bracketId, 9999, "Alpha", 2, 1)).toMatchObject({ ok: false });
-    expect(lib.reportMatch(db, "guild-1", 9999, semi1!.id, "Alpha", 2, 1)).toMatchObject({ ok: false });
+    expect(await lib.reportMatch(db, "guild-1", created.bracketId, r2.advancedTo!.id, "Alpha", -1, 2)).toMatchObject({ ok: false });
+    expect(await lib.reportMatch(db, "guild-1", created.bracketId, 9999, "Alpha", 2, 1)).toMatchObject({ ok: false });
+    expect(await lib.reportMatch(db, "guild-1", 9999, semi1!.id, "Alpha", 2, 1)).toMatchObject({ ok: false });
   });
 
-  it("seasonStandings counts wins per team", () => {
-    const created = lib.createBracket(db, "guild-1", "Zenith Cup", ["Alpha", "Beta", "Gamma", "Delta"], NOW);
+  it("seasonStandings counts wins per team", async () => {
+    const created = await lib.createBracket(db, "guild-1", "Zenith Cup", ["Alpha", "Beta", "Gamma", "Delta"], NOW);
     if (!created.ok) return;
     const [semi1, semi2] = created.matches;
-    lib.reportMatch(db, "guild-1", created.bracketId, semi1!.id, "Alpha", 2, 1);
-    lib.reportMatch(db, "guild-1", created.bracketId, semi2!.id, "Gamma", 2, 0);
-    const final = lib.getBracket(db, created.bracketId)!.matches.find((m) => m.round === 2)!;
-    lib.reportMatch(db, "guild-1", created.bracketId, final.id, "Alpha", 3, 2);
-    const standings = lib.seasonStandings(db, "guild-1");
+    await lib.reportMatch(db, "guild-1", created.bracketId, semi1!.id, "Alpha", 2, 1);
+    await lib.reportMatch(db, "guild-1", created.bracketId, semi2!.id, "Gamma", 2, 0);
+    const final = (await lib.getBracket(db, created.bracketId))!.matches.find((m) => m.round === 2)!;
+    await lib.reportMatch(db, "guild-1", created.bracketId, final.id, "Alpha", 3, 2);
+    const standings = await lib.seasonStandings(db, "guild-1");
     expect(standings[0]).toMatchObject({ team: "Alpha", wins: 2 });
     expect(standings[1]).toMatchObject({ team: "Gamma", wins: 1 });
     expect(standings.find((s) => s.team === "Beta")).toMatchObject({ wins: 0, losses: 1, played: 1 });
     // Scoped to the bracket, same result here
-    expect(lib.seasonStandings(db, "guild-1", created.bracketId)[0]!.team).toBe("Alpha");
-    expect(lib.seasonStandings(db, "other-guild")).toEqual([]);
+    expect((await lib.seasonStandings(db, "guild-1", created.bracketId))[0]!.team).toBe("Alpha");
+    expect(await lib.seasonStandings(db, "other-guild")).toEqual([]);
   });
 });
 
@@ -264,7 +264,7 @@ describe("brackets (lib)", () => {
 // ---------------------------------------------------------------------------
 
 describe("drafts (lib)", () => {
-  it("runs a full ban/pick flow to completion", () => {
+  it("runs a full ban/pick flow to completion", async () => {
     expect(lib.createDraft("chan-1", "Alpha", "Beta", NOW).ok).toBe(true);
     const bans: Array<[string, string]> = [
       ["A", "Selena"], ["B", "Ling"], ["A", "Fanny"], ["B", "Gusion"], ["A", "Hayabusa"], ["B", "Lancelot"],
@@ -288,7 +288,7 @@ describe("drafts (lib)", () => {
     expect(lib.applyDraftAction("chan-1", "Zilong")).toMatchObject({ ok: false });
   });
 
-  it("rejects duplicates, picks during bans, and validates against a hero list", () => {
+  it("rejects duplicates, picks during bans, and validates against a hero list", async () => {
     lib.createDraft("chan-2", "Alpha", "Beta", NOW);
     expect(lib.banHero("chan-2", "A", "Selena").ok).toBe(true);
     expect(lib.banHero("chan-2", "B", "selena")).toMatchObject({ ok: false }); // duplicate, case-insensitive
@@ -362,7 +362,7 @@ describe("/lineup command", () => {
     expect(fake.allText()).toContain("<@u1>");
     expect(fake.allText()).toContain('Discord role "Main Lineup" assigned');
     expect(added).toEqual(["u1:Main Lineup"]);
-    expect(lib.lineupCard(db, 1)!.main).toEqual(["u1"]);
+    expect((await lib.lineupCard(db, 1))!.main).toEqual(["u1"]);
   });
 
   it("records in DB even when the Discord role does not exist", async () => {
@@ -375,7 +375,7 @@ describe("/lineup command", () => {
     (fake as unknown as Record<string, unknown>).guild = fakeGuild([], []);
     await cmd("lineup").execute(fake as never, ctx);
     expect(fake.allText()).toContain("not found on this server");
-    expect(lib.lineupCard(db, 1)!.prime).toEqual(["u1"]);
+    expect((await lib.lineupCard(db, 1))!.prime).toEqual(["u1"]);
   });
 
   it("requires ManageRoles and rejects bad lineups", async () => {
@@ -409,10 +409,10 @@ describe("/scrim command + RSVP button", () => {
 
     const yes = new FakeButton({ customId: "selena:scrim:rsvp:1:yes", userId: "u1" });
     await buttonHandlers["selena:scrim"]!(yes as never, ctx);
-    expect(lib.getRsvpCounts(db, 1)).toEqual({ yes: 1, no: 0 });
+    expect(await lib.getRsvpCounts(db, 1)).toEqual({ yes: 1, no: 0 });
     const no = new FakeButton({ customId: "selena:scrim:rsvp:1:no", userId: "u1" });
     await buttonHandlers["selena:scrim"]!(no as never, ctx);
-    expect(lib.getRsvpCounts(db, 1)).toEqual({ yes: 0, no: 1 });
+    expect(await lib.getRsvpCounts(db, 1)).toEqual({ yes: 0, no: 1 });
 
     const listed = await exec("scrim", { subcommand: "list" });
     expect(listed.allText()).toContain("Team X");
@@ -444,7 +444,7 @@ describe("/tryout command + modal + accept/reject buttons", () => {
     });
     await modalHandlers["selena:tryout"]!(modal as never, ctx);
     expect(modal.replies.length).toBeGreaterThan(0);
-    const tryout = lib.getTryout(db, "guild-1", 1);
+    const tryout = await lib.getTryout(db, "guild-1", 1);
     expect(tryout?.status).toBe("pending");
     expect(tryout?.ign).toBe("Eres");
   });
@@ -456,21 +456,21 @@ describe("/tryout command + modal + accept/reject buttons", () => {
       fields: { ign: "Eres", mlbb_id: "12345", role: "Jungler", rank: "Immortal", heroes: "Ling" },
     });
     await modalHandlers["selena:tryout"]!(modal as never, ctx);
-    expect(lib.getTryout(db, "guild-1", 1)).toBeUndefined();
+    expect(await lib.getTryout(db, "guild-1", 1)).toBeUndefined();
   });
 
   it("accept/reject buttons update status", async () => {
-    lib.submitTryout(db, "guild-1", "user-1", { ign: "Eres", mlbbId: "1", role: "Jungler", rank: "Mythic", heroes: "Ling" }, NOW);
-    lib.submitTryout(db, "guild-1", "user-2", { ign: "Two", mlbbId: "2", role: "Roamer", rank: "Legend", heroes: "Tigreal" }, NOW);
+    await lib.submitTryout(db, "guild-1", "user-1", { ign: "Eres", mlbbId: "1", role: "Jungler", rank: "Mythic", heroes: "Ling" }, NOW);
+    await lib.submitTryout(db, "guild-1", "user-2", { ign: "Two", mlbbId: "2", role: "Roamer", rank: "Legend", heroes: "Tigreal" }, NOW);
     const accept = new FakeButton({ customId: "selena:tryout:accept:1", userId: "staff-1" });
     await buttonHandlers["selena:tryout"]!(accept as never, ctx);
-    expect(lib.getTryout(db, "guild-1", 1)!.status).toBe("accepted");
+    expect((await lib.getTryout(db, "guild-1", 1))!.status).toBe("accepted");
     const reject = new FakeButton({ customId: "selena:tryout:reject:2", userId: "staff-1" });
     await buttonHandlers["selena:tryout"]!(reject as never, ctx);
-    expect(lib.getTryout(db, "guild-1", 2)!.status).toBe("rejected");
+    expect((await lib.getTryout(db, "guild-1", 2))!.status).toBe("rejected");
     const again = new FakeButton({ customId: "selena:tryout:accept:1", userId: "staff-1" });
     await buttonHandlers["selena:tryout"]!(again as never, ctx);
-    expect(lib.getTryout(db, "guild-1", 1)!.status).toBe("accepted");
+    expect((await lib.getTryout(db, "guild-1", 1))!.status).toBe("accepted");
   });
 });
 
@@ -489,7 +489,7 @@ describe("/bracket + /report-match commands", () => {
 
   it("reports matches through the command and shows standings", async () => {
     await exec("bracket", { subcommand: "create", name: "Zenith Cup", teams: "Alpha, Beta, Gamma, Delta" });
-    const state = lib.getBracket(db, 1)!;
+    const state = await lib.getBracket(db, 1)!;
     const [semi1, semi2] = state.matches;
     const wrong = await exec("report-match", {
       "bracket-id": 1,
@@ -501,7 +501,7 @@ describe("/bracket + /report-match commands", () => {
     expect(wrong.allText()).toContain("must be one of this match's teams");
     await exec("report-match", { "bracket-id": 1, "match-id": semi1!.id, winner: "Alpha", "score-a": 2, "score-b": 1 });
     await exec("report-match", { "bracket-id": 1, "match-id": semi2!.id, winner: "Gamma", "score-a": 2, "score-b": 0 });
-    const final = lib.getBracket(db, 1)!.matches.find((m) => m.round === 2)!;
+    const final = (await lib.getBracket(db, 1))!.matches.find((m) => m.round === 2)!;
     const done = await exec("report-match", {
       "bracket-id": 1,
       "match-id": final.id,

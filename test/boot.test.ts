@@ -5,18 +5,18 @@ import { allButtonHandlers, allCommands, allModalHandlers } from "../src/command
 import { getTestDb } from "../src/lib/db.js";
 
 describe("shouldLogin", () => {
-  it("is false without a token", () => {
+  it("is false without a token", async () => {
     expect(shouldLogin({})).toBe(false);
     expect(shouldLogin({ DISCORD_TOKEN: "   " })).toBe(false);
   });
 
-  it("is true with a dummy token", () => {
+  it("is true with a dummy token", async () => {
     expect(shouldLogin({ DISCORD_TOKEN: "dummy-token" })).toBe(true);
   });
 });
 
 describe("startHealthServer", () => {
-  it("is a no-op without PORT", () => {
+  it("is a no-op without PORT", async () => {
     expect(startHealthServer({})).toBe(false);
     expect(startHealthServer({ PORT: "0" })).toBe(false);
   });
@@ -43,7 +43,7 @@ describe("start() without a token", () => {
 });
 
 describe("buildClient", () => {
-  it("has the required intents", () => {
+  it("has the required intents", async () => {
     const client = buildClient();
     const intents = client.options.intents;
     for (const bit of [
@@ -58,7 +58,7 @@ describe("buildClient", () => {
 });
 
 describe("registry completeness", () => {
-  it("has no duplicate command names and every command has a description", () => {
+  it("has no duplicate command names and every command has a description", async () => {
     const names = allCommands.map((c) => c.data.name);
     expect(new Set(names).size).toBe(names.length);
     expect(names.length).toBeGreaterThan(0);
@@ -69,7 +69,7 @@ describe("registry completeness", () => {
     }
   });
 
-  it("all button/modal handler keys start with 'selena:'", () => {
+  it("all button/modal handler keys start with 'selena:'", async () => {
     for (const key of [...Object.keys(allButtonHandlers), ...Object.keys(allModalHandlers)]) {
       expect(key.startsWith("selena:")).toBe(true);
     }
@@ -79,25 +79,25 @@ describe("registry completeness", () => {
 describe("runDueTasks", () => {
   it("ends due giveaways without a games module (no winners, no crash)", async () => {
     const db = getTestDb();
-    db.prepare(
+    await db.prepare(
       "INSERT INTO giveaways (guild_id, channel_id, prize, ends_at, winners_count, ended, created_by, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
     ).run("guild-1", "chan-1", "test prize", Date.now() - 1000, 1, "user-1", Date.now());
     await runDueTasks(db, null);
-    const row = db.prepare("SELECT ended FROM giveaways WHERE id = 1").get() as { ended: number };
+    const row = await db.prepare("SELECT ended FROM giveaways WHERE id = 1").get() as { ended: number };
     expect(row.ended).toBe(1);
   });
 
   it("leaves future giveaways and undeliverable reminders alone", async () => {
     const db = getTestDb();
-    db.prepare(
+    await db.prepare(
       "INSERT INTO giveaways (guild_id, channel_id, prize, ends_at, winners_count, ended, created_by, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
     ).run("guild-1", "chan-1", "future prize", Date.now() + 60_000, 1, "user-1", Date.now());
-    db.prepare(
+    await db.prepare(
       "INSERT INTO reminders (guild_id, user_id, channel_id, text, due_at, delivered, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)",
     ).run("guild-1", "user-1", "chan-1", "past reminder", Date.now() - 1000, Date.now());
     await runDueTasks(db, null);
-    expect((db.prepare("SELECT ended FROM giveaways WHERE id = 1").get() as { ended: number }).ended).toBe(0);
+    expect((await db.prepare("SELECT ended FROM giveaways WHERE id = 1").get() as { ended: number }).ended).toBe(0);
     // no client -> reminder stays undelivered (nothing can send it)
-    expect((db.prepare("SELECT delivered FROM reminders WHERE id = 1").get() as { delivered: number }).delivered).toBe(0);
+    expect((await db.prepare("SELECT delivered FROM reminders WHERE id = 1").get() as { delivered: number }).delivered).toBe(0);
   });
 });

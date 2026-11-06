@@ -117,7 +117,7 @@ function fmtDate(ms: number): string {
 }
 
 function bracketEmbedText(
-  state: NonNullable<ReturnType<typeof getBracket>>,
+  state: NonNullable<Awaited<ReturnType<typeof getBracket>>>,
 ): string {
   const lines: string[] = [
     `**${state.name}** — ${state.state} (${state.teams.length} teams)`,
@@ -182,7 +182,7 @@ export const commands: Command[] = [
       if (sub === "create") {
         const name = interaction.options.getString("name") ?? "";
         const captain = interaction.options.getUser("captain");
-        const r = createSquad(ctx.db, guildId, name, captain?.id ?? null);
+        const r = await createSquad(ctx.db, guildId, name, captain?.id ?? null);
         if (!r.ok) return replyError(interaction, r.error);
         await replyEmbed(
           interaction,
@@ -192,7 +192,7 @@ export const commands: Command[] = [
         return;
       }
       if (sub === "list") {
-        const squads = listSquads(ctx.db, guildId);
+        const squads = await listSquads(ctx.db, guildId);
         if (squads.length === 0) {
           await replyEmbed(interaction, "Squads", "No squads yet — create one with /squad create.");
           return;
@@ -214,7 +214,7 @@ export const commands: Command[] = [
         const user = interaction.options.getUser("user");
         const role = interaction.options.getString("role") ?? "";
         if (!user) return replyError(interaction, "Pick a user to add.");
-        const r = addSquadMember(ctx.db, guildId, squadRef, user.id, role);
+        const r = await addSquadMember(ctx.db, guildId, squadRef, user.id, role);
         if (!r.ok) return replyError(interaction, r.error);
         await replyEmbed(interaction, "Member added", `<@${user.id}> joined **${r.squad.name}** as ${role.trim()}.`);
         return;
@@ -223,7 +223,7 @@ export const commands: Command[] = [
         const squadRef = interaction.options.getString("squad") ?? "";
         const user = interaction.options.getUser("user");
         if (!user) return replyError(interaction, "Pick a user to remove.");
-        const r = removeSquadMember(ctx.db, guildId, squadRef, user.id);
+        const r = await removeSquadMember(ctx.db, guildId, squadRef, user.id);
         if (!r.ok) return replyError(interaction, r.error);
         await replyEmbed(interaction, "Member removed", `<@${user.id}> was removed from **${r.squad.name}**.`);
         return;
@@ -260,7 +260,7 @@ export const commands: Command[] = [
       const user = interaction.options.getUser("user");
       const lineup = interaction.options.getString("lineup") ?? "";
       if (!user) return replyError(interaction, "Pick a user to assign.");
-      const r = assignLineup(ctx.db, ctx.guildId, squadRef, user.id, lineup);
+      const r = await assignLineup(ctx.db, ctx.guildId, squadRef, user.id, lineup);
       if (!r.ok) return replyError(interaction, r.error);
       const roleAssigned = await tryAssignRole(interaction, user.id, lineup);
       const embed = selenaEmbed(
@@ -293,7 +293,7 @@ export const commands: Command[] = [
         const opponent = interaction.options.getString("opponent") ?? "";
         const date = interaction.options.getString("date") ?? "";
         const time = interaction.options.getString("time") ?? "";
-        const r = scheduleScrim(ctx.db, ctx.guildId, opponent, date, time, interaction.user.id);
+        const r = await scheduleScrim(ctx.db, ctx.guildId, opponent, date, time, interaction.user.id);
         if (!r.ok) return replyError(interaction, r.error);
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder()
@@ -313,7 +313,7 @@ export const commands: Command[] = [
         return;
       }
       if (sub === "list") {
-        const scrims = listScrims(ctx.db, ctx.guildId);
+        const scrims = await listScrims(ctx.db, ctx.guildId);
         if (scrims.length === 0) {
           await replyEmbed(interaction, "Upcoming scrims", "No scrims scheduled.");
           return;
@@ -395,9 +395,9 @@ export const commands: Command[] = [
         const name = interaction.options.getString("name") ?? "";
         const teamsRaw = interaction.options.getString("teams") ?? "";
         const teams = teamsRaw.split(",").map((t) => t.trim()).filter(Boolean);
-        const r = createBracket(ctx.db, ctx.guildId, name, teams);
+        const r = await createBracket(ctx.db, ctx.guildId, name, teams);
         if (!r.ok) return replyError(interaction, r.error);
-        const state = getBracket(ctx.db, r.bracketId);
+        const state = await getBracket(ctx.db, r.bracketId);
         await replyEmbed(
           interaction,
           "Bracket created",
@@ -408,14 +408,14 @@ export const commands: Command[] = [
       if (sub === "view") {
         const id = interaction.options.getInteger("id");
         if (id === null) return replyError(interaction, "Provide a bracket id.");
-        const state = getBracket(ctx.db, id);
+        const state = await getBracket(ctx.db, id);
         if (!state) return replyError(interaction, `Bracket #${id} not found.`);
         await replyEmbed(interaction, `Bracket #${id}`, bracketEmbedText(state));
         return;
       }
       if (sub === "standings") {
         const bracketId = interaction.options.getInteger("bracket-id") ?? undefined;
-        const standings = seasonStandings(ctx.db, ctx.guildId, bracketId ?? undefined);
+        const standings = await seasonStandings(ctx.db, ctx.guildId, bracketId ?? undefined);
         if (standings.length === 0) {
           await replyEmbed(interaction, "Season standings", "No decided matches yet.");
           return;
@@ -451,7 +451,7 @@ export const commands: Command[] = [
         await replyError(interaction, "Bracket id, match id, and both scores are required.");
         return;
       }
-      const r = reportMatch(ctx.db, ctx.guildId, bracketId, matchId, winner, scoreA, scoreB, interaction.user.id);
+      const r = await reportMatch(ctx.db, ctx.guildId, bracketId, matchId, winner, scoreA, scoreB, interaction.user.id);
       if (!r.ok) return replyError(interaction, r.error);
       const parts = [`**${r.match.winner}** won match #${matchId} (${r.match.score_a}:${r.match.score_b}).`];
       if (r.advancedTo) {
@@ -556,7 +556,7 @@ export const buttonHandlers: Record<
       await interaction.reply({ content: "That RSVP button is malformed.", ephemeral: true });
       return;
     }
-    const r = upsertRsvp(ctx.db, scrimId, interaction.user.id, choice === "yes");
+    const r = await upsertRsvp(ctx.db, scrimId, interaction.user.id, choice === "yes");
     if (!r.ok) {
       await interaction.reply({ content: r.error, ephemeral: true });
       return;
@@ -579,7 +579,7 @@ export const buttonHandlers: Record<
       await interaction.reply({ content: "That tryout button is malformed.", ephemeral: true });
       return;
     }
-    const r = decideTryout(ctx.db, ctx.guildId, tryoutId, action === "accept" ? "accepted" : "rejected");
+    const r = await decideTryout(ctx.db, ctx.guildId, tryoutId, action === "accept" ? "accepted" : "rejected");
     if (!r.ok) {
       await interaction.reply({ content: r.error, ephemeral: true });
       return;
@@ -658,7 +658,7 @@ export const modalHandlers: Record<
         return "";
       }
     };
-    const r = submitTryout(ctx.db, ctx.guildId, interaction.user.id, {
+    const r = await submitTryout(ctx.db, ctx.guildId, interaction.user.id, {
       ign: get("ign"),
       mlbbId: get("mlbb_id"),
       role: get("role"),
@@ -669,7 +669,7 @@ export const modalHandlers: Record<
       await interaction.reply({ embeds: [errorEmbed(r.error).toJSON()], ephemeral: true });
       return;
     }
-    const staffChannelId = getStaffChannelId(ctx.db, ctx.guildId);
+    const staffChannelId = await getStaffChannelId(ctx.db, ctx.guildId);
     await interaction.reply({
       content:
         `✅ Tryout logged (#${r.tryoutId}) — **${r.tryout.ign}** (${r.tryout.role}, ${r.tryout.rank_name}). Staff will review it.` +

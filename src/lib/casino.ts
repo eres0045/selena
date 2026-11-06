@@ -36,41 +36,43 @@ import { CARD_RANKS, CARD_SUITS } from "./cards.js";
  * Atomically deduct a bet. Single UPDATE ... WHERE points >= amount, so the
  * balance can never go below 0, even under concurrency.
  */
-export function placeBet(
+export async function placeBet(
   db: SelenaDb,
   guildId: string,
   userId: string,
   amount: number,
   reason = "bet",
-): { ok: boolean; balance?: number; error?: string } {
+): Promise<{ ok: boolean; balance?: number; error?: string }> {
   if (!Number.isInteger(amount) || amount <= 0) {
     return { ok: false, error: "Bet must be a positive whole number of points." };
   }
   // Ensure the user row exists so a missing row reads as "insufficient",
   // not as a crash.
-  db.prepare("INSERT OR IGNORE INTO users (guild_id, user_id) VALUES (?, ?)").run(guildId, userId);
-  const result = db
-    .prepare("UPDATE users SET points = points - ? WHERE guild_id = ? AND user_id = ? AND points >= ?")
-    .run(amount, guildId, userId, amount);
+  await db.prepare("INSERT OR IGNORE INTO users (guild_id, user_id) VALUES (?, ?)").run(guildId, userId);
+  // NOTE: points + (-amount), not points - amount — pg-mem (the test
+  // double) evaluates `col - $param` backwards; identical on real Postgres.
+  const result = await db
+    .prepare("UPDATE users SET points = points + ? WHERE guild_id = ? AND user_id = ? AND points >= ?")
+    .run(-amount, guildId, userId, amount);
   if (result.changes !== 1) {
     return { ok: false, error: "Insufficient points." };
   }
-  db.prepare(
+  await db.prepare(
     "INSERT INTO point_ledger (guild_id, user_id, delta, reason, created_at) VALUES (?, ?, ?, ?, ?)",
   ).run(guildId, userId, -amount, reason, Date.now());
-  return { ok: true, balance: getBalance(db, guildId, userId).points };
+  return { ok: true, balance: (await getBalance(db, guildId, userId)).points };
 }
 
 /** Credit winnings (amount must be >= 0). Returns the new balance. */
-export function creditWin(
+export async function creditWin(
   db: SelenaDb,
   guildId: string,
   userId: string,
   amount: number,
   reason = "win",
-): number {
-  if (amount <= 0) return getBalance(db, guildId, userId).points;
-  return addPoints(db, guildId, userId, Math.floor(amount), reason);
+): Promise<number> {
+  if (amount <= 0) return (await getBalance(db, guildId, userId)).points;
+  return await addPoints(db, guildId, userId, Math.floor(amount), reason);
 }
 
 // ---------------------------------------------------------------------------

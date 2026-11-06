@@ -26,7 +26,7 @@ export const commands: Command[] = [
     }),
     async execute(interaction, ctx) {
       const target = interaction.options.getUser("user") ?? interaction.user;
-      const bal = getBalance(ctx.db, ctx.guildId, target.id);
+      const bal = await getBalance(ctx.db, ctx.guildId, target.id);
       await interaction.reply({
         embeds: [
           pointsEmbed(
@@ -40,7 +40,7 @@ export const commands: Command[] = [
   {
     data: buildCmd("daily", "Claim your daily 100 points. One claim per 24 hours.", () => {}),
     async execute(interaction, ctx) {
-      const result = claimDaily(ctx.db, ctx.guildId, interaction.user.id, Date.now());
+      const result = await claimDaily(ctx.db, ctx.guildId, interaction.user.id, Date.now());
       if (!result.ok) {
         const sec = Math.floor((result.nextAvailableAt ?? Date.now()) / 1000);
         await replyError(
@@ -49,7 +49,7 @@ export const commands: Command[] = [
         );
         return;
       }
-      const bal = getBalance(ctx.db, ctx.guildId, interaction.user.id);
+      const bal = await getBalance(ctx.db, ctx.guildId, interaction.user.id);
       await interaction.reply({
         embeds: [
           pointsEmbed(
@@ -82,13 +82,13 @@ export const commands: Command[] = [
         await replyError(interaction, "You cannot give points to yourself.");
         return;
       }
-      const result = transferPoints(ctx.db, ctx.guildId, interaction.user.id, target.id, amount);
+      const result = await transferPoints(ctx.db, ctx.guildId, interaction.user.id, target.id, amount);
       if (!result.ok) {
         await replyError(interaction, result.error ?? "Transfer failed.");
         return;
       }
-      const senderBal = getBalance(ctx.db, ctx.guildId, interaction.user.id);
-      const receiverBal = getBalance(ctx.db, ctx.guildId, target.id);
+      const senderBal = await getBalance(ctx.db, ctx.guildId, interaction.user.id);
+      const receiverBal = await getBalance(ctx.db, ctx.guildId, target.id);
       await interaction.reply({
         embeds: [
           pointsEmbed(
@@ -102,7 +102,7 @@ export const commands: Command[] = [
   {
     data: buildCmd("leaderboard", "Show the top 10 points holders in this server.", () => {}),
     async execute(interaction, ctx) {
-      const top = getLeaderboard(ctx.db, ctx.guildId, 10);
+      const top = await getLeaderboard(ctx.db, ctx.guildId, 10);
       if (top.length === 0) {
         await interaction.reply({
           embeds: [selenaEmbed("🏆 Leaderboard", "Nobody has any points yet. Claim your `/daily` to get started!").toJSON()],

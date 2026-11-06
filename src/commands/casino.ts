@@ -130,7 +130,7 @@ async function bjReplyPayload(
   embeds: APIEmbed[];
   files: AttachmentBuilder[];
 }> {
-  const balance = getBalance(ctx.db, game.guildId, game.userId).points;
+  const balance = (await getBalance(ctx.db, game.guildId, game.userId)).points;
   const embed = bjEmbed(game, opts, balance);
   const player = blackjackValue(game.playerHand);
   const dealer = blackjackValue(game.dealerHand);
@@ -170,7 +170,7 @@ async function checkBalance(
   ctx: CommandContext,
   bet: number,
 ): Promise<boolean> {
-  const balance = getBalance(ctx.db, ctx.guildId, interaction.user.id).points;
+  const balance = (await getBalance(ctx.db, ctx.guildId, interaction.user.id)).points;
   if (bet > balance) {
     await replyError(
       interaction,
@@ -193,15 +193,15 @@ export const commands: Command[] = [
     async execute(interaction, ctx) {
       const bet = await readBet(interaction);
       if (bet === null) return;
-      const placed = placeBet(ctx.db, ctx.guildId, interaction.user.id, bet, "slots");
+      const placed = await placeBet(ctx.db, ctx.guildId, interaction.user.id, bet, "slots");
       if (!placed.ok) {
         await replyError(interaction, placed.error ?? "Could not place that bet.");
         return;
       }
       const spin = slotsSpin(secureFloat);
       const winAmount = bet * spin.multiplier;
-      if (winAmount > 0) creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "slots win");
-      const balance = getBalance(ctx.db, ctx.guildId, interaction.user.id).points;
+      if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "slots win");
+      const balance = (await getBalance(ctx.db, ctx.guildId, interaction.user.id)).points;
       const outcome =
         spin.multiplier > 0
           ? `You won **${fmt(winAmount)} points** (${spin.multiplier}x)!`
@@ -228,7 +228,7 @@ export const commands: Command[] = [
       const bet = await readBet(interaction);
       if (bet === null) return;
       if (!(await checkBalance(interaction, ctx, bet))) return;
-      const placed = placeBet(ctx.db, ctx.guildId, interaction.user.id, bet, "blackjack");
+      const placed = await placeBet(ctx.db, ctx.guildId, interaction.user.id, bet, "blackjack");
       if (!placed.ok) {
         await replyError(interaction, placed.error ?? "Could not place that bet.");
         return;
@@ -240,7 +240,7 @@ export const commands: Command[] = [
       if (isBlackjack(game.playerHand)) {
         const settled = settleBlackjack(game.playerHand, game.dealerHand);
         const winAmount = Math.floor(bet * settled.multiplier);
-        if (winAmount > 0) creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "blackjack win");
+        if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "blackjack win");
         endBlackjackGame(game.id);
         const footerLine =
           settled.outcome === "player_blackjack"
@@ -280,15 +280,15 @@ export const commands: Command[] = [
         await replyError(interaction, "Invalid bet. Bet on red, black, even, odd, or a single number 0-36.");
         return;
       }
-      const placed = placeBet(ctx.db, ctx.guildId, interaction.user.id, bet, "roulette");
+      const placed = await placeBet(ctx.db, ctx.guildId, interaction.user.id, bet, "roulette");
       if (!placed.ok) {
         await replyError(interaction, placed.error ?? "Could not place that bet.");
         return;
       }
       const result = rouletteOutcome(betOn, rouletteRoll());
       const winAmount = bet * result.multiplier;
-      if (winAmount > 0) creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "roulette win");
-      const balance = getBalance(ctx.db, ctx.guildId, interaction.user.id).points;
+      if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "roulette win");
+      const balance = (await getBalance(ctx.db, ctx.guildId, interaction.user.id)).points;
       const outcome = result.win
         ? `🎉 You won **${fmt(winAmount)} points** (${result.multiplier}x)!`
         : "You lost this spin.";
@@ -325,15 +325,15 @@ export const commands: Command[] = [
         await replyError(interaction, "Guess must be heads or tails.");
         return;
       }
-      const placed = placeBet(ctx.db, ctx.guildId, interaction.user.id, bet, "coinflip");
+      const placed = await placeBet(ctx.db, ctx.guildId, interaction.user.id, bet, "coinflip");
       if (!placed.ok) {
         await replyError(interaction, placed.error ?? "Could not place that bet.");
         return;
       }
       const result = coinflipOutcome(guess, secureFloat());
       const winAmount = Math.floor(bet * result.multiplier);
-      if (winAmount > 0) creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "coinflip win");
-      const balance = getBalance(ctx.db, ctx.guildId, interaction.user.id).points;
+      if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "coinflip win");
+      const balance = (await getBalance(ctx.db, ctx.guildId, interaction.user.id)).points;
       const outcome = result.win
         ? `🎉 You won **${fmt(winAmount)} points** (1.9x)!`
         : "Wrong call — you lost this flip.";
@@ -374,7 +374,7 @@ export const commands: Command[] = [
         return;
       }
       if (!(await checkBalance(interaction, ctx, bet))) return;
-      const placed = placeBet(ctx.db, ctx.guildId, interaction.user.id, bet, "highlow");
+      const placed = await placeBet(ctx.db, ctx.guildId, interaction.user.id, bet, "highlow");
       if (!placed.ok) {
         await replyError(interaction, placed.error ?? "Could not place that bet.");
         return;
@@ -387,8 +387,8 @@ export const commands: Command[] = [
       const next = drawCard();
       const result = highlowOutcome(card, guess, next);
       const winAmount = Math.floor(bet * result.multiplier);
-      if (winAmount > 0) creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "highlow win");
-      const balance = getBalance(ctx.db, ctx.guildId, interaction.user.id).points;
+      if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "highlow win");
+      const balance = (await getBalance(ctx.db, ctx.guildId, interaction.user.id)).points;
       const outcome =
         result.outcome === "win"
           ? `You won ${fmt(winAmount)} points (1.9x)!`
@@ -443,15 +443,15 @@ export const commands: Command[] = [
     async execute(interaction, ctx) {
       const bet = await readBet(interaction);
       if (bet === null) return;
-      const placed = placeBet(ctx.db, ctx.guildId, interaction.user.id, bet, "scratch");
+      const placed = await placeBet(ctx.db, ctx.guildId, interaction.user.id, bet, "scratch");
       if (!placed.ok) {
         await replyError(interaction, placed.error ?? "Could not place that bet.");
         return;
       }
       const result = scratchDraw(secureFloat);
       const winAmount = bet * result.multiplier;
-      if (winAmount > 0) creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "scratch win");
-      const balance = getBalance(ctx.db, ctx.guildId, interaction.user.id).points;
+      if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "scratch win");
+      const balance = (await getBalance(ctx.db, ctx.guildId, interaction.user.id)).points;
       const outcome =
         result.multiplier === 5
           ? `🎉 Three of a kind! You won **${fmt(winAmount)} points** (5x)!`
@@ -506,7 +506,7 @@ async function handleBlackjackButton(interaction: any, ctx: CommandContext): Pro
   const settleAndShow = async (note: string): Promise<void> => {
     const settled = settleBlackjack(game.playerHand, game.dealerHand);
     const winAmount = Math.floor(game.bet * settled.multiplier);
-    if (winAmount > 0) creditWin(ctx.db, ctx.guildId, game.userId, winAmount, "blackjack win");
+    if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, game.userId, winAmount, "blackjack win");
     endBlackjackGame(game.id);
     const resultNote =
       settled.outcome === "player_blackjack"

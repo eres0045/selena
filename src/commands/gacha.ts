@@ -71,8 +71,8 @@ export const commands: Command[] = [
         });
         return;
       }
-      const state = getGachaState(ctx.db, ctx.guildId, interaction.user.id);
-      const r = doRoll(ctx.db, ctx.guildId, interaction.user.id, cards);
+      const state = await getGachaState(ctx.db, ctx.guildId, interaction.user.id);
+      const r = await doRoll(ctx.db, ctx.guildId, interaction.user.id, cards);
       if (!r.ok) {
         await interaction.reply({ embeds: [errorEmbed(r.error).toJSON()], ephemeral: true });
         return;
@@ -93,7 +93,7 @@ export const commands: Command[] = [
     execute: async (interaction, ctx) => {
       const target = interaction.options.getUser("user") ?? interaction.user;
       const cards = await loadGachaCards();
-      const summary = collectionSummary(ctx.db, ctx.guildId, target.id, cards);
+      const summary = await collectionSummary(ctx.db, ctx.guildId, target.id, cards);
       if (summary.totalDistinct === 0) {
         await interaction.reply({
           embeds: [
@@ -146,14 +146,14 @@ export const commands: Command[] = [
         await interaction.reply({ embeds: [errorEmbed("Both card ids are required.").toJSON()], ephemeral: true });
         return;
       }
-      if (!ownsCard(ctx.db, ctx.guildId, interaction.user.id, cardA)) {
+      if (!await ownsCard(ctx.db, ctx.guildId, interaction.user.id, cardA)) {
         await interaction.reply({
           embeds: [errorEmbed(`You don't own card \`${cardA}\` — check /collection for your card ids.`).toJSON()],
           ephemeral: true,
         });
         return;
       }
-      if (!ownsCard(ctx.db, ctx.guildId, target.id, cardB)) {
+      if (!await ownsCard(ctx.db, ctx.guildId, target.id, cardB)) {
         await interaction.reply({
           embeds: [errorEmbed(`<@${target.id}> doesn't own card \`${cardB}\`.`).toJSON()],
           ephemeral: true,
@@ -186,7 +186,7 @@ export const commands: Command[] = [
       .setName("gacha-leaderboard")
       .setDescription("Top card collectors in this server")),
     execute: async (interaction, ctx) => {
-      const board = gachaLeaderboard(ctx.db, ctx.guildId, 10);
+      const board = await gachaLeaderboard(ctx.db, ctx.guildId, 10);
       if (board.length === 0) {
         await interaction.reply({
           embeds: [selenaEmbed("Gacha leaderboard", "Nobody owns any cards yet — be the first with /roll!").toJSON()],
@@ -237,7 +237,7 @@ export const buttonHandlers: Record<
       });
       return;
     }
-    const r = swapCards(ctx.db, ctx.guildId, offererId, cardA, targetId, cardB);
+    const r = await swapCards(ctx.db, ctx.guildId, offererId, cardA, targetId, cardB);
     if (!r.ok) {
       await interaction.reply({ content: `Trade failed: ${r.error}`, ephemeral: true });
       return;

@@ -313,24 +313,24 @@ export interface ProfileData {
   favouriteHero: string | null;
 }
 
-export function getProfileData(db: SelenaDb, guildId: string, userId: string): ProfileData {
-  const user = db
+export async function getProfileData(db: SelenaDb, guildId: string, userId: string): Promise<ProfileData> {
+  const user = await db
     .prepare("SELECT points, xp, level FROM users WHERE guild_id = ? AND user_id = ?")
     .get(guildId, userId) as { points: number; xp: number; level: number } | undefined;
   const points = Number(user?.points ?? 0);
   const xp = Number(user?.xp ?? 0);
   const level = Number(user?.level ?? 0);
 
-  const rankRow = db
+  const rankRow = await db
     .prepare("SELECT COUNT(*) AS c FROM users WHERE guild_id = ? AND points > ?")
     .get(guildId, points) as { c: number } | undefined;
   const rank = Number(rankRow?.c ?? 0) + 1;
-  const totalRow = db
+  const totalRow = await db
     .prepare("SELECT COUNT(*) AS c FROM users WHERE guild_id = ?")
     .get(guildId) as { c: number } | undefined;
   const totalRanked = Math.max(Number(totalRow?.c ?? 0), 1);
 
-  const tryout = db
+  const tryout = await db
     .prepare(
       "SELECT ign, rank_name, heroes FROM tryouts WHERE guild_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 1",
     )

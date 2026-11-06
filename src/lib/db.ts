@@ -1,61 +1,206 @@
-import { DatabaseSync } from "node:sqlite";
-import { existsSync, mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { newDb } from "pg-mem";
+import pg, { Pool, type PoolClient, types as pgTypes } from "pg";
 
 /**
- * Single SQLite database for all Selena state, backed by Node's built-in
- * node:sqlite (Node 24) — no native addon needed. better-sqlite3 cannot
- * build on this VM: its prebuilt binary is unavailable for Node 24.22.1
- * and node-gyp cannot download the Node headers through the egress proxy.
+ * Selena's database — Supabase Postgres (via the `pg` Pool).
  *
- * SelenaDb exposes a small better-sqlite3-like surface (prepare/run/get/all,
- * exec, close) so feature code stays simple and readable.
+ * History: the bot used to keep state in a local SQLite file (Node 24's
+ * built-in node:sqlite). Render's free tier has no persistent disk, so
+ * every restart / sleep-wake wiped the file and every user's points, XP,
+ * gacha cards, squads and tickets reset to zero. This layer replaces it
+ * with a single Supabase Postgres database, configured by exactly one env
+ * var: DATABASE_URL (the Supabase transaction-pooler connection string).
+ *
+ * SelenaDb exposes the same small better-sqlite3-like surface the feature
+ * code was written against (prepare/run/get/all, exec, close, transaction)
+ * so the call sites stay readable — but everything is ASYNC now: there is
+ * no synchronous Postgres client for Node, so every query returns a
+ * Promise and every caller awaits it.
+ *
+ * Dialect translation (done in prepare(), so call sites keep their
+ * SQLite-shaped SQL):
+ * - `?` placeholders become `$1..$n` (a `?` inside a quoted literal is
+ *   left alone).
+ * - `INSERT OR IGNORE INTO ...` becomes `INSERT INTO ... ON CONFLICT
+ *   DO NOTHING` (bare ON CONFLICT = any unique violation).
+ * - `INSERT OR REPLACE INTO ...` is NOT translated — the three call sites
+ *   that used it were rewritten as explicit Postgres upserts.
+ * - `run()` on an INSERT into a table with a serial `id` appends
+ *   `RETURNING id` and reports it as `lastInsertRowid` (0 when the
+ *   insert was ignored by ON CONFLICT DO NOTHING).
+ *
+ * Types: Postgres BIGINT (int8) columns come back from `pg` as strings by
+ * default. All of ours (epoch-ms timestamps, serial ids) are safely below
+ * 2^53, so int8 is parsed to a JS number globally (see setTypeParser
+ * below) and the rest of the code can keep using plain numbers.
  */
+
+// int8 (BIGINT) -> JS number. All our BIGINT values (ids, epoch-ms
+// timestamps) are far below Number.MAX_SAFE_INTEGER.
+pgTypes.setTypeParser(20, (value: string) => Number.parseInt(value, 10));
+
 export interface RunResult {
   changes: number;
   lastInsertRowid: number | bigint;
 }
 
 export interface Statement {
-  run(...params: unknown[]): RunResult;
-  get(...params: unknown[]): Record<string, unknown> | undefined;
-  all(...params: unknown[]): Record<string, unknown>[];
+  run(...params: unknown[]): Promise<RunResult>;
+  get(...params: unknown[]): Promise<Record<string, unknown> | undefined>;
+  all(...params: unknown[]): Promise<Record<string, unknown>[]>;
+}
+
+/** Tables whose INSERTs carry a serial `id` (used for RETURNING id). */
+const ID_TABLES = new Set([
+  "point_ledger",
+  "warnings",
+  "mod_actions",
+  "squads",
+  "scrims",
+  "tryouts",
+  "brackets",
+  "matches",
+  "giveaways",
+  "polls",
+  "tickets",
+  "reminders",
+]);
+
+/**
+ * Translate one SQLite-shaped statement to Postgres:
+ * `INSERT OR IGNORE` -> `ON CONFLICT DO NOTHING`, `?` -> `$n`, and
+ * `RETURNING id` for INSERTs into id-tables.
+ */
+export function translateSql(sql: string): string {
+  const isOrIgnore = /INSERT\s+OR\s+IGNORE\s+INTO/i.test(sql);
+  let text = sql.replace(/INSERT\s+OR\s+IGNORE\s+INTO/i, "INSERT INTO");
+  // `?` -> `$n`, skipping `?` inside single-quoted literals ('' = escaped quote).
+  let out = "";
+  let n = 0;
+  let inStr = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    if (ch === "'") {
+      if (inStr && text[i + 1] === "'") {
+        out += "''";
+        i++;
+        continue;
+      }
+      inStr = !inStr;
+      out += ch;
+      continue;
+    }
+    if (ch === "?" && !inStr) {
+      n++;
+      out += `$${n}`;
+      continue;
+    }
+    out += ch;
+  }
+  text = out;
+  if (isOrIgnore) text = `${text.trimEnd()} ON CONFLICT DO NOTHING`;
+  const insertInto = /^\s*INSERT\s+INTO\s+"?(\w+)"?/i.exec(text);
+  if (insertInto && ID_TABLES.has(insertInto[1]!.toLowerCase())) {
+    text = `${text.trimEnd()} RETURNING id`;
+  }
+  return text;
 }
 
 export class SelenaDb {
-  private inner: DatabaseSync;
+  private pool: Pool;
+  private client: PoolClient | null;
+  private schemaPromise: Promise<void> | null;
 
-  constructor(path: string) {
-    this.inner = new DatabaseSync(path);
+  constructor(pool: Pool, client: PoolClient | null = null, schemaPromise: Promise<void> | null = null) {
+    this.pool = pool;
+    this.client = client;
+    this.schemaPromise = schemaPromise;
   }
 
-  exec(sql: string): void {
-    this.inner.exec(sql);
+  private target(): Pool | PoolClient {
+    return this.client ?? this.pool;
+  }
+
+  /**
+   * Create the schema if it hasn't been yet. Idempotent; runs lazily on
+   * the first query so getDb()/getTestDb() stay synchronous, and awaited
+   * explicitly at boot (src/index.ts) to fail fast when the DB is down.
+   */
+  async ensureSchema(): Promise<void> {
+    if (!this.schemaPromise) {
+      this.schemaPromise = this.exec(SCHEMA);
+    }
+    return this.schemaPromise;
+  }
+
+  /** Run raw SQL (schema creation, multi-statement strings allowed). */
+  async exec(sql: string): Promise<void> {
+    await this.target().query(sql);
   }
 
   prepare(sql: string): Statement {
-    const st = this.inner.prepare(sql);
+    const text = translateSql(sql);
+    const runQuery = async (params: unknown[]) => {
+      await this.ensureSchema();
+      return this.target().query(text, params as never[]);
+    };
     return {
-      run: (...params: unknown[]) => {
-        const r = st.run(...(params as never[]));
-        return { changes: Number(r.changes), lastInsertRowid: r.lastInsertRowid };
+      run: async (...params: unknown[]) => {
+        const res = await runQuery(params);
+        const row = res.rows[0] as { id?: number | bigint } | undefined;
+        return { changes: res.rowCount ?? 0, lastInsertRowid: row?.id ?? 0 };
       },
-      get: (...params: unknown[]) => {
-        const row = st.get(...(params as never[])) as Record<string, unknown> | undefined;
-        return row ?? undefined;
+      get: async (...params: unknown[]) => {
+        const res = await runQuery(params);
+        return (res.rows[0] as Record<string, unknown> | undefined) ?? undefined;
       },
-      all: (...params: unknown[]) => {
-        return st.all(...(params as never[])) as Record<string, unknown>[];
+      all: async (...params: unknown[]) => {
+        const res = await runQuery(params);
+        return res.rows as Record<string, unknown>[];
       },
     };
   }
 
-  close(): void {
-    this.inner.close();
+  /**
+   * Run `fn` inside a single transaction on one pooled client: BEGIN,
+   * fn(tx), COMMIT — or ROLLBACK when fn throws. The `tx` handle has the
+   * same prepare/run/get/all surface, bound to that client.
+   */
+  async transaction<T>(fn: (tx: SelenaDb) => Promise<T>): Promise<T> {
+    await this.ensureSchema();
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const tx = new SelenaDb(this.pool, client, this.schemaPromise);
+      const out = await fn(tx);
+      await client.query("COMMIT");
+      return out;
+    } catch (e) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        /* already rolled back / connection lost */
+      }
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  /** End the pool (root instances only; transaction handles share it). */
+  async close(): Promise<void> {
+    if (this.client) return;
+    await this.pool.end();
   }
 }
 
-let db: SelenaDb | null = null;
+// ---------------------------------------------------------------------------
+// Schema — same tables/columns as the SQLite version, translated:
+// INTEGER PRIMARY KEY AUTOINCREMENT -> BIGSERIAL PRIMARY KEY;
+// epoch-ms timestamp columns -> BIGINT (ms since epoch is ~1.8e12, far
+// past int4's 2.1e9 max); id-reference columns -> BIGINT to match;
+// everything else keeps its SQLite type (INTEGER/TEXT).
+// ---------------------------------------------------------------------------
 
 export const SCHEMA = `
 CREATE TABLE IF NOT EXISTS guild_settings (
@@ -75,77 +220,77 @@ CREATE TABLE IF NOT EXISTS users (
   points INTEGER NOT NULL DEFAULT 0,
   xp INTEGER NOT NULL DEFAULT 0,
   level INTEGER NOT NULL DEFAULT 0,
-  last_daily INTEGER,
+  last_daily BIGINT,
   afk_reason TEXT,
-  afk_since INTEGER,
+  afk_since BIGINT,
   PRIMARY KEY (guild_id, user_id)
 );
 
 CREATE TABLE IF NOT EXISTS point_ledger (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id BIGSERIAL PRIMARY KEY,
   guild_id TEXT NOT NULL,
   user_id TEXT NOT NULL,
   delta INTEGER NOT NULL,
   reason TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at BIGINT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS warnings (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id BIGSERIAL PRIMARY KEY,
   guild_id TEXT NOT NULL,
   user_id TEXT NOT NULL,
   moderator_id TEXT NOT NULL,
   reason TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at BIGINT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS mod_actions (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id BIGSERIAL PRIMARY KEY,
   guild_id TEXT NOT NULL,
   user_id TEXT NOT NULL,
   moderator_id TEXT NOT NULL,
   action TEXT NOT NULL,
   reason TEXT,
-  created_at INTEGER NOT NULL
+  created_at BIGINT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS squads (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id BIGSERIAL PRIMARY KEY,
   guild_id TEXT NOT NULL,
   name TEXT NOT NULL,
   captain_id TEXT,
   kind TEXT NOT NULL DEFAULT 'squad',
-  created_at INTEGER NOT NULL
+  created_at BIGINT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS squad_members (
-  squad_id INTEGER NOT NULL,
+  squad_id BIGINT NOT NULL,
   user_id TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'member',
   PRIMARY KEY (squad_id, user_id)
 );
 
 CREATE TABLE IF NOT EXISTS scrims (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id BIGSERIAL PRIMARY KEY,
   guild_id TEXT NOT NULL,
   opponent TEXT NOT NULL,
-  scheduled_at INTEGER NOT NULL,
+  scheduled_at BIGINT NOT NULL,
   channel_id TEXT,
   message_id TEXT,
   reminded INTEGER NOT NULL DEFAULT 0,
   created_by TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at BIGINT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS scrim_rsvps (
-  scrim_id INTEGER NOT NULL,
+  scrim_id BIGINT NOT NULL,
   user_id TEXT NOT NULL,
   attending INTEGER NOT NULL,
   PRIMARY KEY (scrim_id, user_id)
 );
 
 CREATE TABLE IF NOT EXISTS tryouts (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id BIGSERIAL PRIMARY KEY,
   guild_id TEXT NOT NULL,
   user_id TEXT NOT NULL,
   ign TEXT NOT NULL,
@@ -156,27 +301,27 @@ CREATE TABLE IF NOT EXISTS tryouts (
   status TEXT NOT NULL DEFAULT 'pending',
   channel_id TEXT,
   message_id TEXT,
-  created_at INTEGER NOT NULL
+  created_at BIGINT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS brackets (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id BIGSERIAL PRIMARY KEY,
   guild_id TEXT NOT NULL,
   name TEXT NOT NULL,
   state TEXT NOT NULL DEFAULT 'open',
-  created_at INTEGER NOT NULL
+  created_at BIGINT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS bracket_entries (
-  bracket_id INTEGER NOT NULL,
+  bracket_id BIGINT NOT NULL,
   seed INTEGER NOT NULL,
   team_name TEXT NOT NULL,
   PRIMARY KEY (bracket_id, seed)
 );
 
 CREATE TABLE IF NOT EXISTS matches (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  bracket_id INTEGER NOT NULL,
+  id BIGSERIAL PRIMARY KEY,
+  bracket_id BIGINT NOT NULL,
   round INTEGER NOT NULL,
   slot INTEGER NOT NULL,
   team_a TEXT,
@@ -185,7 +330,7 @@ CREATE TABLE IF NOT EXISTS matches (
   score_a INTEGER,
   score_b INTEGER,
   reported_by TEXT,
-  created_at INTEGER NOT NULL
+  created_at BIGINT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS gacha_cards (
@@ -199,58 +344,58 @@ CREATE TABLE IF NOT EXISTS gacha_cards (
 CREATE TABLE IF NOT EXISTS gacha_state (
   guild_id TEXT NOT NULL,
   user_id TEXT NOT NULL,
-  last_roll INTEGER,
+  last_roll BIGINT,
   pity INTEGER NOT NULL DEFAULT 0,
   total_rolls INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (guild_id, user_id)
 );
 
 CREATE TABLE IF NOT EXISTS giveaways (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id BIGSERIAL PRIMARY KEY,
   guild_id TEXT NOT NULL,
   channel_id TEXT NOT NULL,
   message_id TEXT,
   prize TEXT NOT NULL,
-  ends_at INTEGER NOT NULL,
+  ends_at BIGINT NOT NULL,
   winners_count INTEGER NOT NULL DEFAULT 1,
   ended INTEGER NOT NULL DEFAULT 0,
   created_by TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at BIGINT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS giveaway_entries (
-  giveaway_id INTEGER NOT NULL,
+  giveaway_id BIGINT NOT NULL,
   user_id TEXT NOT NULL,
   PRIMARY KEY (giveaway_id, user_id)
 );
 
 CREATE TABLE IF NOT EXISTS polls (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id BIGSERIAL PRIMARY KEY,
   guild_id TEXT NOT NULL,
   channel_id TEXT NOT NULL,
   message_id TEXT,
   question TEXT NOT NULL,
   options_json TEXT NOT NULL,
   created_by TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at BIGINT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS poll_votes (
-  poll_id INTEGER NOT NULL,
+  poll_id BIGINT NOT NULL,
   user_id TEXT NOT NULL,
   option_index INTEGER NOT NULL,
   PRIMARY KEY (poll_id, user_id)
 );
 
 CREATE TABLE IF NOT EXISTS tickets (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id BIGSERIAL PRIMARY KEY,
   guild_id TEXT NOT NULL,
   channel_id TEXT NOT NULL,
   user_id TEXT NOT NULL,
   reason TEXT,
   status TEXT NOT NULL DEFAULT 'open',
-  created_at INTEGER NOT NULL,
-  closed_at INTEGER
+  created_at BIGINT NOT NULL,
+  closed_at BIGINT
 );
 
 CREATE TABLE IF NOT EXISTS reaction_roles (
@@ -271,31 +416,46 @@ CREATE TABLE IF NOT EXISTS starboard_posts (
 );
 
 CREATE TABLE IF NOT EXISTS reminders (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id BIGSERIAL PRIMARY KEY,
   guild_id TEXT NOT NULL,
   user_id TEXT NOT NULL,
   channel_id TEXT NOT NULL,
   text TEXT NOT NULL,
-  due_at INTEGER NOT NULL,
+  due_at BIGINT NOT NULL,
   delivered INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL
+  created_at BIGINT NOT NULL
 );
 `;
 
-export function getDb(dbPath?: string): SelenaDb {
+let db: SelenaDb | null = null;
+
+/**
+ * The shared bot database, from DATABASE_URL (Supabase transaction
+ * pooler). Throws a clear error when the var is missing — the bot cannot
+ * run on a local file anymore, and failing loudly at boot beats silently
+ * losing data again. Pool is capped at 5 (Render free + Supabase pooler).
+ */
+export function getDb(): SelenaDb {
   if (db) return db;
-  const path = dbPath ?? process.env.DATABASE_PATH ?? resolve(process.cwd(), "selena.db");
-  const dir = dirname(path);
-  if (dir && !existsSync(dir)) mkdirSync(dir, { recursive: true });
-  db = new SelenaDb(path);
-  db.exec("PRAGMA journal_mode = WAL;");
-  db.exec(SCHEMA);
+  const url = process.env.DATABASE_URL?.trim();
+  if (!url) {
+    throw new Error(
+      "Selena: DATABASE_URL is not set — the bot needs a Postgres connection string (Supabase transaction pooler). Set DATABASE_URL on the service and restart.",
+    );
+  }
+  const pool = new Pool({
+    connectionString: url,
+    max: 5,
+    ssl: /sslmode=disable/i.test(url) ? undefined : { rejectUnauthorized: false },
+  });
+  pool.on("error", (e) => console.error("Selena: idle pool error:", e instanceof Error ? e.message : e));
+  db = new SelenaDb(pool);
   return db;
 }
 
-export function closeDb(): void {
+export async function closeDb(): Promise<void> {
   if (db) {
-    db.close();
+    await db.close();
     db = null;
   }
 }
@@ -303,15 +463,23 @@ export function closeDb(): void {
 /** Reset the cached instance (tests use a fresh in-memory DB per file). */
 export function resetDbForTests(): void {
   if (db) {
-    db.close();
+    void db.close();
     db = null;
   }
 }
 
-/** In-memory DB with the full schema, for tests. */
+/**
+ * In-memory Postgres (pg-mem) with the full schema, for tests. No network,
+ * no Supabase needed. NOTE: pg-mem does not implement transaction rollback
+ * (BEGIN/ROLLBACK are accepted but rows are not restored), so rollback
+ * behaviour is covered by a fake-pool test in test/db-pg.test.ts, not
+ * against pg-mem.
+ */
 export function getTestDb(): SelenaDb {
   resetDbForTests();
-  db = new SelenaDb(":memory:");
-  db.exec(SCHEMA);
+  const mem = newDb();
+  const pgMem = mem.adapters.createPg() as unknown as { Pool: new () => Pool };
+  const pool = new pgMem.Pool();
+  db = new SelenaDb(pool);
   return db;
 }

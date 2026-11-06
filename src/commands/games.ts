@@ -383,7 +383,7 @@ async function handleTrivia(interaction: any, ctx: CommandContext): Promise<void
   const correct = isTriviaAnswerCorrect(game.question, idx);
   game.answeredBy = interaction.user.id;
   if (correct) {
-    awardPoints(ctx.db, ctx.guildId, interaction.user.id, TRIVIA_POINTS, "trivia");
+    await awardPoints(ctx.db, ctx.guildId, interaction.user.id, TRIVIA_POINTS, "trivia");
   }
   const embed = triviaEmbed(game, true, idx).setDescription(
     `${game.question.question}\n\n${game.question.options
@@ -412,7 +412,7 @@ async function handleGiveaway(interaction: any, ctx: CommandContext): Promise<vo
     await interaction.reply({ content: "Invalid giveaway.", ephemeral: true });
     return;
   }
-  const row = ctx.db
+  const row = await ctx.db
     .prepare("SELECT id, ended FROM giveaways WHERE id = ?")
     .get(giveawayId) as { id: number; ended: number } | undefined;
   if (!row) {
@@ -423,7 +423,7 @@ async function handleGiveaway(interaction: any, ctx: CommandContext): Promise<vo
     await interaction.reply({ content: "That giveaway has already ended.", ephemeral: true });
     return;
   }
-  const res = ctx.db
+  const res = await ctx.db
     .prepare("INSERT OR IGNORE INTO giveaway_entries (giveaway_id, user_id) VALUES (?, ?)")
     .run(giveawayId, interaction.user.id);
   if (res.changes === 0) {
@@ -468,7 +468,7 @@ async function handlePoll(interaction: any, ctx: CommandContext): Promise<void> 
   const parts = String(interaction.customId).split(":");
   const pollId = Number(parts[2]);
   const idx = Number(parts[3]);
-  const row = ctx.db
+  const row = await ctx.db
     .prepare("SELECT id, question, options_json FROM polls WHERE id = ?")
     .get(pollId) as { id: number; question: string; options_json: string } | undefined;
   if (!row) {
@@ -486,8 +486,8 @@ async function handlePoll(interaction: any, ctx: CommandContext): Promise<void> 
     await interaction.reply({ content: "Invalid poll option.", ephemeral: true });
     return;
   }
-  recordPollVote(ctx.db, pollId, interaction.user.id, idx);
-  const counts = getPollCounts(ctx.db, pollId, options.length);
+  await recordPollVote(ctx.db, pollId, interaction.user.id, idx);
+  const counts = await getPollCounts(ctx.db, pollId, options.length);
   await interaction.update({ embeds: [pollEmbed(row.question, options, counts)], components: pollComponents(pollId, options, counts) });
 }
 
@@ -728,7 +728,7 @@ export const commands: Command[] = [
       }
       if (checkGuess(round.hero, guess)) {
         guessHeroRounds.delete(key);
-        awardPoints(ctx.db, guildId, interaction.user.id, GUESS_HERO_POINTS, "guesshero");
+        await awardPoints(ctx.db, guildId, interaction.user.id, GUESS_HERO_POINTS, "guesshero");
         await interaction.reply({
           embeds: [
             selenaEmbed(
@@ -793,7 +793,7 @@ export const commands: Command[] = [
         return;
       }
       const endsAt = Date.now() + duration * 60_000;
-      const res = ctx.db
+      const res = await ctx.db
         .prepare(
           "INSERT INTO giveaways (guild_id, channel_id, message_id, prize, ends_at, winners_count, ended, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)",
         )
@@ -845,7 +845,7 @@ export const commands: Command[] = [
         await replyError(interaction, "Poll options must all be different.");
         return;
       }
-      const res = ctx.db
+      const res = await ctx.db
         .prepare(
           "INSERT INTO polls (guild_id, channel_id, message_id, question, options_json, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         )

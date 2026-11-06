@@ -90,8 +90,8 @@ export function canRoll(
   return { allowed: false, remainingMs };
 }
 
-export function getGachaState(db: SelenaDb, guildId: string, userId: string): GachaState {
-  const row = db
+export async function getGachaState(db: SelenaDb, guildId: string, userId: string): Promise<GachaState> {
+  const row = await db
     .prepare("SELECT last_roll, pity, total_rolls FROM gacha_state WHERE guild_id = ? AND user_id = ?")
     .get(guildId, userId);
   if (!row) return defaultGachaState();
@@ -107,18 +107,18 @@ export type RollResult =
   | { ok: false; error: string; remainingMs?: number };
 
 /** Full roll: cooldown check, roll, persist card + state. Nothing is deducted. */
-export function doRoll(
+export async function doRoll(
   db: SelenaDb,
   guildId: string,
   userId: string,
   cards: readonly GachaCard[],
   nowMs: number = Date.now(),
   rand: () => number = secureFloat,
-): RollResult {
+): Promise<RollResult> {
   if (cards.length === 0) {
     return { ok: false, error: "Gacha cards aren't configured yet — no hero cards are loaded." };
   }
-  const state = getGachaState(db, guildId, userId);
+  const state = await getGachaState(db, guildId, userId);
   const check = canRoll(state, nowMs);
   if (!check.allowed) {
     return {
@@ -133,12 +133,12 @@ export function doRoll(
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Roll failed." };
   }
-  db.prepare(
+  await db.prepare(
     `INSERT INTO gacha_cards (guild_id, user_id, card_id, count) VALUES (?, ?, ?, 1)
-     ON CONFLICT(guild_id, user_id, card_id) DO UPDATE SET count = count + 1`,
+     ON CONFLICT(guild_id, user_id, card_id) DO UPDATE SET count = gacha_cards.count + 1`,
   ).run(guildId, userId, rolled.card.id);
   const totalRolls = state.total_rolls + 1;
-  db.prepare(
+  await db.prepare(
     `INSERT INTO gacha_state (guild_id, user_id, last_roll, pity, total_rolls) VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(guild_id, user_id) DO UPDATE SET last_roll = excluded.last_roll, pity = excluded.pity, total_rolls = excluded.total_rolls`,
   ).run(guildId, userId, nowMs, rolled.newPity, totalRolls);
@@ -163,13 +163,13 @@ export interface CollectionSummary {
  * loadGachaCards) for names/rarities; without it, cards group under
  * "Unknown" with the card id as the name.
  */
-export function collectionSummary(
+export async function collectionSummary(
   db: SelenaDb,
   guildId: string,
   userId: string,
   cards?: readonly GachaCard[],
-): CollectionSummary {
-  const rows = db
+): Promise<CollectionSummary> {
+  const rows = await db
     .prepare("SELECT card_id, count FROM gacha_cards WHERE guild_id = ? AND user_id = ? ORDER BY card_id")
     .all(guildId, userId);
   const byId = new Map((cards ?? []).map((c) => [c.id, c]));
@@ -199,56 +199,51 @@ export type SwapResult = { ok: true } | { ok: false; error: string };
  * Atomic two-way card swap. Both users must own the card they offer.
  * On any failure nothing changes (single transaction).
  */
-export function swapCards(
+export async function swapCards(
   db: SelenaDb,
   guildId: string,
   userA: string,
   cardA: string,
   userB: string,
   cardB: string,
-): SwapResult {
+): Promise<SwapResult> {
   if (userA === userB) return { ok: false, error: "You can't trade with yourself." };
   if (!cardA || !cardB) return { ok: false, error: "Both cards must be specified." };
-  const owns = (userId: string, cardId: string): boolean => {
-    const row = db
+  const owns = async (tx: SelenaDb, userId: string, cardId: string): Promise<boolean> => {
+    const row = await tx
       .prepare("SELECT count FROM gacha_cards WHERE guild_id = ? AND user_id = ? AND card_id = ?")
       .get(guildId, userId, cardId);
     return !!row && Number(row.count) > 0;
   };
-  if (!owns(userA, cardA)) return { ok: false, error: `<@${userA}> no longer owns \`${cardA}\`.` };
-  if (!owns(userB, cardB)) return { ok: false, error: `<@${userB}> no longer owns \`${cardB}\`.` };
+  if (!(await owns(db, userA, cardA))) return { ok: false, error: `<@${userA}> no longer owns \`${cardA}\`.` };
+  if (!(await owns(db, userB, cardB))) return { ok: false, error: `<@${userB}> no longer owns \`${cardB}\`.` };
 
-  const take = (userId: string, cardId: string): void => {
-    const row = db
+  const take = async (tx: SelenaDb, userId: string, cardId: string): Promise<void> => {
+    const row = await tx
       .prepare("SELECT count FROM gacha_cards WHERE guild_id = ? AND user_id = ? AND card_id = ?")
       .get(guildId, userId, cardId);
     if (!row) throw new Error("swap: missing card row");
     if (Number(row.count) <= 1) {
-      db.prepare("DELETE FROM gacha_cards WHERE guild_id = ? AND user_id = ? AND card_id = ?").run(guildId, userId, cardId);
+      await tx.prepare("DELETE FROM gacha_cards WHERE guild_id = ? AND user_id = ? AND card_id = ?").run(guildId, userId, cardId);
     } else {
-      db.prepare("UPDATE gacha_cards SET count = count - 1 WHERE guild_id = ? AND user_id = ? AND card_id = ?").run(guildId, userId, cardId);
+      await tx.prepare("UPDATE gacha_cards SET count = count - 1 WHERE guild_id = ? AND user_id = ? AND card_id = ?").run(guildId, userId, cardId);
     }
   };
-  const give = (userId: string, cardId: string): void => {
-    db.prepare(
+  const give = async (tx: SelenaDb, userId: string, cardId: string): Promise<void> => {
+    await tx.prepare(
       `INSERT INTO gacha_cards (guild_id, user_id, card_id, count) VALUES (?, ?, ?, 1)
-       ON CONFLICT(guild_id, user_id, card_id) DO UPDATE SET count = count + 1`,
+       ON CONFLICT(guild_id, user_id, card_id) DO UPDATE SET count = gacha_cards.count + 1`,
     ).run(guildId, userId, cardId);
   };
 
   try {
-    db.exec("BEGIN IMMEDIATE");
-    take(userA, cardA);
-    take(userB, cardB);
-    give(userA, cardB);
-    give(userB, cardA);
-    db.exec("COMMIT");
+    await db.transaction(async (tx) => {
+      await take(tx, userA, cardA);
+      await take(tx, userB, cardB);
+      await give(tx, userA, cardB);
+      await give(tx, userB, cardA);
+    });
   } catch (err) {
-    try {
-      db.exec("ROLLBACK");
-    } catch {
-      // already rolled back / no transaction
-    }
     return { ok: false, error: err instanceof Error ? err.message : "Trade failed." };
   }
   return { ok: true };
@@ -261,8 +256,8 @@ export interface LeaderboardEntry {
 }
 
 /** Top collectors by distinct cards, then total cards. */
-export function gachaLeaderboard(db: SelenaDb, guildId: string, limit = 10): LeaderboardEntry[] {
-  const rows = db
+export async function gachaLeaderboard(db: SelenaDb, guildId: string, limit = 10): Promise<LeaderboardEntry[]> {
+  const rows = await db
     .prepare(
       `SELECT user_id, COUNT(*) AS distinct_cards, SUM(count) AS total_cards
        FROM gacha_cards WHERE guild_id = ? GROUP BY user_id
@@ -276,8 +271,8 @@ export function gachaLeaderboard(db: SelenaDb, guildId: string, limit = 10): Lea
   }));
 }
 
-export function ownsCard(db: SelenaDb, guildId: string, userId: string, cardId: string): boolean {
-  const row = db
+export async function ownsCard(db: SelenaDb, guildId: string, userId: string, cardId: string): Promise<boolean> {
+  const row = await db
     .prepare("SELECT count FROM gacha_cards WHERE guild_id = ? AND user_id = ? AND card_id = ?")
     .get(guildId, userId, cardId);
   return !!row && Number(row.count) > 0;

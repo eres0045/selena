@@ -86,7 +86,7 @@ export async function runDueTasks(db: SelenaDb, client: Client | null): Promise<
   const now = Date.now();
 
   // Reminders
-  const dueReminders = db
+  const dueReminders = await db
     .prepare("SELECT id, user_id, channel_id, text FROM reminders WHERE delivered = 0 AND due_at <= ?")
     .all(now) as { id: number; user_id: string; channel_id: string; text: string }[];
   for (const r of dueReminders) {
@@ -97,7 +97,7 @@ export async function runDueTasks(db: SelenaDb, client: Client | null): Promise<
         await (channel as { send: (msg: unknown) => Promise<unknown> }).send({
           content: `<@${r.user_id}> ⏰ Reminder: ${r.text}`,
         });
-        db.prepare("UPDATE reminders SET delivered = 1 WHERE id = ?").run(r.id);
+        await db.prepare("UPDATE reminders SET delivered = 1 WHERE id = ?").run(r.id);
       }
     } catch (e) {
       console.error(`Selena: failed to deliver reminder #${r.id}:`, e instanceof Error ? e.message : e);
@@ -105,18 +105,18 @@ export async function runDueTasks(db: SelenaDb, client: Client | null): Promise<
   }
 
   // Giveaways
-  const dueGiveaways = db
+  const dueGiveaways = await db
     .prepare("SELECT id, guild_id, channel_id, prize, winners_count FROM giveaways WHERE ended = 0 AND ends_at <= ?")
     .all(now) as { id: number; guild_id: string; channel_id: string; prize: string; winners_count: number }[];
   for (const g of dueGiveaways) {
-    db.prepare("UPDATE giveaways SET ended = 1 WHERE id = ?").run(g.id);
+    await db.prepare("UPDATE giveaways SET ended = 1 WHERE id = ?").run(g.id);
     let winners: string[] = [];
     try {
       // pickWinners lives in the games lib: pickWinners(entries, count).
       const { pickWinners } = (await import("./lib/games.js")) as {
         pickWinners: (entries: readonly string[], count: number) => string[];
       };
-      const entries = db
+      const entries = await db
         .prepare("SELECT user_id FROM giveaway_entries WHERE giveaway_id = ?")
         .all(g.id) as { user_id: string }[];
       winners = entries.length > 0 ? pickWinners(entries.map((e) => e.user_id), g.winners_count) : [];
@@ -152,6 +152,9 @@ export async function start(): Promise<void> {
   }
   const token = process.env.DISCORD_TOKEN!;
   const db = getDb();
+  // Fail fast when the database is unreachable, before logging in.
+  await db.ensureSchema();
+  console.log("Selena: database connected (schema ready).");
   const client = buildClient();
 
   // --- slash command registration (guild-scoped when GUILD_ID is set,
@@ -251,7 +254,7 @@ export async function start(): Promise<void> {
           return;
         }
         // XP: 5–15 per message, 60s per-user cooldown (enforced in awardXp).
-        const result = awardXp(db, guildId, message.author.id, secureInt(5, 16), now);
+        const result = await awardXp(db, guildId, message.author.id, secureInt(5, 16), now);
         if (result.leveledUp) {
           try {
             await message.channel.send(`🎉 <@${message.author.id}> leveled up to **level ${result.newLevel}**!`);
@@ -275,7 +278,7 @@ export async function start(): Promise<void> {
       const guildId = reaction.message.guildId;
       if (!guildId) return;
       const emojiKey = reaction.emoji.id ?? reaction.emoji.name ?? "";
-      const roleId = getReactionRole(db, guildId, reaction.message.id, emojiKey);
+      const roleId = await getReactionRole(db, guildId, reaction.message.id, emojiKey);
       if (!roleId) return;
       const guild = await client.guilds.fetch(guildId);
       const member = await guild.members.fetch(userId);
@@ -294,9 +297,9 @@ export async function start(): Promise<void> {
       const guildId = reaction.message.guildId;
       if (guildId) {
         const stars = reaction.count ?? 1;
-        const check = checkStarboard(db, guildId, reaction.message.id, stars);
+        const check = await checkStarboard(db, guildId, reaction.message.id, stars);
         if (check.shouldPost) {
-          const settings = db.prepare("SELECT starboard_channel_id FROM guild_settings WHERE guild_id = ?").get(guildId) as
+          const settings = await db.prepare("SELECT starboard_channel_id FROM guild_settings WHERE guild_id = ?").get(guildId) as
             | { starboard_channel_id: string | null }
             | undefined;
           if (settings?.starboard_channel_id) {
@@ -311,7 +314,7 @@ export async function start(): Promise<void> {
                   embeds: [embed],
                   content: `https://discord.com/channels/${guildId}/${msg.channelId}/${msg.id}`,
                 })) as { id: string };
-                db.prepare("UPDATE starboard_posts SET starboard_message_id = ? WHERE guild_id = ? AND message_id = ?").run(
+                await db.prepare("UPDATE starboard_posts SET starboard_message_id = ? WHERE guild_id = ? AND message_id = ?").run(
                   sent.id,
                   guildId,
                   msg.id,

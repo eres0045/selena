@@ -91,9 +91,9 @@ export interface AwardXpResult {
   awarded: number;
 }
 
-function ensureUser(db: SelenaDb, guildId: string, userId: string): { xp: number; level: number } {
-  db.prepare("INSERT OR IGNORE INTO users (guild_id, user_id) VALUES (?, ?)").run(guildId, userId);
-  const row = db.prepare("SELECT xp, level FROM users WHERE guild_id = ? AND user_id = ?").get(guildId, userId) as
+async function ensureUser(db: SelenaDb, guildId: string, userId: string): Promise<{ xp: number; level: number }> {
+  await db.prepare("INSERT OR IGNORE INTO users (guild_id, user_id) VALUES (?, ?)").run(guildId, userId);
+  const row = await db.prepare("SELECT xp, level FROM users WHERE guild_id = ? AND user_id = ?").get(guildId, userId) as
     | { xp: number; level: number }
     | undefined;
   return { xp: Number(row?.xp ?? 0), level: Number(row?.level ?? 0) };
@@ -103,8 +103,8 @@ function ensureUser(db: SelenaDb, guildId: string, userId: string): { xp: number
  * Award XP to a user. Returns whether they levelled up and their new level.
  * Awards are ignored while the user is inside their 60s cooldown window.
  */
-export function awardXp(db: SelenaDb, guildId: string, userId: string, amount: number, nowMs: number): AwardXpResult {
-  const current = ensureUser(db, guildId, userId);
+export async function awardXp(db: SelenaDb, guildId: string, userId: string, amount: number, nowMs: number): Promise<AwardXpResult> {
+  const current = await ensureUser(db, guildId, userId);
   const key = `${guildId}:${userId}`;
   const last = lastAward.get(key);
   if (last !== undefined && nowMs - last < XP_COOLDOWN_MS) {
@@ -114,13 +114,13 @@ export function awardXp(db: SelenaDb, guildId: string, userId: string, amount: n
   const xp = current.xp + awarded;
   const newLevel = levelFromXp(xp);
   lastAward.set(key, nowMs);
-  db.prepare("UPDATE users SET xp = ?, level = ? WHERE guild_id = ? AND user_id = ?").run(xp, newLevel, guildId, userId);
+  await db.prepare("UPDATE users SET xp = ?, level = ? WHERE guild_id = ? AND user_id = ?").run(xp, newLevel, guildId, userId);
   return { leveledUp: newLevel > current.level, newLevel, xp, awarded };
 }
 
 /** Read a user's stored XP/level (0/0 when they have no row yet). */
-export function getUserXp(db: SelenaDb, guildId: string, userId: string): { xp: number; level: number } {
-  const row = db
+export async function getUserXp(db: SelenaDb, guildId: string, userId: string): Promise<{ xp: number; level: number }> {
+  const row = await db
     .prepare("SELECT xp, level FROM users WHERE guild_id = ? AND user_id = ?")
     .get(guildId, userId) as { xp: number; level: number } | undefined;
   return { xp: Number(row?.xp ?? 0), level: Number(row?.level ?? 0) };

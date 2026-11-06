@@ -135,16 +135,16 @@ export interface StarboardCheck {
   stars: number;
 }
 
-export function checkStarboard(db: SelenaDb, guildId: string, messageId: string, starCount: number): StarboardCheck {
-  const settings = db
+export async function checkStarboard(db: SelenaDb, guildId: string, messageId: string, starCount: number): Promise<StarboardCheck> {
+  const settings = await db
     .prepare("SELECT starboard_threshold FROM guild_settings WHERE guild_id = ?")
     .get(guildId) as { starboard_threshold: number | null } | undefined;
   const threshold = Number(settings?.starboard_threshold ?? 3);
-  const existing = db
+  const existing = await db
     .prepare("SELECT starboard_message_id, stars FROM starboard_posts WHERE guild_id = ? AND message_id = ?")
     .get(guildId, messageId) as { starboard_message_id: string | null; stars: number } | undefined;
 
-  db.prepare(
+  await db.prepare(
     `INSERT INTO starboard_posts (guild_id, message_id, starboard_message_id, stars)
      VALUES (?, ?, ?, ?)
      ON CONFLICT(guild_id, message_id) DO UPDATE SET stars = excluded.stars`,

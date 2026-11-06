@@ -30,7 +30,7 @@ import { commands } from "../src/commands/fun.js";
 
 let db: SelenaDb;
 
-beforeEach(() => {
+beforeEach(async () => {
   db = getTestDb();
 });
 
@@ -74,11 +74,11 @@ function replyText(fake: FakeChatInput): string {
 // ---------------------------------------------------------------------------
 
 describe("eightBall", () => {
-  it("returns an answer from the classic list", () => {
+  it("returns an answer from the classic list", async () => {
     expect(EIGHTBALL_ANSWERS).toContain(eightBall());
   });
 
-  it("is deterministic with a seeded rand", () => {
+  it("is deterministic with a seeded rand", async () => {
     const a = eightBall(mulberry32(42));
     const b = eightBall(mulberry32(42));
     expect(a).toBe(b);
@@ -91,22 +91,22 @@ describe("eightBall", () => {
 // ---------------------------------------------------------------------------
 
 describe("shipCompatibility", () => {
-  it("is deterministic for the same pair", () => {
+  it("is deterministic for the same pair", async () => {
     expect(shipCompatibility("u1", "u2")).toEqual(shipCompatibility("u1", "u2"));
   });
 
-  it("is symmetric regardless of order", () => {
+  it("is symmetric regardless of order", async () => {
     expect(shipCompatibility("u1", "u2").percent).toBe(shipCompatibility("u2", "u1").percent);
   });
 
-  it("varies across different pairs", () => {
+  it("varies across different pairs", async () => {
     const percents = new Set(
       ["a", "b", "c", "d", "e", "f", "g", "h"].map((x, i) => shipCompatibility(x, `other-${i}`).percent),
     );
     expect(percents.size).toBeGreaterThan(3);
   });
 
-  it("stays within 0-100 with a label", () => {
+  it("stays within 0-100 with a label", async () => {
     const { percent, label } = shipCompatibility("u1", "u2");
     expect(percent).toBeGreaterThanOrEqual(0);
     expect(percent).toBeLessThanOrEqual(100);
@@ -115,15 +115,15 @@ describe("shipCompatibility", () => {
 });
 
 describe("rateThing", () => {
-  it("is deterministic per (thing, user)", () => {
+  it("is deterministic per (thing, user)", async () => {
     expect(rateThing("Selena", "user-1")).toBe(rateThing("Selena", "user-1"));
   });
 
-  it("is case-insensitive for the thing", () => {
+  it("is case-insensitive for the thing", async () => {
     expect(rateThing("Selena", "user-1")).toBe(rateThing("selena", "user-1"));
   });
 
-  it("varies across different things and users", () => {
+  it("varies across different things and users", async () => {
     const values = new Set(
       ["selena", "pizza", "mondays", "ranked", "turtle", "coffee"].map((t) => rateThing(t, "user-1")),
     );
@@ -137,21 +137,21 @@ describe("rateThing", () => {
 // ---------------------------------------------------------------------------
 
 describe("uwuify", () => {
-  it("turns r/l into w", () => {
+  it("turns r/l into w", async () => {
     expect(uwuify("Hello")).toMatch(/^Hewwo/);
     expect(uwuify("Really cool")).toMatch(/^Weawwy coow/);
   });
 
-  it('turns "ove" into "uv"', () => {
+  it('turns "ove" into "uv"', async () => {
     expect(uwuify("love")).toMatch(/^wuv/);
   });
 
-  it("adds a cute suffix", () => {
+  it("adds a cute suffix", async () => {
     const out = uwuify("hello");
     expect([" uwu", " owo", " :3", " nya~", " uwu~"].some((s) => out.endsWith(s))).toBe(true);
   });
 
-  it("is deterministic", () => {
+  it("is deterministic", async () => {
     expect(uwuify("hello there")).toBe(uwuify("hello there"));
   });
 });
@@ -161,7 +161,7 @@ describe("uwuify", () => {
 // ---------------------------------------------------------------------------
 
 describe("generateMeme / memeDescription", () => {
-  it("returns a template, caption slots and a known effect", () => {
+  it("returns a template, caption slots and a known effect", async () => {
     const meme = generateMeme(mulberry32(7));
     expect(meme.template.name.length).toBeGreaterThan(0);
     expect(meme.topText.length).toBeGreaterThan(0);
@@ -169,14 +169,14 @@ describe("generateMeme / memeDescription", () => {
     expect(Object.keys(MEME_EFFECTS)).toContain(meme.effect);
   });
 
-  it("honours explicit top/bottom/effect overrides", () => {
+  it("honours explicit top/bottom/effect overrides", async () => {
     const meme = generateMeme(mulberry32(7), { topText: "TOP", bottomText: "BOTTOM", effect: "wasted" });
     expect(meme.topText).toBe("TOP");
     expect(meme.bottomText).toBe("BOTTOM");
     expect(meme.effect).toBe("wasted");
   });
 
-  it("says honestly that image rendering is unavailable", () => {
+  it("says honestly that image rendering is unavailable", async () => {
     const text = memeDescription(generateMeme(mulberry32(7)));
     expect(text).toMatch(/image rendering is unavailable/i);
     expect(text).not.toMatch(/https?:\/\//);
@@ -188,8 +188,8 @@ describe("generateMeme / memeDescription", () => {
 // ---------------------------------------------------------------------------
 
 describe("getProfileData", () => {
-  it("returns zeros and nulls for an unknown user", () => {
-    const p = getProfileData(db, "guild-1", "ghost");
+  it("returns zeros and nulls for an unknown user", async () => {
+    const p = await getProfileData(db, "guild-1", "ghost");
     expect(p.points).toBe(0);
     expect(p.xp).toBe(0);
     expect(p.level).toBe(0);
@@ -197,26 +197,26 @@ describe("getProfileData", () => {
     expect(p.favouriteHero).toBeNull();
   });
 
-  it("reads points/xp/level, tryout IGN/rank and favourite hero", () => {
-    db.prepare("INSERT INTO users (guild_id, user_id, points, xp, level) VALUES (?, ?, ?, ?, ?)").run(
+  it("reads points/xp/level, tryout IGN/rank and favourite hero", async () => {
+    await db.prepare("INSERT INTO users (guild_id, user_id, points, xp, level) VALUES (?, ?, ?, ?, ?)").run(
       "guild-1",
       "user-1",
       150,
       40,
       2,
     );
-    db.prepare("INSERT INTO users (guild_id, user_id, points, xp, level) VALUES (?, ?, ?, ?, ?)").run(
+    await db.prepare("INSERT INTO users (guild_id, user_id, points, xp, level) VALUES (?, ?, ?, ?, ?)").run(
       "guild-1",
       "user-2",
       300,
       0,
       0,
     );
-    db.prepare(
+    await db.prepare(
       "INSERT INTO tryouts (guild_id, user_id, ign, role, rank_name, heroes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
     ).run("guild-1", "user-1", "Eres", "Mid", "Mythic", "Selena,Kagura", Date.now());
 
-    const p = getProfileData(db, "guild-1", "user-1");
+    const p = await getProfileData(db, "guild-1", "user-1");
     expect(p.points).toBe(150);
     expect(p.xp).toBe(40);
     expect(p.level).toBe(2);
@@ -345,7 +345,7 @@ describe("/uwu command", () => {
 
 describe("/profile command", () => {
   it("shows points, XP, level and rank from the DB", async () => {
-    db.prepare("INSERT INTO users (guild_id, user_id, points, xp, level) VALUES (?, ?, ?, ?, ?)").run(
+    await db.prepare("INSERT INTO users (guild_id, user_id, points, xp, level) VALUES (?, ?, ?, ?, ?)").run(
       "guild-1",
       "user-1",
       250,
