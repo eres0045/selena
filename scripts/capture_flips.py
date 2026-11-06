@@ -9,8 +9,8 @@ Usage:
 Output: assets/cards/flips/<CODE>.gif, e.g. AS.gif, 10H.gif, KD.gif.
 The GIFs are the source of the animated cards Selena attaches to
 /blackjack and /highlow replies (Discord cannot render the HTML itself).
-Captures run at 2x resolution (300px wide) so the later downscale to
-the ~100px cards stays crisp ("4k" sharp, not blurry). Screenshots use
+Captures run at 4x resolution (600px wide) so the later downscale to
+the ~50px cards stays crisp ("4k" sharp, not blurry). Screenshots use
 omit_background, so the card's rounded corners are TRANSPARENT — no
 green felt box around the card. After capturing, run
 scripts/resize_flips.py to shrink them.
@@ -37,12 +37,19 @@ SUITS = ["S", "H", "D", "C"]
 SUIT_NAMES = {"S": "spades", "H": "hearts", "D": "diamonds", "C": "clubs"}
 
 CARD_WIDTH_PX = 150
-CAPTURE_SCALE = 2       # device_scale_factor: screenshots come out at
-                        # 300x420 so the downscale to 100px stays sharp
-FRAMES = 12            # t=0 (back) + 11 during the 950 ms flip
-INTERVAL_S = 0.01     # element screenshots take ~90 ms each, so the
-                      # effective interval is ~100 ms — about 10 distinct
-                      # frames across the flip
+CAPTURE_SCALE = 4       # device_scale_factor: screenshots come out at
+                        # 600x840 so the downscale to 50px stays sharp
+FRAMES = 12            # t=0 (back) + 11 during the flip. At 4x an element
+                        # screenshot takes ~0.5 s, so the flip is slowed
+                        # to 3.5 s for capture (see flip(FLIP_MS) below) —
+                        # otherwise the 950 ms flip would be over after
+                        # ~2 shots and the GIF would have ~4 frames.
+                        # Playback stays ~95 ms/frame, so the GIF still
+                        # plays at about the real flip speed in Discord.
+FLIP_MS = 3500          # flip duration for capture only (real flip: 950 ms)
+INTERVAL_S = 0.01     # element screenshots take ~0.5 s each at 4x, so the
+                      # effective interval is ~0.5 s — about 8 distinct
+                      # frames across the slowed flip
 FRAME_MS = 95         # per-frame GIF duration ≈ the real capture interval
 
 
@@ -60,7 +67,10 @@ def capture_codes(page, codes: list[str], outdir: Path) -> None:
             page.evaluate("window.__card.hide()")
             page.wait_for_timeout(1100)
         frames: list[bytes] = [loc.screenshot(omit_background=True)]  # t=0: the back
-        page.evaluate("window.__card.flip(); 'go'")
+        # flip() takes a duration (default 950 ms); slow it to FLIP_MS
+        # for capture so the ~0.5 s 4x screenshots catch the whole flip.
+        # The trailing 'go' keeps evaluate from awaiting the promise.
+        page.evaluate(f"window.__card.flip({FLIP_MS}); 'go'")
         for _ in range(FRAMES - 1):
             time.sleep(INTERVAL_S)
             frames.append(loc.screenshot(omit_background=True))
@@ -77,9 +87,16 @@ def capture_codes(page, codes: list[str], outdir: Path) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", help="capture a single code, e.g. AS")
+    ap.add_argument("--codes", help="capture a comma-separated list, e.g. 7H,8H,9H")
     ap.add_argument("--out", default=str(OUT))
     args = ap.parse_args()
-    codes = [args.only] if args.only else [r + s for s in SUITS for r in RANKS]
+    codes = (
+        [args.only]
+        if args.only
+        else args.codes.split(",")
+        if args.codes
+        else [r + s for s in SUITS for r in RANKS]
+    )
     outdir = Path(args.out)
     outdir.mkdir(parents=True, exist_ok=True)
 

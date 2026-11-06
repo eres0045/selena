@@ -376,7 +376,13 @@ describe("/blackjack command", () => {
     expect(edit).toBeDefined();
     const payload = edit!.payload as {
       files?: Array<{ name?: string | null }>;
-      embeds?: Array<{ image?: { url?: string }; color?: number }>;
+      embeds?: Array<{
+        image?: { url?: string };
+        color?: number;
+        description?: string | null;
+        fields?: unknown[];
+        footer?: { text?: string };
+      }>;
     };
     // OwO-style: exactly one embed, one small strip GIF, blue while playing.
     expect(payload.embeds?.length).toBe(1);
@@ -385,6 +391,12 @@ describe("/blackjack command", () => {
     expect(gifFiles[0]?.name).toBe("hand.gif");
     expect(payload.embeds?.[0]?.image?.url).toBe("attachment://hand.gif");
     expect(payload.embeds?.[0]?.color).toBe(0x5865f2);
+    // The image explains itself (labels + totals in-strip): nothing sits
+    // above the cards, and the bet/result line is in the footer below.
+    expect(payload.embeds?.[0]?.description).toBeFalsy();
+    expect(payload.embeds?.[0]?.fields).toBeUndefined();
+    expect(payload.embeds?.[0]?.footer?.text).toMatch(/Bet 100 · /);
+    expect(payload.embeds?.[0]?.footer?.text).toMatch(/Balance [\d,]+ points/);
   });
 });
 
@@ -524,7 +536,13 @@ describe("/highlow command", () => {
     expect(edit).toBeDefined();
     const payload = edit!.payload as {
       files?: Array<{ name?: string | null }>;
-      embeds?: Array<{ image?: { url?: string }; color?: number }>;
+      embeds?: Array<{
+        image?: { url?: string };
+        color?: number;
+        description?: string | null;
+        fields?: unknown[];
+        footer?: { text?: string };
+      }>;
     };
     expect(payload.embeds?.length).toBe(1);
     const gifFiles = (payload.files ?? []).filter((f) => f.name?.endsWith(".gif"));
@@ -533,6 +551,11 @@ describe("/highlow command", () => {
     expect(payload.embeds?.[0]?.image?.url).toBe("attachment://hand.gif");
     // Green win / red loss / gray push.
     expect([0x2ecc71, 0xe74c3c, 0x95a5a6]).toContain(payload.embeds?.[0]?.color);
+    // Nothing above the cards; the bet/guess/result line is in the footer.
+    expect(payload.embeds?.[0]?.description).toBeFalsy();
+    expect(payload.embeds?.[0]?.fields).toBeUndefined();
+    expect(payload.embeds?.[0]?.footer?.text).toMatch(/Bet 100 · You guessed higher · /);
+    expect(payload.embeds?.[0]?.footer?.text).toMatch(/Balance [\d,]+ points/);
   });
 
   it("error path: bet of 0 is rejected", async () => {

@@ -39,22 +39,23 @@ def _rounded_rect_mask(size: tuple[int, int]) -> Image.Image:
     return mask
 
 
-def save_play_once_gif(
+def save_transparent_gif(
     frames: list[Image.Image],
     dest: Path,
     duration_ms: int,
 ) -> None:
-    """Save RGBA frames as a play-once GIF with a transparent background."""
+    """Save RGBA frames as a play-once GIF with a transparent background.
+
+    No loop extension (plays exactly once) and GIF 1-bit transparency
+    (index 0 = magenta, never a real colour): pixels with alpha < 128
+    become index 0, everything else is quantized against one shared
+    255-colour palette built from the first and last frames, then
+    shifted to indices 1..255.
+    """
     if not frames:
         raise ValueError("no frames to save")
     w, h = frames[0].size
     rgba = [f.convert("RGBA") for f in frames]
-    # Force the rounded corners transparent in every frame (see above).
-    corner_mask = _rounded_rect_mask((w, h))
-    rgba = [
-        Image.composite(f, Image.new("RGBA", (w, h), (0, 0, 0, 0)), corner_mask)
-        for f in rgba
-    ]
 
     # One shared palette from the back (frame 0) and face (last frame).
     combo = Image.new("RGB", (w * 2, h))
@@ -88,3 +89,22 @@ def save_play_once_gif(
         transparency=0,
         optimize=False,
     )
+
+
+def save_play_once_gif(
+    frames: list[Image.Image],
+    dest: Path,
+    duration_ms: int,
+) -> None:
+    """Save RGBA frames as a play-once GIF with a transparent background."""
+    if not frames:
+        raise ValueError("no frames to save")
+    w, h = frames[0].size
+    rgba = [f.convert("RGBA") for f in frames]
+    # Force the rounded corners transparent in every frame (see above).
+    corner_mask = _rounded_rect_mask((w, h))
+    rgba = [
+        Image.composite(f, Image.new("RGBA", (w, h), (0, 0, 0, 0)), corner_mask)
+        for f in rgba
+    ]
+    save_transparent_gif(rgba, dest, duration_ms)

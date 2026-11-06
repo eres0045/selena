@@ -11,12 +11,14 @@ import { dirname, resolve } from "node:path";
  * each card's 3D flip (back -> flip -> face) is captured as an animated
  * GIF in assets/cards/flips/<CODE>.gif. The bot attaches those GIFs to
  * its replies; the HTML file stays in the repo as the source of the GIFs.
- * The GIFs are shrunk to ~100px-wide cards by scripts/resize_flips.py,
- * then composed into one wide (~560px) transparent strip per game by
- * src/lib/handstrip.ts — small on screen AND sharp, because Discord
- * displays the wide strip near its native size instead of upscaling a
- * narrow image. The GIFs play ONCE and stop on the face (no loop
- * extension), and the card corners are transparent (no felt box).
+ * The GIFs are shrunk to ~50px-wide cards by scripts/resize_flips.py,
+ * then composed into one half-size (~280px) transparent strip per game
+ * by src/lib/handstrip.ts — small on screen AND sharp, because the
+ * cards are rendered at 4x and Lanczos-downscaled. The GIFs play ONCE
+ * and stop on the face (no loop extension), and the card corners are
+ * transparent (no felt box). Row labels ("DEALER" / "YOU" + totals) are
+ * separate sprites in assets/cards/labels/, rendered by
+ * scripts/render_labels.py and pasted into the strip by handstrip.ts.
  */
 
 export const CARD_SUITS = ["S", "H", "D", "C"] as const;
@@ -51,4 +53,13 @@ export function flipGifPath(code: string): string {
 
 export function flipGifExists(code: string): boolean {
   return existsSync(flipGifPath(code));
+}
+
+/** Absolute path of a label sprite GIF ("word-dealer", "digit-2", ...). */
+export function labelGifPath(name: string): string {
+  return resolve(cardsAssetDir(), "labels", `${name}.gif`);
+}
+
+export function labelGifExists(name: string): boolean {
+  return existsSync(labelGifPath(name));
 }

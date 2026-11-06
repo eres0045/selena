@@ -49,12 +49,12 @@ describe("animated flip GIFs (rendered from Ronit's playing-cards.html)", () => 
     }
   });
 
-  it("every GIF is a real animated GIF, 100x140, under 1 MB", () => {
+  it("every GIF is a real animated GIF, 50x70, under 1 MB", () => {
     for (const code of FLIP_CODES) {
       const buf = readFileSync(flipGifPath(code));
       expect(buf.subarray(0, 6).toString("ascii")).toBe("GIF89a");
-      expect(buf.readUInt16LE(6)).toBe(100);
-      expect(buf.readUInt16LE(8)).toBe(140);
+      expect(buf.readUInt16LE(6)).toBe(50);
+      expect(buf.readUInt16LE(8)).toBe(70);
       expect(gifFrameCount(buf)).toBeGreaterThanOrEqual(7);
       expect(statSync(flipGifPath(code)).size).toBeLessThan(1_000_000);
     }
@@ -84,18 +84,26 @@ describe("animated flip GIFs (rendered from Ronit's playing-cards.html)", () => 
 
   it("every flip GIF starts on the card back and ends settled on the face", () => {
     // Spot-check: the last frame is the face, not the back (huge
-    // difference from frame 0), the motion is converging (the last step
-    // moves less than the first step), and the last frame shows the full
-    // card face (opaque-pixel fraction near the card's area, not the
-    // thin sliver of a mid-flip edge-on frame).
+    // difference from frame 0), the motion settles toward the end (the
+    // final step is far smaller than the peak mid-flip step and moves
+    // less than a third of the pixels), and the last frame shows the
+    // full card face (opaque-pixel fraction near the card's area, not
+    // the thin sliver of a mid-flip edge-on frame).
+    // NOTE: the last step is NOT compared to the first step — the flip's
+    // easing starts slow, so the first step is tiny by design.
     for (const code of ["AS", "10H", "KD"]) {
       const { frames } = decodeGifFrames(readFileSync(flipGifPath(code)));
       const first = frames[0] as Buffer;
       const last = frames[frames.length - 1] as Buffer;
-      const prev = frames[frames.length - 2] as Buffer;
-      const second = frames[1] as Buffer;
+      const steps: number[] = [];
+      for (let i = 1; i < frames.length; i++) {
+        steps.push(frameDiffFraction(frames[i - 1] as Buffer, frames[i] as Buffer));
+      }
+      const lastStep = steps[steps.length - 1] as number;
+      const peakStep = Math.max(...steps);
       expect(frameDiffFraction(first, last)).toBeGreaterThan(0.2);
-      expect(frameDiffFraction(prev, last)).toBeLessThan(frameDiffFraction(first, second));
+      expect(lastStep).toBeLessThan(peakStep * 0.6);
+      expect(lastStep).toBeLessThan(0.3);
       const opaque = (f: Buffer): number => {
         let n = 0;
         for (let i = 3; i < f.length; i += 4) if (f[i] === 255) n++;

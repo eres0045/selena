@@ -64,11 +64,6 @@ async function readBet(interaction: Interaction): Promise<number | null> {
   return bet;
 }
 
-function handText(hand: string[], hideSecond = false): string {
-  if (hideSecond && hand.length > 1) return `${hand[0]} ❓ (${blackjackValue([hand[0] as string])}+?)`;
-  return `${hand.join(" ")} (**${blackjackValue(hand)}**)`;
-}
-
 function bjButtons(gameId: string): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`selena:bj:${gameId}:hit`).setLabel("Hit").setStyle(ButtonStyle.Primary),
@@ -98,42 +93,47 @@ export function bjOutcomeOf(settled: { outcome: string }): BjOutcome {
   return "lose";
 }
 
+/**
+ * The blackjack embed carries NO description and NO fields: embed text
+ * always renders ABOVE the image and reads badly. The hands — with their
+ * labels and totals — live in the strip image itself, and the bet/result
+ * line lives in the FOOTER (below the image).
+ */
 function bjEmbed(
   game: BlackjackGame,
-  opts: { over: boolean; outcome: BjOutcome; note?: string },
+  opts: { over: boolean; outcome: BjOutcome; footerLine: string },
+  balance: number,
 ): ReturnType<typeof pointsEmbed> {
-  const player = blackjackValue(game.playerHand);
-  const dealer = blackjackValue(game.dealerHand);
   const title = opts.over ? "🃏 Blackjack — Finished" : "🃏 Blackjack";
-  const description =
-    `**Your hand:** ${handText(game.playerHand)}\n` +
-    `**Dealer:** ${opts.over ? handText(game.dealerHand) : handText(game.dealerHand, true)}\n` +
-    (opts.note ? `\n${opts.note}` : "");
-  return pointsEmbed(title, description)
+  return pointsEmbed(title, "")
     .setColor(BJ_COLORS[opts.outcome])
-    .addFields(
-      { name: "Bet", value: fmt(game.bet), inline: true },
-      { name: "Your total", value: String(player), inline: true },
-      { name: "Dealer total", value: opts.over ? String(dealer) : "?", inline: true },
-    );
+    .setFooter({
+      text: `Bet ${fmt(game.bet)} · ${opts.footerLine} · Balance ${fmt(balance)} points`,
+    });
 }
 
 /**
- * One compact OwO-style embed for a blackjack game state: a single wide
- * strip image (dealer row on top, player row below, ~100px per card,
- * ~560px-wide file, transparent background) with the newly dealt cards
- * flipping. The dealer's hole card stays face-down until the hand is
- * over. When a card has no rendered flip GIF the strip cannot be built
+ * One compact OwO-style embed for a blackjack game state: a single small
+ * strip image (dealer row on top, player row below, ~50px per card,
+ * ~280px-wide file, transparent background) with the newly dealt cards
+ * flipping — each row labelled in-image ("DEALER 17" / "YOU 15", "?" for
+ * the dealer's total while the hole card is hidden). The dealer's hole
+ * card stays face-down until the hand is over. When a card has no
+ * rendered flip GIF (or a label no sprite) the strip cannot be built
  * and the reply falls back to the text-only embed.
  */
 async function bjReplyPayload(
   game: BlackjackGame,
-  opts: { over: boolean; outcome: BjOutcome; note?: string },
+  opts: { over: boolean; outcome: BjOutcome; footerLine: string },
+  ctx: CommandContext,
 ): Promise<{
   embeds: APIEmbed[];
   files: AttachmentBuilder[];
 }> {
-  const embed = bjEmbed(game, opts);
+  const balance = getBalance(ctx.db, game.guildId, game.userId).points;
+  const embed = bjEmbed(game, opts, balance);
+  const player = blackjackValue(game.playerHand);
+  const dealer = blackjackValue(game.dealerHand);
   const freshDeal = !opts.over && game.playerHand.length === 2;
   const dealerRow: StripCard[] = game.dealerHand.map((code, i) => ({
     code,
@@ -144,7 +144,13 @@ async function bjReplyPayload(
     code,
     animate: !opts.over && (freshDeal || i === game.playerHand.length - 1),
   }));
-  const strip = await composeHandStrip([dealerRow, playerRow]);
+  const strip = await composeHandStrip(
+    [dealerRow, playerRow],
+    [
+      { title: "DEALER", value: opts.over ? String(dealer) : "?" },
+      { title: "YOU", value: String(player) },
+    ],
+  );
   if (!strip) return { embeds: [embed.toJSON()], files: [] };
   embed.setImage("attachment://hand.gif");
   return {
@@ -236,17 +242,17 @@ export const commands: Command[] = [
         const winAmount = Math.floor(bet * settled.multiplier);
         if (winAmount > 0) creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "blackjack win");
         endBlackjackGame(game.id);
-        const note =
+        const footerLine =
           settled.outcome === "player_blackjack"
-            ? `🎉 **Blackjack!** You won **${fmt(winAmount)} points** (3:2).`
-            : `Both you and the dealer have blackjack — push, your **${fmt(bet)} points** are returned.`;
+            ? `🎉 Blackjack! You won ${fmt(winAmount)} points (3:2).`
+            : `Both you and the dealer have blackjack — push, your ${fmt(bet)} points are returned.`;
         await interaction.editReply(
-          await bjReplyPayload(game, { over: true, outcome: bjOutcomeOf(settled), note }),
+          await bjReplyPayload(game, { over: true, outcome: bjOutcomeOf(settled), footerLine }, ctx),
         );
         return;
       }
       const replyMsg = (await interaction.editReply({
-        ...(await bjReplyPayload(game, { over: false, outcome: "playing", note: "Hit or Stand?" })),
+        ...(await bjReplyPayload(game, { over: false, outcome: "playing", footerLine: "Hit or Stand?" }, ctx)),
         components: [bjButtons(game.id)],
       })) as unknown as { id?: string } | undefined;
       if (replyMsg && typeof replyMsg.id === "string") {
@@ -385,9 +391,9 @@ export const commands: Command[] = [
       const balance = getBalance(ctx.db, ctx.guildId, interaction.user.id).points;
       const outcome =
         result.outcome === "win"
-          ? `🎉 You won **${fmt(winAmount)} points** (1.9x)!`
+          ? `You won ${fmt(winAmount)} points (1.9x)!`
           : result.outcome === "push"
-            ? `Tie — your **${fmt(bet)} points** are returned.`
+            ? `Tie — your ${fmt(bet)} points are returned.`
             : "Wrong guess — you lost this round.";
       // Display suits are random (the draw is rank-only); the two codes
       // must differ so the same physical card never shows twice.
@@ -398,27 +404,26 @@ export const commands: Command[] = [
       }
       const cardCode = `${highLowRankName(card)}${cardSuit}`;
       const nextCode = `${highLowRankName(next)}${nextSuit}`;
-      // One compact embed: a single small strip with the first card face-up
-      // and the next card flipping in. Outcome colours match OwO: green on
-      // a win, red on a loss, gray on a push.
+      // One compact embed: no description above the image (it reads
+      // badly) — the two cards are labelled in-image ("FIRST 12" /
+      // "NEXT 10", two rows so each card has its own label) and the
+      // bet/guess/result line sits in the footer, below the image.
+      // Outcome colours match OwO: green on a win, red on a loss, gray
+      // on a push.
       const hlColor =
         result.outcome === "win" ? BJ_COLORS.win : result.outcome === "push" ? BJ_COLORS.push : BJ_COLORS.lose;
-      const embed = pointsEmbed(
-        "🔼🔽 High / Low",
-        `First card: **${card}** → next card: **${next}**\nYou guessed **${guess}**.\n\n${outcome}`,
-      )
+      const embed = pointsEmbed("🔼🔽 High / Low", "")
         .setColor(hlColor)
-        .addFields(
-          { name: "Bet", value: fmt(bet), inline: true },
-          { name: "Balance", value: fmt(balance), inline: true },
-        )
-        .setFooter({ text: "Cards 1-13 · win pays 1.9x · tie pushes · house edge ~4.6%. Points only, no real money." });
-      const strip = await composeHandStrip([
+        .setFooter({
+          text: `Bet ${fmt(bet)} · You guessed ${guess} · ${outcome} · Balance ${fmt(balance)} points`,
+        });
+      const strip = await composeHandStrip(
+        [[{ code: cardCode }], [{ code: nextCode, animate: true }]],
         [
-          { code: cardCode },
-          { code: nextCode, animate: true },
+          { title: "FIRST", value: String(card) },
+          { title: "NEXT", value: String(next) },
         ],
-      ]);
+      );
       const files: AttachmentBuilder[] = [];
       if (strip) {
         embed.setImage("attachment://hand.gif");
@@ -503,21 +508,24 @@ async function handleBlackjackButton(interaction: any, ctx: CommandContext): Pro
     const winAmount = Math.floor(game.bet * settled.multiplier);
     if (winAmount > 0) creditWin(ctx.db, ctx.guildId, game.userId, winAmount, "blackjack win");
     endBlackjackGame(game.id);
-    const balance = getBalance(ctx.db, ctx.guildId, game.userId).points;
     const resultNote =
       settled.outcome === "player_blackjack"
-        ? `🎉 **Blackjack!** You won **${fmt(winAmount)} points** (3:2).`
+        ? `🎉 Blackjack! You won ${fmt(winAmount)} points (3:2).`
         : settled.outcome === "win"
-          ? `🎉 You won **${fmt(winAmount)} points**!`
+          ? `You won ${fmt(winAmount)} points!`
           : settled.outcome === "push"
-            ? `Push — your **${fmt(game.bet)} points** are returned.`
-            : `You lost **${fmt(game.bet)} points**.`;
+            ? `Push — your ${fmt(game.bet)} points are returned.`
+            : `You lost ${fmt(game.bet)} points.`;
     await interaction.editReply({
-      ...(await bjReplyPayload(game, {
-        over: true,
-        outcome: bjOutcomeOf(settled),
-        note: `${note}\n${resultNote}\nBalance: **${fmt(balance)} points**`,
-      })),
+      ...(await bjReplyPayload(
+        game,
+        {
+          over: true,
+          outcome: bjOutcomeOf(settled),
+          footerLine: `${note} · ${resultNote}`,
+        },
+        ctx,
+      )),
       components: [],
     });
   };
@@ -526,7 +534,7 @@ async function handleBlackjackButton(interaction: any, ctx: CommandContext): Pro
     const card = game.deck.pop();
     if (card) game.playerHand.push(card);
     if (blackjackValue(game.playerHand) > 21) {
-      await settleAndShow("💥 **Bust!** You went over 21.");
+      await settleAndShow("💥 Bust! You went over 21.");
       return;
     }
     if (blackjackValue(game.playerHand) === 21) {
@@ -535,7 +543,7 @@ async function handleBlackjackButton(interaction: any, ctx: CommandContext): Pro
       return;
     }
     await interaction.editReply({
-      ...(await bjReplyPayload(game, { over: false, outcome: "playing", note: "Hit or Stand?" })),
+      ...(await bjReplyPayload(game, { over: false, outcome: "playing", footerLine: "Hit or Stand?" }, ctx)),
       components: [bjButtons(game.id)],
     });
     return;

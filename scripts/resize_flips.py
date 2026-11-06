@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Shrink the rendered flip GIFs to the cards the bot ships (~100px wide).
+"""Shrink the rendered flip GIFs to the cards the bot ships (~50px wide).
 
-Reads assets/cards/flips/<CODE>.gif (300x420 at 2x capture, 10-12 frames)
-and rewrites each in place at 100x140 with a high-quality Lanczos
+Reads assets/cards/flips/<CODE>.gif (600x840 at 4x capture, 12 frames)
+and rewrites each in place at 50x70 with a high-quality Lanczos
 downscale, so the cards stay crisp instead of blurry. Transparency is
 preserved (the card's rounded corners stay transparent — no felt box),
 and the GIFs play ONCE (no loop extension) — they stop on the face.
 
-Why 100px, not smaller: on a phone Discord upscales a narrow image to
-the full message width, so a smaller file would be stretched MORE and
-look worse. The hand strip is composed wide (~560px) from these 100px
-cards, so Discord displays it near its native size.
+Why 50px, and why the strip is ~280px wide: Ronit wants the whole
+thing half the size of the 560px version. The strip file stays
+proportional to the cards, and the 4x capture (600x840 -> 50x70, a 12x
+downscale) keeps the small cards sharp.
 
-Usage: python3 scripts/resize_flips.py [--width 100]
+Usage: python3 scripts/resize_flips.py [--width 50]
 """
 import argparse
 import sys
@@ -44,7 +44,7 @@ def resize_gif(path: Path, width: int) -> tuple[int, int, int, int]:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--width", type=int, default=100)
+    ap.add_argument("--width", type=int, default=50)
     args = ap.parse_args()
     total = 0
     for path in sorted(FLIPS.glob("*.gif")):
