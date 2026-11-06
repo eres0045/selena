@@ -5,17 +5,22 @@ import { addPoints, getBalance } from "../src/lib/economy.js";
 import {
   blackjackGames,
   blackjackValue,
+  buildDeck,
   coinflipOutcome,
   createBlackjackGame,
   creditWin,
   dealerPlay,
   highlowOutcome,
+  highLowRankName,
   isBlackjack,
   placeBet,
+  randomSuit,
+  rankOf,
   rouletteOutcome,
   scratchOutcome,
   settleBlackjack,
   slotsSpin,
+  suitOf,
 } from "../src/lib/casino.js";
 import { buttonHandlers, commands as casinoCommands } from "../src/commands/casino.js";
 import type { CommandContext } from "../src/lib/command.js";
@@ -79,6 +84,47 @@ describe("slotsSpin", () => {
   it("no match pays 0", () => {
     const r = slotsSpin(seqRand([0.01, 0.2, 0.4])); // 🍒 🍋 🍇
     expect(r.multiplier).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Card codes (rank+suit) — the deck behind the animated flip GIFs
+// ---------------------------------------------------------------------------
+
+describe("card codes", () => {
+  it("buildDeck returns 52 unique rank+suit codes", () => {
+    const deck = buildDeck();
+    expect(deck).toHaveLength(52);
+    expect(new Set(deck).size).toBe(52);
+    for (const code of deck) expect(code).toMatch(/^(A|[2-9]|10|J|Q|K)[SHDC]$/);
+  });
+
+  it("rankOf/suitOf split codes and pass plain ranks through", () => {
+    expect(rankOf("10H")).toBe("10");
+    expect(rankOf("AS")).toBe("A");
+    expect(rankOf("10")).toBe("10");
+    expect(rankOf("K")).toBe("K");
+    expect(suitOf("AS")).toBe("S");
+    expect(suitOf("10")).toBeNull();
+  });
+
+  it("blackjackValue works on full codes", () => {
+    expect(blackjackValue(["AS", "10H"])).toBe(21);
+    expect(blackjackValue(["10D", "KH"])).toBe(20);
+    expect(blackjackValue(["AS", "9C", "5D"])).toBe(15);
+    expect(blackjackValue(["AD", "AC", "9H"])).toBe(21);
+  });
+
+  it("highLowRankName maps 1/11/12/13 to A/J/Q/K", () => {
+    expect(highLowRankName(1)).toBe("A");
+    expect(highLowRankName(11)).toBe("J");
+    expect(highLowRankName(12)).toBe("Q");
+    expect(highLowRankName(13)).toBe("K");
+    expect(highLowRankName(7)).toBe("7");
+  });
+
+  it("randomSuit returns a suit letter", () => {
+    for (let i = 0; i < 20; i++) expect(["S", "H", "D", "C"]).toContain(randomSuit());
   });
 });
 
@@ -314,6 +360,33 @@ describe("/blackjack command", () => {
     expect(fake.allText()).toMatch(/insufficient/i);
     expect(getBalance(db, GUILD, "user-1").points).toBe(50);
   });
+  it("error path: bet of 1 with a 0 balance is rejected and no game starts", async () => {
+    // Fresh user: 0 points, no daily claimed — the exact live-test case.
+    const fake = await run("blackjack", { bet: 1 });
+    expect(fake.allText()).toMatch(/insufficient/i);
+    expect(getBalance(db, GUILD, "user-1").points).toBe(0);
+    expect(blackjackGames.size).toBe(0);
+  });
+
+  it("defers immediately and attaches a flip GIF per card", async () => {
+    seed("user-1", 1000);
+    const fake = await run("blackjack", { bet: 100 });
+    expect(fake.replies[0]?.kind).toBe("deferReply");
+    const edit = fake.replies.find((r) => r.kind === "editReply");
+    expect(edit).toBeDefined();
+    const payload = edit!.payload as {
+      files?: Array<{ name?: string | null }>;
+      embeds?: Array<{ image?: { url?: string } }>;
+    };
+    const gifFiles = (payload.files ?? []).filter((f) => f.name?.endsWith(".gif"));
+    // 2 player cards + dealer up-card (hole card is the static back.png).
+    expect(gifFiles.length).toBeGreaterThanOrEqual(3);
+    const gifEmbeds = (payload.embeds ?? []).filter(
+      (e) => e.image?.url?.startsWith("attachment://") && e.image.url.endsWith(".gif"),
+    );
+    expect(gifEmbeds.length).toBe(gifFiles.length);
+    expect(payload.embeds?.length).toBeLessThanOrEqual(10);
+  });
 });
 
 describe("blackjack button flow", () => {
@@ -432,6 +505,24 @@ describe("/highlow command", () => {
     const fake = await run("highlow", { bet: 100, guess: "higher" });
     expect(fake.allText()).toMatch(/High \/ Low/);
     expect(getBalance(db, GUILD, "user-1").points).toBeGreaterThanOrEqual(0);
+  });
+
+  it("defers immediately and attaches a flip GIF for each card", async () => {
+    seed("user-1", 1000);
+    const fake = await run("highlow", { bet: 100, guess: "higher" });
+    expect(fake.replies[0]?.kind).toBe("deferReply");
+    const edit = fake.replies.find((r) => r.kind === "editReply");
+    expect(edit).toBeDefined();
+    const payload = edit!.payload as {
+      files?: Array<{ name?: string | null }>;
+      embeds?: Array<{ image?: { url?: string } }>;
+    };
+    const gifFiles = (payload.files ?? []).filter((f) => f.name?.endsWith(".gif"));
+    expect(gifFiles.length).toBe(2);
+    const gifEmbeds = (payload.embeds ?? []).filter(
+      (e) => e.image?.url?.startsWith("attachment://") && e.image.url.endsWith(".gif"),
+    );
+    expect(gifEmbeds.length).toBe(2);
   });
 
   it("error path: bet of 0 is rejected", async () => {

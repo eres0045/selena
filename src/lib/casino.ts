@@ -1,6 +1,7 @@
 import type { SelenaDb } from "./db.js";
 import { secureFloat, secureInt, weightedPick } from "./rng.js";
 import { addPoints, getBalance } from "./economy.js";
+import { CARD_RANKS, CARD_SUITS } from "./cards.js";
 
 /**
  * Casino — points-only gambling, no real money.
@@ -104,19 +105,51 @@ export function slotsSpin(rand: () => number = secureFloat): SlotsResult {
 // Blackjack
 // ---------------------------------------------------------------------------
 
-export type BlackjackHand = string[]; // ranks: "A", "2".."10", "J", "Q", "K"
+export type BlackjackHand = string[]; // card codes: "AS", "10H", "KD" (plain ranks also accepted)
+
+export const BLACKJACK_RANKS: readonly string[] = CARD_RANKS;
+
+/**
+ * Rank part of a card. Accepts full codes ("AS", "10H") and plain ranks
+ * ("A", "10") — the plain-rank form is what older hands/tests use.
+ */
+export function rankOf(card: string): string {
+  if ((CARD_RANKS as readonly string[]).includes(card)) return card;
+  return card.slice(0, -1);
+}
+
+/** Suit letter of a full card code ("AS" -> "S"), or null for a plain rank. */
+export function suitOf(card: string): string | null {
+  if ((CARD_RANKS as readonly string[]).includes(card)) return null;
+  return card.slice(-1);
+}
+
+/** A random suit letter, for display-only suits (high/low draws rank only). */
+export function randomSuit(rand: () => number = secureFloat): (typeof CARD_SUITS)[number] {
+  return CARD_SUITS[Math.floor(rand() * CARD_SUITS.length)] as (typeof CARD_SUITS)[number];
+}
+
+/** High/low rank number (1 = Ace low ... 13 = King) as a card rank string. */
+export function highLowRankName(rank: number): string {
+  if (rank === 1) return "A";
+  if (rank === 11) return "J";
+  if (rank === 12) return "Q";
+  if (rank === 13) return "K";
+  return String(rank);
+}
 
 export function blackjackValue(hand: BlackjackHand): number {
   let total = 0;
   let aces = 0;
   for (const card of hand) {
-    if (card === "A") {
+    const rank = rankOf(card);
+    if (rank === "A") {
       aces += 1;
       total += 11;
-    } else if (card === "J" || card === "Q" || card === "K") {
+    } else if (rank === "J" || rank === "Q" || rank === "K") {
       total += 10;
     } else {
-      total += Number.parseInt(card, 10);
+      total += Number.parseInt(rank, 10);
     }
   }
   while (total > 21 && aces > 0) {
@@ -130,10 +163,10 @@ export function isBlackjack(hand: BlackjackHand): boolean {
   return hand.length === 2 && blackjackValue(hand) === 21;
 }
 
+/** Full 52-card deck as rank+suit codes ("AS", "10H", ...), one of each. */
 export function buildDeck(): string[] {
-  const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
   const deck: string[] = [];
-  for (let suit = 0; suit < 4; suit++) for (const r of ranks) deck.push(r);
+  for (const suit of CARD_SUITS) for (const r of CARD_RANKS) deck.push(`${r}${suit}`);
   return deck;
 }
 

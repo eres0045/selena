@@ -1,12 +1,23 @@
 import {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
+  EmbedBuilder,
   SlashCommandBuilder,
+  type APIEmbed,
 } from "discord.js";
 import type { Command, CommandContext } from "../lib/command.js";
-import { errorEmbed, fmt, pointsEmbed } from "../lib/command.js";
+import { errorEmbed, fmt, pointsEmbed, SELENA_COLOR } from "../lib/command.js";
 import { getBalance } from "../lib/economy.js";
+import {
+  cardBackExists,
+  cardBackPath,
+  CARD_SUITS,
+  flipGifExists,
+  flipGifPath,
+  prettyCard,
+} from "../lib/cards.js";
 import {
   blackjackGames,
   blackjackValue,
@@ -18,9 +29,11 @@ import {
   endBlackjackGame,
   getBlackjackGame,
   highlowOutcome,
+  highLowRankName,
   isBlackjack,
   isValidRouletteBet,
   placeBet,
+  randomSuit,
   rouletteOutcome,
   rouletteRoll,
   scratchDraw,
@@ -85,6 +98,72 @@ function bjEmbed(game: BlackjackGame, opts: { over: boolean; note?: string }): R
   );
 }
 
+/**
+ * Animated card visuals for a blackjack reply: one embed per card showing
+ * its flip GIF (back -> 3D flip -> face), plus the static card back for the
+ * dealer's hidden hole card. Discord caps a message at 10 embeds, so when
+ * a very long hand would exceed that, the caller falls back to text only.
+ */
+function bjCardVisuals(game: BlackjackGame, revealDealer: boolean): { embeds: EmbedBuilder[]; files: AttachmentBuilder[] } {
+  const embeds: EmbedBuilder[] = [];
+  const files: AttachmentBuilder[] = [];
+  const addFlip = (code: string, label: string): void => {
+    if (!flipGifExists(code)) return; // missing render -> text hand still shows
+    files.push(new AttachmentBuilder(flipGifPath(code), { name: `${code}.gif` }));
+    embeds.push(
+      new EmbedBuilder().setColor(SELENA_COLOR).setTitle(label).setImage(`attachment://${code}.gif`),
+    );
+  };
+  for (const code of game.playerHand) addFlip(code, `You: ${prettyCard(code)}`);
+  const dealer = game.dealerHand;
+  if (dealer[0]) addFlip(dealer[0], `Dealer: ${prettyCard(dealer[0])}`);
+  if (dealer[1]) {
+    if (revealDealer) {
+      addFlip(dealer[1], `Dealer: ${prettyCard(dealer[1])}`);
+    } else if (cardBackExists()) {
+      files.push(new AttachmentBuilder(cardBackPath(), { name: "back.png" }));
+      embeds.push(
+        new EmbedBuilder().setColor(SELENA_COLOR).setTitle("Dealer: ?").setImage("attachment://back.png"),
+      );
+    }
+  }
+  return { embeds, files };
+}
+
+/** Full blackjack reply: summary embed first, then one embed per card. */
+function bjReplyPayload(game: BlackjackGame, opts: { over: boolean; note?: string }): {
+  embeds: APIEmbed[];
+  files: AttachmentBuilder[];
+} {
+  const summary = bjEmbed(game, opts).toJSON();
+  const visuals = bjCardVisuals(game, opts.over);
+  const embeds = [summary, ...visuals.embeds.map((e) => e.toJSON())];
+  if (embeds.length > 10) return { embeds: [summary], files: [] };
+  return { embeds, files: visuals.files };
+}
+
+/**
+ * Explicit balance pre-check (defense in depth behind the atomic placeBet
+ * below): a bet can never exceed the balance, and the error names the
+ * balance so the player sees why. Runs before any defer, so the error
+ * stays ephemeral.
+ */
+async function checkBalance(
+  interaction: Interaction,
+  ctx: CommandContext,
+  bet: number,
+): Promise<boolean> {
+  const balance = getBalance(ctx.db, ctx.guildId, interaction.user.id).points;
+  if (bet > balance) {
+    await replyError(
+      interaction,
+      `Insufficient points. You have ${fmt(balance)} points, but bet ${fmt(bet)}.`,
+    );
+    return false;
+  }
+  return true;
+}
+
 export const commands: Command[] = [
   {
     data: buildCmd(
@@ -131,11 +210,14 @@ export const commands: Command[] = [
     async execute(interaction, ctx) {
       const bet = await readBet(interaction);
       if (bet === null) return;
+      if (!(await checkBalance(interaction, ctx, bet))) return;
       const placed = placeBet(ctx.db, ctx.guildId, interaction.user.id, bet, "blackjack");
       if (!placed.ok) {
         await replyError(interaction, placed.error ?? "Could not place that bet.");
         return;
       }
+      // Acknowledge immediately so the reply never waits on a slow container.
+      await interaction.deferReply();
       const game = createBlackjackGame(ctx.guildId, interaction.user.id, bet);
       // Natural blackjack settles immediately — no buttons needed.
       if (isBlackjack(game.playerHand)) {
@@ -147,13 +229,12 @@ export const commands: Command[] = [
           settled.outcome === "player_blackjack"
             ? `🎉 **Blackjack!** You won **${fmt(winAmount)} points** (3:2).`
             : `Both you and the dealer have blackjack — push, your **${fmt(bet)} points** are returned.`;
-        await interaction.reply({ embeds: [bjEmbed(game, { over: true, note }).toJSON()] });
+        await interaction.editReply(bjReplyPayload(game, { over: true, note }));
         return;
       }
-      const replyMsg = (await interaction.reply({
-        embeds: [bjEmbed(game, { over: false, note: "Hit or Stand?" }).toJSON()],
+      const replyMsg = (await interaction.editReply({
+        ...bjReplyPayload(game, { over: false, note: "Hit or Stand?" }),
         components: [bjButtons(game.id)],
-        fetchReply: true,
       })) as unknown as { id?: string } | undefined;
       if (replyMsg && typeof replyMsg.id === "string") {
         game.messageId = replyMsg.id;
@@ -273,11 +354,14 @@ export const commands: Command[] = [
         await replyError(interaction, "Guess must be higher or lower.");
         return;
       }
+      if (!(await checkBalance(interaction, ctx, bet))) return;
       const placed = placeBet(ctx.db, ctx.guildId, interaction.user.id, bet, "highlow");
       if (!placed.ok) {
         await replyError(interaction, placed.error ?? "Could not place that bet.");
         return;
       }
+      // Acknowledge immediately so the reply never waits on a slow container.
+      await interaction.deferReply();
       // Guess is locked in before any card is revealed, so extreme first
       // cards cannot be exploited (see lib/casino.ts edge notes).
       const card = drawCard();
@@ -292,7 +376,28 @@ export const commands: Command[] = [
           : result.outcome === "push"
             ? `Tie — your **${fmt(bet)} points** are returned.`
             : "Wrong guess — you lost this round.";
-      await interaction.reply({
+      // Display suits are random (the draw is rank-only); the two codes
+      // must differ so the same physical card never shows twice.
+      const cardSuit = randomSuit();
+      let nextSuit = randomSuit();
+      if (next === card && nextSuit === cardSuit) {
+        nextSuit = CARD_SUITS[(CARD_SUITS.indexOf(nextSuit) + 1) % CARD_SUITS.length] as (typeof CARD_SUITS)[number];
+      }
+      const cardCode = `${highLowRankName(card)}${cardSuit}`;
+      const nextCode = `${highLowRankName(next)}${nextSuit}`;
+      const files: AttachmentBuilder[] = [];
+      const cardEmbeds: APIEmbed[] = [];
+      for (const [code, label] of [
+        [cardCode, `First card: ${prettyCard(cardCode)}`],
+        [nextCode, `Next card: ${prettyCard(nextCode)}`],
+      ] as const) {
+        if (!flipGifExists(code)) continue;
+        files.push(new AttachmentBuilder(flipGifPath(code), { name: `${code}.gif` }));
+        cardEmbeds.push(
+          new EmbedBuilder().setColor(SELENA_COLOR).setTitle(label).setImage(`attachment://${code}.gif`).toJSON(),
+        );
+      }
+      await interaction.editReply({
         embeds: [
           pointsEmbed(
             "🔼🔽 High / Low",
@@ -304,7 +409,9 @@ export const commands: Command[] = [
             )
             .setFooter({ text: "Cards 1-13 · win pays 1.9x · tie pushes · house edge ~4.6%. Points only, no real money." })
             .toJSON(),
+          ...cardEmbeds,
         ],
+        files,
       });
     },
   },
@@ -390,9 +497,7 @@ async function handleBlackjackButton(interaction: any, ctx: CommandContext): Pro
             ? `Push — your **${fmt(game.bet)} points** are returned.`
             : `You lost **${fmt(game.bet)} points**.`;
     await interaction.update({
-      embeds: [
-        bjEmbed(game, { over: true, note: `${note}\n${resultNote}\nBalance: **${fmt(balance)} points**` }).toJSON(),
-      ],
+      ...bjReplyPayload(game, { over: true, note: `${note}\n${resultNote}\nBalance: **${fmt(balance)} points**` }),
       components: [],
     });
   };
@@ -410,7 +515,7 @@ async function handleBlackjackButton(interaction: any, ctx: CommandContext): Pro
       return;
     }
     await interaction.update({
-      embeds: [bjEmbed(game, { over: false, note: "Hit or Stand?" }).toJSON()],
+      ...bjReplyPayload(game, { over: false, note: "Hit or Stand?" }),
       components: [bjButtons(game.id)],
     });
     return;

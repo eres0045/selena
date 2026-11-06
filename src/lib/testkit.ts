@@ -85,8 +85,9 @@ export class FakeChatInput {
     this.replies.push({ kind: "reply", payload });
   }
 
-  async editReply(payload: unknown): Promise<void> {
+  async editReply(payload: unknown): Promise<{ id: string }> {
     this.replies.push({ kind: "editReply", payload });
+    return { id: "msg-1" };
   }
 
   async followUp(payload: unknown): Promise<void> {

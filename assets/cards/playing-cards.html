@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Animated playing cards: all 52</title>
+<style>
+  :root { --panel: rgba(255,255,255,.92); --panel-text: #14211b; --panel-border: rgba(0,0,0,.12); --accent: #14503b; }
+  @media (prefers-color-scheme: dark) {
+    :root { --panel: rgba(20,28,24,.9); --panel-text: #e9efe9; --panel-border: rgba(255,255,255,.14); --accent: #5fc79b; }
+  }
+  * { box-sizing: border-box; }
+  html { background: #0a2c21; }
+  body {
+    margin: 0; min-height: 100vh; padding: 0 16px 40px;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #fff;
+    background: radial-gradient(ellipse at 50% 20%, #1b6a4e 0%, #124a37 55%, #0a2c21 100%) fixed;
+  }
+  .panel {
+    position: sticky; top: 12px; z-index: 10; margin: 12px auto 24px; width: fit-content; max-width: 100%;
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center;
+    padding: 10px; border-radius: 14px; background: var(--panel); color: var(--panel-text);
+    border: 1px solid var(--panel-border); backdrop-filter: blur(8px);
+  }
+  button { font: inherit; font-weight: 600; padding: 9px 14px; border-radius: 9px; cursor: pointer;
+    border: 1px solid var(--panel-border); background: transparent; color: inherit; }
+  button.primary { background: var(--accent); color: #fff; border-color: transparent; }
+  @media (prefers-color-scheme: dark) { button.primary { color: #08140f; } }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #deck { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 22px 14px;
+    max-width: 1200px; margin: 0 auto; justify-items: center; }
+  playing-card { --card-width: 108px; }
+  .count { font-size: .85rem; opacity: .85; padding: 0 6px; }
+</style>
+</head>
+<body>
+<div class="panel">
+  <button class="primary" id="flipAll">Flip all</button>
+  <button id="shuffle">Shuffle</button>
+  <button id="sort">Sort</button>
+  <button id="deal">Deal 5</button>
+  <button id="back">Back colour</button>
+  <span class="count" id="count">0 face up</span>
+</div>
+<main id="deck" aria-label="Deck of 52 cards"></main>
+
+<script>
+
+(() => {
+  const RED = '#c62233', BLACK = '#17181c', GOLD = '#c99a2e';
+  const COLORS = { hearts: RED, diamonds: RED, spades: BLACK, clubs: BLACK };
+  const RANKS = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+  const SUITS = ['spades','hearts','diamonds','clubs'];
+
+  const PIP = {
+    hearts:  c => `<path d="M0 40C-6 33-44 8-44-16C-44-32-32-42-20-42C-10-42-3-36 0-28C3-36 10-42 20-42C32-42 44-32 44-16C44 8 6 33 0 40Z" fill="${c}"/>`,
+    diamonds:c => `<path d="M0-46L32 0L0 46L-32 0Z" fill="${c}"/>`,
+    spades:  c => `<path d="M0-44C-12-24-46-8-46 16C-46 32-34 40-22 40C-12 40-5 35-2 27C-3 36-7 42-14 46L14 46C7 42 3 36 2 27C5 35 12 40 22 40C34 40 46 32 46 16C46-8 12-24 0-44Z" fill="${c}"/>`,
+    clubs:   c => `<g fill="${c}"><circle cx="0" cy="-22" r="20"/><circle cx="-24" cy="10" r="20"/><circle cx="24" cy="10" r="20"/><circle cx="0" cy="2" r="14"/><path d="M0 4C0 24-4 36-14 46L14 46C4 36 0 24 0 4Z"/></g>`
+  };
+  const pip = (suit, x, y, s = .42, rot = 0, c = COLORS[suit]) =>
+    `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${s})">${PIP[suit](c)}</g>`;
+
+  const L = 76, C = 125, R = 174;
+  const LAYOUT = {
+    'A':  [[C,175]],
+    '2':  [[C,95],[C,255]],
+    '3':  [[C,95],[C,175],[C,255]],
+    '4':  [[L,95],[R,95],[L,255],[R,255]],
+    '5':  [[L,95],[R,95],[C,175],[L,255],[R,255]],
+    '6':  [[L,95],[R,95],[L,175],[R,175],[L,255],[R,255]],
+    '7':  [[L,95],[R,95],[C,135],[L,175],[R,175],[L,255],[R,255]],
+    '8':  [[L,95],[R,95],[C,135],[L,175],[R,175],[C,215],[L,255],[R,255]],
+    '9':  [[L,95],[R,95],[L,145],[R,145],[C,175],[L,205],[R,205],[L,255],[R,255]],
+    '10': [[L,95],[R,95],[C,120],[L,145],[R,145],[L,205],[R,205],[C,230],[L,255],[R,255]]
+  };
+
+  const CROWN = {
+    K: `<path d="M-30 22L-34-14L-16 4L0-24L16 4L34-14L30 22Z" fill="${GOLD}" stroke="#7a5a12" stroke-width="1.5" stroke-linejoin="round"/>
+        <rect x="-30" y="22" width="60" height="9" rx="2" fill="${GOLD}" stroke="#7a5a12" stroke-width="1.5"/>
+        <circle cx="-34" cy="-16" r="4" fill="#fff4c9"/><circle cx="0" cy="-26" r="4.5" fill="#fff4c9"/><circle cx="34" cy="-16" r="4" fill="#fff4c9"/>`,
+    Q: `<path d="M-28 22C-34-6-26-16-18-2C-14-14-6-26 0-26C6-26 14-14 18-2C26-16 34-6 28 22Z" fill="${GOLD}" stroke="#7a5a12" stroke-width="1.5" stroke-linejoin="round"/>
+        <rect x="-28" y="22" width="56" height="9" rx="2" fill="${GOLD}" stroke="#7a5a12" stroke-width="1.5"/>
+        <circle cx="0" cy="8" r="5" fill="__C__"/>`,
+    J: `<path d="M-26 28C-26-4 6-24 32-16C16-12 6-2 8 28Z" fill="__C__" stroke="#000" stroke-opacity=".35" stroke-width="1.2"/>
+        <path d="M-6 6C4-8 16-14 30-14" fill="none" stroke="${GOLD}" stroke-width="3" stroke-linecap="round"/>
+        <rect x="-28" y="28" width="38" height="7" rx="2" fill="${GOLD}" stroke="#7a5a12" stroke-width="1.2"/>`
+  };
+
+  function faceSVG(rank, suit) {
+    const col = COLORS[suit];
+    const isFace = 'JQK'.includes(rank);
+    const small = rank === '10';
+    const corner = flip => `<g${flip ? ' transform="rotate(180 125 175)"' : ''}>
+      <text x="26" y="${small ? 50 : 52}" text-anchor="middle" font-family="Georgia,'Times New Roman',serif"
+        font-weight="700" font-size="${small ? 33 : 40}" ${small ? 'letter-spacing="-3"' : ''} fill="${col}">${rank}</text>
+      ${pip(suit, 26, 78, .2)}</g>`;
+
+    let body = '';
+    if (isFace) {
+      const half = flip => `<g${flip ? ' transform="rotate(180 125 175)"' : ''}>
+        <g transform="translate(125 80)">${CROWN[rank].replace(/__C__/g, col)}</g>
+        <text x="125" y="160" text-anchor="middle" font-family="Georgia,'Times New Roman',serif"
+          font-weight="700" font-size="64" fill="${col}">${rank}</text>
+        ${pip(suit, 78, 136, .27)}${pip(suit, 172, 136, .27)}</g>`;
+      body = `
+        <rect x="52" y="44" width="146" height="262" rx="6" fill="${GOLD}" fill-opacity=".07" stroke="${col}" stroke-opacity=".85" stroke-width="1.5"/>
+        <rect x="58" y="50" width="134" height="250" rx="4" fill="none" stroke="${col}" stroke-opacity=".3" stroke-width=".8"/>
+        ${half(false)}${half(true)}
+        <path d="M62 175H112M138 175H188" stroke="${GOLD}" stroke-width="1.5"/>
+        <path d="M125 167L133 175L125 183L117 175Z" fill="${GOLD}"/>`;
+    } else {
+      const big = rank === 'A';
+      body = LAYOUT[rank].map(([x, y]) =>
+        pip(suit, x, y, big ? 1.15 : .36, y > 175 ? 180 : 0)).join('');
+    }
+    return `<svg viewBox="0 0 250 350" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      ${corner(false)}${corner(true)}${body}</svg>`;
+  }
+
+  function backSVG(color) {
+    const P = color === 'red'
+      ? { base: '#a3202c', light: '#f1d2d4' }
+      : { base: '#1f3b78', light: '#cfd8f0' };
+    return `<svg viewBox="0 0 250 350" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <pattern id="lat" width="22" height="22" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <rect width="22" height="22" fill="${P.base}"/>
+          <path d="M0 11H22M11 0V22" stroke="${P.light}" stroke-width="1.2" opacity=".5"/>
+          <circle cx="11" cy="11" r="3" fill="${P.light}" opacity=".75"/>
+        </pattern>
+      </defs>
+      <rect width="250" height="350" fill="#fbf8f0"/>
+      <rect x="14" y="14" width="222" height="322" rx="8" fill="${P.base}"/>
+      <rect x="22" y="22" width="206" height="306" rx="5" fill="url(#lat)" stroke="${P.light}" stroke-width="1.5"/>
+      <ellipse cx="125" cy="175" rx="60" ry="82" fill="${P.base}" stroke="#fbf8f0" stroke-width="3"/>
+      <ellipse cx="125" cy="175" rx="48" ry="68" fill="url(#lat)" stroke="${P.light}" stroke-width="1.5"/>
+      <path d="M125 120L134 166L180 175L134 184L125 230L116 184L70 175L116 166Z" fill="#fbf8f0"/>
+      <path d="M125 120L134 166L180 175L134 184L125 230L116 184L70 175L116 166Z" fill="none" stroke="${P.base}" stroke-width="1.5" transform="rotate(45 125 175) scale(.62) translate(76 107)"/>
+      <circle cx="125" cy="175" r="9" fill="${P.base}"/>
+    </svg>`;
+  }
+
+  const norm = {
+    rank(v) {
+      v = String(v ?? 'A').trim().toUpperCase();
+      if (v === 'T') v = '10';
+      if (v === '1') v = 'A';
+      return RANKS.includes(v) ? v : 'A';
+    },
+    suit(v) {
+      v = String(v ?? 'spades').trim().toLowerCase();
+      const map = { s:'spades','♠':'spades', h:'hearts','♥':'hearts', d:'diamonds','♦':'diamonds', c:'clubs','♣':'clubs' };
+      v = map[v] || v;
+      return SUITS.includes(v) ? v : 'spades';
+    }
+  };
+
+  const paper = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .4 0 0 0 0 .35 0 0 0 0 .25 0 0 0 .09 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")`;
+
+  const CSS = `
+    :host { display: inline-block; --card-width: 250px; width: var(--card-width); aspect-ratio: 5 / 7; position: relative; }
+    :host(:focus-visible) { outline: 2px solid #7fd0ff; outline-offset: 8px; border-radius: 16px; }
+    .scene { position: absolute; inset: 0; perspective: 1400px; }
+    .tilt, .lift, .flipper { position: absolute; inset: 0; transform-style: preserve-3d; }
+    .tilt { transition: transform .35s ease-out; will-change: transform; }
+    .tilt.live { transition: transform .08s linear; }
+    .flipper { transform: rotateY(var(--angle, 0deg)); }
+    .face {
+      position: absolute; inset: 0; overflow: hidden;
+      border-radius: 6.4% / 4.6%;
+      backface-visibility: hidden; -webkit-backface-visibility: hidden;
+      background: linear-gradient(160deg, #fffdf7 0%, #f7f2e4 100%);
+      box-shadow:
+        inset 0 0 0 1px rgba(0,0,0,.16),
+        inset 0 0 14px rgba(120,95,40,.14),
+        0 1px 1px rgba(0,0,0,.25);
+    }
+    .face::before { content: ""; position: absolute; inset: 0; background-image: ${paper}; opacity: .8; pointer-events: none; }
+    .face.back { transform: rotateY(180deg); background: #fbf8f0; }
+    .face svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .sheen {
+      position: absolute; top: -10%; bottom: -10%; left: -40%; width: 180%;
+      background: linear-gradient(105deg, transparent 42%, rgba(255,255,255,.42) 50%, transparent 58%);
+      transform: translateX(-70%); pointer-events: none; mix-blend-mode: soft-light;
+    }
+    .glare {
+      position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .3s;
+      background: radial-gradient(circle at var(--mx, 50%) var(--my, 30%), rgba(255,255,255,.55), transparent 55%);
+      mix-blend-mode: soft-light;
+    }
+    .tilt.live .glare { opacity: 1; }
+    .shadow {
+      position: absolute; left: 6%; right: 6%; bottom: -3%; height: 8%;
+      background: radial-gradient(ellipse at center, rgba(0,0,0,.6), transparent 70%);
+      filter: blur(6px); opacity: .55; pointer-events: none;
+    }
+    @media (prefers-reduced-motion: reduce) { .tilt { transition: none; } }
+  `;
+
+  class PlayingCard extends HTMLElement {
+    static observedAttributes = ['rank', 'suit', 'face-up', 'back'];
+
+    constructor() {
+      super();
+      this.attachShadow({ mode: 'open' }).innerHTML = `
+        <style>${CSS}</style>
+        <div class="scene">
+          <div class="shadow"></div>
+          <div class="tilt"><div class="lift"><div class="flipper">
+            <div class="face front"><div class="content"></div><div class="sheen"></div><div class="glare"></div></div>
+            <div class="face back"><div class="content"></div><div class="sheen"></div><div class="glare"></div></div>
+          </div></div></div>
+        </div>`;
+      const $ = s => this.shadowRoot.querySelector(s);
+      this._el = { tilt: $('.tilt'), lift: $('.lift'), flipper: $('.flipper'), shadow: $('.shadow'),
+                   front: $('.front .content'), back: $('.back .content'),
+                   sheens: this.shadowRoot.querySelectorAll('.sheen'), faces: this.shadowRoot.querySelectorAll('.face') };
+      this._busy = false;
+    }
+
+    connectedCallback() {
+      if (!this.hasAttribute('tabindex')) this.tabIndex = 0;
+      this.setAttribute('role', 'button');
+      this._faceUp = this.hasAttribute('face-up');
+      this._render();
+      this._setAngle(this._faceUp ? 0 : 180);
+
+      this._onClick = () => { if (this.hasAttribute('flip-on-click')) this.flip(); };
+      this._onKey = e => { if ((e.key === 'Enter' || e.key === ' ') && this.hasAttribute('flip-on-click')) { e.preventDefault(); this.flip(); } };
+      this._onMove = e => {
+        if (!this.hasAttribute('tilt') || this._busy || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        const r = this.getBoundingClientRect();
+        const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
+        this._el.tilt.classList.add('live');
+        this._el.tilt.style.transform = `rotateX(${(.5 - py) * 14}deg) rotateY(${(px - .5) * 18}deg)`;
+        this.style.setProperty('--mx', px * 100 + '%'); this.style.setProperty('--my', py * 100 + '%');
+        this._el.faces.forEach(f => { f.querySelector('.glare').style.setProperty('--mx', px * 100 + '%'); f.querySelector('.glare').style.setProperty('--my', py * 100 + '%'); });
+      };
+      this._onLeave = () => { this._el.tilt.classList.remove('live'); this._el.tilt.style.transform = ''; };
+      this.addEventListener('click', this._onClick);
+      this.addEventListener('keydown', this._onKey);
+      this.addEventListener('pointermove', this._onMove);
+      this.addEventListener('pointerleave', this._onLeave);
+      this._updateLabel();
+    }
+
+    disconnectedCallback() {
+      this.removeEventListener('click', this._onClick);
+      this.removeEventListener('keydown', this._onKey);
+      this.removeEventListener('pointermove', this._onMove);
+      this.removeEventListener('pointerleave', this._onLeave);
+    }
+
+    attributeChangedCallback(name) {
+      if (!this.isConnected) return;
+      if (name === 'rank' || name === 'suit' || name === 'back') this._render();
+      if (name === 'face-up' && !this._busy) {
+        const up = this.hasAttribute('face-up');
+        if (up !== this._faceUp) { this._faceUp = up; this._setAngle(up ? 0 : 180); }
+      }
+      this._updateLabel();
+    }
+
+    get rank() { return norm.rank(this.getAttribute('rank')); }
+    get suit() { return norm.suit(this.getAttribute('suit')); }
+    get faceUp() { return this._faceUp; }
+
+    set(rank, suit) {
+      this.setAttribute('rank', norm.rank(rank));
+      this.setAttribute('suit', norm.suit(suit));
+      return this;
+    }
+
+    _render() {
+      this._el.front.innerHTML = faceSVG(this.rank, this.suit);
+      this._el.back.innerHTML = backSVG(this.getAttribute('back') === 'red' ? 'red' : 'blue');
+    }
+
+    _updateLabel() {
+      this.setAttribute('aria-label', this._faceUp ? `${this.rank} of ${this.suit}. Face up.` : 'Playing card, face down.');
+    }
+
+    _setAngle(deg) { this._el.flipper.style.setProperty('--angle', deg + 'deg'); }
+
+    async flip(duration = 950) {
+      if (this._busy) return this;
+      this._busy = true;
+      this._onLeave();
+      const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const from = this._faceUp ? 0 : 180, to = this._faceUp ? 180 : 0;
+      const d = reduced ? 1 : duration;
+      this._setAngle(to);
+
+      const flipAnim = this._el.flipper.animate(
+        [{ transform: `rotateY(${from}deg)` }, { transform: `rotateY(${to}deg)` }],
+        { duration: d, easing: 'cubic-bezier(.45,.05,.25,1)' });
+      if (!reduced) {
+        this._el.lift.animate([
+          { transform: 'translateY(0) scale(1) rotateZ(0deg)' },
+          { transform: 'translateY(-9%) scale(1.08) rotateZ(-3deg)', offset: .5 },
+          { transform: 'translateY(0) scale(1) rotateZ(0deg)' }
+        ], { duration: d, easing: 'ease-in-out' });
+        this._el.shadow.animate([
+          { transform: 'translateY(0) scale(1)', opacity: .55 },
+          { transform: 'translateY(60%) scale(.9)', opacity: .22, offset: .5 },
+          { transform: 'translateY(0) scale(1)', opacity: .55 }
+        ], { duration: d, easing: 'ease-in-out' });
+        this._el.sheens.forEach(s => s.animate(
+          [{ transform: 'translateX(-70%)' }, { transform: 'translateX(70%)' }],
+          { duration: d, easing: 'ease-in-out' }));
+      }
+      await flipAnim.finished.catch(() => {});
+      this._faceUp = !this._faceUp;
+      this.toggleAttribute('face-up', this._faceUp);
+      this._busy = false;
+      this._updateLabel();
+      this.dispatchEvent(new CustomEvent('flip', { detail: { faceUp: this._faceUp, rank: this.rank, suit: this.suit }, bubbles: true }));
+      return this;
+    }
+
+    async show() { if (!this._faceUp) await this.flip(); return this; }
+    async hide() { if (this._faceUp) await this.flip(); return this; }
+
+    /* Turn face down, swap to a new card, then flip it face up. */
+    async reveal(rank, suit) {
+      await this.hide();
+      this.set(rank, suit);
+      await this.show();
+      return this;
+    }
+  }
+
+  if (!customElements.get('playing-card')) customElements.define('playing-card', PlayingCard);
+
+  
+  const deck = document.getElementById('deck');
+  const count = document.getElementById('count');
+  const cards = [];
+  for (const s of SUITS) for (const r of RANKS) {
+    const c = document.createElement('playing-card');
+    c.setAttribute('rank', r); c.setAttribute('suit', s);
+    c.setAttribute('flip-on-click', ''); c.setAttribute('tilt', '');
+    deck.append(c); cards.push(c);
+  }
+  const update = () => count.textContent = cards.filter(c => c.faceUp).length + ' face up';
+  deck.addEventListener('flip', update); update();
+
+  // Move cards to a new order with a smooth position transition
+  function reorder(order) {
+    const first = new Map(cards.map(c => [c, c.getBoundingClientRect()]));
+    order.forEach(c => deck.append(c));
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) return;
+    order.forEach((c, i) => {
+      const a = first.get(c), b = c.getBoundingClientRect();
+      c.animate([{ transform: 'translate(' + (a.left - b.left) + 'px,' + (a.top - b.top) + 'px)' }, { transform: 'none' }],
+        { duration: 700, delay: i * 8, easing: 'cubic-bezier(.3,.8,.3,1)' });
+    });
+  }
+
+  document.getElementById('flipAll').onclick = () => {
+    const up = cards.some(c => !c.faceUp);
+    cards.forEach((c, i) => setTimeout(() => (up ? c.show() : c.hide()), i * 25));
+  };
+  document.getElementById('shuffle').onclick = async () => {
+    await Promise.all(cards.map(c => c.hide()));
+    const a = [...cards];
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    reorder(a);
+  };
+  document.getElementById('sort').onclick = () => reorder([...cards].sort((x, y) =>
+    SUITS.indexOf(x.suit) - SUITS.indexOf(y.suit) || RANKS.indexOf(x.rank) - RANKS.indexOf(y.rank)));
+  document.getElementById('deal').onclick = async () => {
+    await Promise.all(cards.map(c => c.hide()));
+    const hand = [...deck.children].slice(0, 5);
+    hand.forEach((c, i) => setTimeout(() => c.show(), i * 220));
+  };
+  document.getElementById('back').onclick = () => cards.forEach(c =>
+    c.setAttribute('back', c.getAttribute('back') === 'red' ? 'blue' : 'red'));
+})();
+</script>
+</body>
+</html>
