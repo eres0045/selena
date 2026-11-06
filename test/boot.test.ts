@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GatewayIntentBits } from "discord.js";
-import { buildClient, runDueTasks, shouldLogin, start } from "../src/index.js";
+import { buildClient, runDueTasks, shouldLogin, start, startHealthServer } from "../src/index.js";
 import { allButtonHandlers, allCommands, allModalHandlers } from "../src/commands/index.js";
 import { getTestDb } from "../src/lib/db.js";
 
@@ -12,6 +12,21 @@ describe("shouldLogin", () => {
 
   it("is true with a dummy token", () => {
     expect(shouldLogin({ DISCORD_TOKEN: "dummy-token" })).toBe(true);
+  });
+});
+
+describe("startHealthServer", () => {
+  it("is a no-op without PORT", () => {
+    expect(startHealthServer({})).toBe(false);
+    expect(startHealthServer({ PORT: "0" })).toBe(false);
+  });
+
+  it("answers 200 on the health port when PORT is set", async () => {
+    const port = 18765;
+    expect(startHealthServer({ PORT: String(port) })).toBe(true);
+    const res = await fetch(`http://127.0.0.1:${port}/`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Selena is running");
   });
 });
 

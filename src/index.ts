@@ -1,3 +1,4 @@
+import { createServer } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
 import {
   Client,
@@ -43,6 +44,25 @@ export function loadEnvFile(path = ".env"): void {
 /** True when a login should be attempted (a token is configured). */
 export function shouldLogin(env: NodeJS.ProcessEnv = process.env): boolean {
   return !!env.DISCORD_TOKEN?.trim();
+}
+
+/**
+ * Tiny HTTP health endpoint for Render's free web-service tier: Render
+ * requires the process to bind $PORT and answer health checks, so when
+ * PORT is set Selena serves a plain 200 on every path. No Discord logic
+ * lives here. Returns true when a server was started, false otherwise
+ * (no PORT set — local runs and tests).
+ */
+export function startHealthServer(env: NodeJS.ProcessEnv = process.env): boolean {
+  const port = Number(env.PORT);
+  if (!port || Number.isNaN(port)) return false;
+  const server = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/plain" });
+    res.end("Selena is running.\n");
+  });
+  server.listen(port, () => console.log(`Selena: health endpoint on :${port}`));
+  server.unref?.();
+  return true;
 }
 
 export function buildClient(): Client {
@@ -125,6 +145,7 @@ export async function runDueTasks(db: SelenaDb, client: Client | null): Promise<
 
 export async function start(): Promise<void> {
   loadEnvFile();
+  startHealthServer();
   if (!shouldLogin()) {
     console.log("Selena: no DISCORD_TOKEN set — skipping login (commands validated only)");
     return;
