@@ -31,9 +31,9 @@ function gifHasTransparency(buf: Buffer): boolean {
 const LOOP_EXT = Buffer.from("NETSCAPE2.0");
 
 describe("composeHandStrip (OwO-style compact strips)", () => {
-  it("uses ~50px cards in a half-size (~280px) strip file", () => {
-    expect(STRIP_CARD_W).toBe(50);
-    expect(STRIP_CARD_H).toBe(70);
+  it("uses ~28px cards in a half-size (~280px) strip file", () => {
+    expect(STRIP_CARD_W).toBe(28);
+    expect(STRIP_CARD_H).toBe(39);
     expect(STRIP_STEP).toBeGreaterThan(STRIP_CARD_W); // gap, not overlap
     expect(STRIP_MIN_WIDTH).toBe(280);
   });
@@ -64,11 +64,11 @@ describe("composeHandStrip (OwO-style compact strips)", () => {
     // Padding around the centred hand is transparent…
     expect(frame[(0 * width + 0) * 4 + 3]).toBe(0);
     // …and so is a card's own rounded corner: the first dealer card
-    // starts at x0 = (280 - (50 + 62)) / 2 = 84, y = 0.
+    // starts at x0 = (280 - (28 + 34)) / 2 = 109, y = 0.
     const x0 = Math.floor((STRIP_MIN_WIDTH - (STRIP_CARD_W + STRIP_STEP)) / 2);
     expect(frame[(0 * width + x0) * 4 + 3]).toBe(0);
     // …while the card centre is opaque.
-    expect(frame[(35 * width + (x0 + 25)) * 4 + 3]).toBe(255);
+    expect(frame[(19 * width + (x0 + 14)) * 4 + 3]).toBe(255);
   });
 
   it("animates the newly dealt card and keeps the others still", async () => {
@@ -149,15 +149,15 @@ describe("composeHandStrip (OwO-style compact strips)", () => {
     expect(gifHasTransparency(buf)).toBe(true);
     const { width, frames } = decodeGifFrames(buf);
     const frame = frames[0] as Buffer;
-    // The label column (x 8..96) has real ink: the DEALER word and the
+    // The label column (x 8..64) has real ink: the DEALER word and the
     // "?" below it. Count opaque pixels in the dealer row's label block.
     let ink = 0;
     for (let y = 0; y < STRIP_CARD_H; y++) {
-      for (let x = 8; x < 96; x++) {
+      for (let x = 8; x < 64; x++) {
         if (frame[(y * width + x) * 4 + 3] === 255) ink++;
       }
     }
-    expect(ink).toBeGreaterThan(200);
+    expect(ink).toBeGreaterThan(150);
     // …while the padding around the labels stays transparent.
     expect(frame[(0 * width + 0) * 4 + 3]).toBe(0);
     expect(frame[(10 * width + 270) * 4 + 3]).toBe(0);

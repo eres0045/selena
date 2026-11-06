@@ -7,6 +7,7 @@ declare module "gif-encoder-2" {
     setRepeat(repeat: number): void;
     setDelay(ms: number): void;
     setQuality(quality: number): void;
+    setDispose(code: number): void;
     addFrame(data: Buffer | Uint8Array): void;
     finish(): void;
   }

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, statSync } from "node:fs";
+import { parseGIF, decompressFrames } from "gifuct-js";
 import {
   FLIP_CODES,
   flipGifExists,
@@ -49,14 +50,48 @@ describe("animated flip GIFs (rendered from Ronit's playing-cards.html)", () => 
     }
   });
 
-  it("every GIF is a real animated GIF, 50x70, under 1 MB", () => {
+  it("every GIF is a real animated GIF, 28x39, under 1 MB", () => {
     for (const code of FLIP_CODES) {
       const buf = readFileSync(flipGifPath(code));
       expect(buf.subarray(0, 6).toString("ascii")).toBe("GIF89a");
-      expect(buf.readUInt16LE(6)).toBe(50);
-      expect(buf.readUInt16LE(8)).toBe(70);
+      expect(buf.readUInt16LE(6)).toBe(28);
+      expect(buf.readUInt16LE(8)).toBe(39);
       expect(gifFrameCount(buf)).toBeGreaterThanOrEqual(7);
       expect(statSync(flipGifPath(code)).size).toBeLessThan(1_000_000);
+    }
+  });
+
+  it("every GIF uses disposal method 2 on every frame (no smear)", () => {
+    // Disposal 2 (restore to background) is what makes each frame a
+    // clean image; disposal 0 made every decoder composite each frame
+    // over the previous one, so the flip smeared instead of flipping
+    // (the "looks bad when it moves" bug). Parsed with gifuct-js, not
+    // a byte scan, so image data can never fake a result.
+    for (const code of FLIP_CODES) {
+      const buf = readFileSync(flipGifPath(code));
+      const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+      const gif = parseGIF(ab as ArrayBuffer);
+      const frames = decompressFrames(gif, true);
+      expect(frames.length).toBeGreaterThanOrEqual(7);
+      for (const f of frames) expect(f.disposalType).toBe(2);
+    }
+  });
+
+  it("every flip GIF's mid-flip frame is really a thin sliver (no smear)", () => {
+    // Regression test for the smear: decoded with disposal honoured,
+    // the middle frames must narrow to a sliver instead of staying a
+    // full card (which is what the old disposal-0 GIFs decoded to).
+    for (const code of ["AS", "10H", "KD"]) {
+      const { frames } = decodeGifFrames(readFileSync(flipGifPath(code)));
+      const opaque = (f: Buffer): number => {
+        let n = 0;
+        for (let i = 3; i < f.length; i += 4) if (f[i] === 255) n++;
+        return n / (f.length / 4);
+      };
+      const fractions = frames.map((f) => opaque(f as Buffer));
+      expect(Math.min(...fractions)).toBeLessThan(0.5);
+      expect(fractions[0]).toBeGreaterThan(0.8);
+      expect(fractions[fractions.length - 1]).toBeGreaterThan(0.8);
     }
   });
 

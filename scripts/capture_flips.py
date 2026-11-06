@@ -10,11 +10,26 @@ Output: assets/cards/flips/<CODE>.gif, e.g. AS.gif, 10H.gif, KD.gif.
 The GIFs are the source of the animated cards Selena attaches to
 /blackjack and /highlow replies (Discord cannot render the HTML itself).
 Captures run at 4x resolution (600px wide) so the later downscale to
-the ~50px cards stays crisp ("4k" sharp, not blurry). Screenshots use
+the ~28px cards stays crisp ("4k" sharp, not blurry). Screenshots use
 omit_background, so the card's rounded corners are TRANSPARENT — no
 green felt box around the card. After capturing, run
 scripts/resize_flips.py to shrink them.
 The GIFs play ONCE (no loop extension) — they stop on the face.
+
+HOW THE FLIP IS DRIVEN (v5 — this is the fix for the wobbly crop):
+The component's flip() also animates a LIFT (translateY -9%, scale
+1.08, rotateZ -3deg), a shadow and a sheen. During that lift the card
+is BIGGER than its own box, so its corners get clipped by the box, and
+the card drifts off-centre — and while the card is edge-on the demo
+page's deck grid behind it bleeds through the transparent parts of the
+box ("not cropped well, looks bad when it moves"). So capture does NOT
+call flip() at all. Instead it drives the flipper directly with
+_setAngle(deg): a pure rotateY around the card's vertical centre axis.
+The card never leaves its box, never scales or tilts, and stays
+perfectly centred in every frame. The deck grid and the component's
+shadow/sheen/glare are hidden for capture, so nothing can bleed
+through. The rotateY IS the flip from Ronit's file — only the
+lift/tilt ornaments are left out of the capture.
 """
 import argparse
 import io
@@ -38,19 +53,52 @@ SUIT_NAMES = {"S": "spades", "H": "hearts", "D": "diamonds", "C": "clubs"}
 
 CARD_WIDTH_PX = 150
 CAPTURE_SCALE = 4       # device_scale_factor: screenshots come out at
-                        # 600x840 so the downscale to 50px stays sharp
-FRAMES = 12            # t=0 (back) + 11 during the flip. At 4x an element
-                        # screenshot takes ~0.5 s, so the flip is slowed
-                        # to 3.5 s for capture (see flip(FLIP_MS) below) —
-                        # otherwise the 950 ms flip would be over after
-                        # ~2 shots and the GIF would have ~4 frames.
-                        # Playback stays ~95 ms/frame, so the GIF still
-                        # plays at about the real flip speed in Discord.
-FLIP_MS = 3500          # flip duration for capture only (real flip: 950 ms)
-INTERVAL_S = 0.01     # element screenshots take ~0.5 s each at 4x, so the
-                      # effective interval is ~0.5 s — about 8 distinct
-                      # frames across the slowed flip
-FRAME_MS = 95         # per-frame GIF duration ≈ the real capture interval
+                        # 600x840 so the downscale to ~28px stays sharp
+FRAMES = 12            # _setAngle steps, back (180deg) -> face (0deg).
+                        # The steps follow the flip's own easing
+                        # (cubic-bezier(.45,.05,.25,1) from
+                        # playing-cards.html): small at both ends, fast in
+                        # the middle — so the GIF settles onto the face
+                        # instead of jumping 16deg in its last frame, and
+                        # no frame lands exactly on the 90deg edge-on
+                        # sliver (the closest are ~15% wide at 28px).
+def _cubic_bezier_y(x: float, x1: float, y1: float, x2: float, y2: float) -> float:
+    """y of the cubic-bezier curve at the given x (Newton iteration)."""
+    # Solve x(t) = x for t, then return y(t). The curve is monotonic in
+    # x for the easings used here, so Newton from t = x converges.
+    t = x
+    for _ in range(8):
+        mt = 1 - t
+        cx = 3 * mt * mt * t * x1 + 3 * mt * t * t * x2 + t * t * t
+        dcx = 3 * mt * mt * x1 + 6 * mt * t * (x2 - x1) + 3 * t * t * (1 - x2)
+        if dcx == 0:
+            break
+        t -= (cx - x) / dcx
+        t = min(1.0, max(0.0, t))
+    mt = 1 - t
+    return 3 * mt * mt * t * y1 + 3 * mt * t * t * y2 + t * t * t
+
+
+ANGLES = [
+    180 * (1 - _cubic_bezier_y(i / (FRAMES - 1), 0.45, 0.05, 0.25, 1.0))
+    for i in range(FRAMES)
+]
+FRAME_MS = 95         # per-frame GIF duration
+PAINT_MS = 60         # let the browser paint after each angle step
+
+
+def _opaque_stats(img: Image.Image) -> tuple[float, float, float]:
+    """(centre-x of opaque pixels, opaque fraction, leftmost opaque x)."""
+    import numpy as np
+
+    a = np.array(img.getchannel("A"))
+    opaque = a > 128
+    count = int(opaque.sum())
+    if count == 0:
+        return 0.0, 0.0, 0.0
+    ys, xs = np.where(opaque)
+    h, w = a.shape
+    return float(xs.mean()), count / (w * h), float(xs.min())
 
 
 def capture_codes(page, codes: list[str], outdir: Path) -> None:
@@ -62,26 +110,46 @@ def capture_codes(page, codes: list[str], outdir: Path) -> None:
             "([rank, suit]) => { window.__card.set(rank, suit); }",
             [rank, suit],
         )
-        # Make sure the card starts face-down.
-        if page.evaluate("window.__card.faceUp"):
-            page.evaluate("window.__card.hide()")
-            page.wait_for_timeout(1100)
-        frames: list[bytes] = [loc.screenshot(omit_background=True)]  # t=0: the back
-        # flip() takes a duration (default 950 ms); slow it to FLIP_MS
-        # for capture so the ~0.5 s 4x screenshots catch the whole flip.
-        # The trailing 'go' keeps evaluate from awaiting the promise.
-        page.evaluate(f"window.__card.flip({FLIP_MS}); 'go'")
-        for _ in range(FRAMES - 1):
-            time.sleep(INTERVAL_S)
+        # Drive the flip directly: pure rotateY, no lift/tilt/shadow.
+        frames: list[bytes] = []
+        for angle in ANGLES:
+            page.evaluate(f"window.__card._setAngle({angle}); 'go'")
+            page.wait_for_timeout(PAINT_MS)
             frames.append(loc.screenshot(omit_background=True))
-        page.wait_for_timeout(300)  # let the flip finish before the next card
 
         imgs = [Image.open(io.BytesIO(b)).convert("RGBA") for b in frames]
+        w, h = imgs[0].size
+        assert all(im.size == (w, h) for im in imgs), f"{code}: frame sizes differ"
+        # Verify the crop: the card must stay centred (same centre-x in
+        # every frame), full-size at both ends, and a thin sliver
+        # mid-flip — no wobble, no clipping, no background bleed.
+        # The centre-x tolerance is 20px at 600px capture scale: a pure
+        # rotateY under the scene's 1400px perspective shifts the card's
+        # projected centre by up to ~9px either way mid-flip (the near
+        # edge is magnified) — that is the real 3D flip, and at the ~28px
+        # ship size it is under half a pixel either way, invisible.
+        # What must NOT happen is the old lift/tilt drift or deck
+        # bleed-through.
+        stats = [_opaque_stats(im) for im in imgs]
+        centres = [s[0] for s in stats]
+        assert max(centres) - min(centres) <= 20.0, (
+            f"{code}: card wobbles, centres {['%.1f' % c for c in centres]}"
+        )
+        assert abs(centres[0] - w / 2) <= 2.0, f"{code}: not centred: {centres[0]:.1f} vs {w / 2}"
+        assert stats[0][1] > 0.95 and stats[-1][1] > 0.95, (
+            f"{code}: ends not full card: {stats[0][1]:.2f} / {stats[-1][1]:.2f}"
+        )
+        assert min(s[1] for s in stats) < 0.45, f"{code}: no edge-on sliver frame"
+
         dest = outdir / f"{code}.gif"
         # Play-once + transparent background (see scripts/gifutil.py).
         save_play_once_gif(imgs, dest, FRAME_MS)
-        w, h = imgs[0].size
-        print(f"{code}: {dest.stat().st_size} bytes, {len(imgs)} frames, {w}x{h}", flush=True)
+        print(
+            f"{code}: {dest.stat().st_size} bytes, {len(imgs)} frames, {w}x{h}, "
+            f"centre-x {centres[0]:.1f}..{max(centres):.1f}, "
+            f"opaque {stats[0][1]:.2f} -> {min(s[1] for s in stats):.2f} -> {stats[-1][1]:.2f}",
+            flush=True,
+        )
 
 
 def main() -> None:
@@ -117,6 +185,12 @@ def main() -> None:
         )
         page.evaluate(
             """() => {
+              // Hide EVERYTHING except the capture stage: the demo page
+              // renders a 52-card deck grid behind the stage card, and
+              // it used to bleed through the box whenever the card was
+              // edge-on or lifted. Nothing behind the card may show.
+              document.querySelectorAll('body > *:not(#stage)').forEach(
+                el => { el.style.display = 'none'; });
               const stage = document.createElement('div');
               stage.id = 'stage';
               // No background: screenshots use omit_background, so the
@@ -128,6 +202,13 @@ def main() -> None:
               stage.appendChild(c);
               document.body.appendChild(stage);
               window.__card = c;
+              // The shadow / sheen / glare are flip ornaments: the
+              // shadow sticks out of the card's box and the sheen sweeps
+              // across it. They are hidden for capture so the frames
+              // contain only the card itself, centred in its box.
+              const sr = c.shadowRoot;
+              sr.querySelectorAll('.shadow, .sheen, .glare').forEach(
+                el => { el.style.display = 'none'; });
             }"""
         )
         page.wait_for_timeout(200)

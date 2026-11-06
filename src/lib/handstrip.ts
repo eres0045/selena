@@ -6,12 +6,12 @@ import { flipGifExists, flipGifPath, labelGifExists, labelGifPath } from "./card
 /**
  * OwO-style compact card displays: one small strip image per embed.
  *
- * The strip file is HALF the size of the old 560px version (~280px
- * wide, ~50px cards) — Ronit's call — and the cards stay sharp because
- * they are rendered at 4x (600x840) and Lanczos-downscaled to 50x70.
- * The strip background is TRANSPARENT (GIF transparency), not a green
- * felt box, so it blends into Discord's dark embed and each card stands
- * on its own with a small gap between cards.
+ * The strip file is ~280px wide with ~28px cards — half the size of the
+ * 50px version (Ron's call) — and the cards stay sharp because they are
+ * rendered at 4x (600x840) and Lanczos-downscaled to 28x39 with a mild
+ * unsharp. The strip background is TRANSPARENT (GIF transparency), not
+ * a green felt box, so it blends into Discord's dark embed and each
+ * card stands on its own with a small gap between cards.
  *
  * The image explains itself: every row carries its label IN the image —
  * a word ("DEALER" / "YOU" / "FIRST" / "NEXT") over the row's total
@@ -26,17 +26,25 @@ import { flipGifExists, flipGifPath, labelGifExists, labelGifPath } from "./card
  * ending with all cards face-up. A settled hand is a static one-frame
  * strip. All frames come from the pre-rendered flip GIFs in
  * assets/cards/flips/ (rendered from Ronit's playing-cards.html at 4x,
- * downscaled sharp to 50px, transparent corners); the strip is composed
- * at reply time with pure-JS GIF decode/encode (gifuct-js +
- * gif-encoder-2) — no native canvas.
+ * downscaled sharp to 28px, transparent corners, disposal 2 so the flip
+ * never smears); the strip is composed at reply time with pure-JS GIF
+ * decode/encode (gifuct-js + gif-encoder-2) — no native canvas.
+ *
+ * Disposal matters: the flip GIFs are written with disposal method 2
+ * (restore to background), so each frame is a complete image and the
+ * canvas is cleared before the next frame. decodeGifFrames below
+ * honours that — without it, mid-flip frames composite over the card
+ * back and the flip smears instead of flipping (that was the "looks
+ * bad when it moves" bug). The strip encoder likewise writes
+ * disposal 2 (see encodeGif).
  */
 
-export const STRIP_CARD_W = 50;
-export const STRIP_CARD_H = 70;
-/** px between the left edges of neighbouring cards: 50px card + 12px gap. */
-export const STRIP_STEP = 62;
+export const STRIP_CARD_W = 28;
+export const STRIP_CARD_H = 39;
+/** px between the left edges of neighbouring cards: 28px card + 6px gap. */
+export const STRIP_STEP = 34;
 /** px between the dealer row and the player row. */
-export const STRIP_ROW_GAP = 12;
+export const STRIP_ROW_GAP = 10;
 /**
  * Minimum strip width in the file. Hands are laid out from the left in
  * this frame, so even a 2-card hand ships as a ~280px-wide file.
@@ -46,14 +54,14 @@ export const STRIP_FRAME_MS = 95;
 /** Left/right padding of the strip frame. */
 export const STRIP_PAD = 8;
 /** Width of the label column at the left of each row (word + total). */
-export const LABEL_W = 88;
+export const LABEL_W = 56;
 /** Gap between the label column and the first card. */
-export const LABEL_GAP = 8;
+export const LABEL_GAP = 6;
 /** Gap between the label word and the total beneath it. */
-export const LABEL_LINE_GAP = 4;
-/** Word sprites ("DEALER", "YOU", ...) are 24px tall; totals 28px. */
-export const LABEL_WORD_H = 24;
-export const LABEL_VALUE_H = 28;
+export const LABEL_LINE_GAP = 3;
+/** Word sprites ("DEALER", "YOU", ...) are 14px tall; totals 17px. */
+export const LABEL_WORD_H = 14;
+export const LABEL_VALUE_H = 17;
 /** Magenta marks transparent pixels for the GIF encoder (see encodeGif). */
 const TRANSPARENT_RGB = 0xff00ff;
 
@@ -92,6 +100,12 @@ const frameCache = new Map<string, Buffer[]>();
  * Decode a GIF buffer into composited RGBA frames (one Buffer per frame,
  * each width*height*4 bytes, transparent where the GIF is transparent).
  * Exported for tests.
+ *
+ * Disposal is honoured: when the previous frame's disposal method is 2
+ * (restore to background — how the flip GIFs are written), the canvas
+ * is cleared to transparent before the next frame's patch is applied.
+ * Without this, a mid-flip sliver frame composites over the previous
+ * full card back and the flip smears instead of flipping.
  */
 export function decodeGifFrames(buf: Buffer): { width: number; height: number; frames: Buffer[] } {
   const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
@@ -99,9 +113,11 @@ export function decodeGifFrames(buf: Buffer): { width: number; height: number; f
   const frames = decompressFrames(gif, true);
   const w = gif.lsd.width;
   const h = gif.lsd.height;
-  const canvas = new Uint8ClampedArray(w * h * 4); // transparent
+  let canvas = new Uint8ClampedArray(w * h * 4); // transparent
   const out: Buffer[] = [];
+  let prevDisposal = 0;
   for (const f of frames) {
+    if (prevDisposal === 2) canvas = new Uint8ClampedArray(w * h * 4);
     const { left, top, width, height } = f.dims;
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
@@ -116,6 +132,7 @@ export function decodeGifFrames(buf: Buffer): { width: number; height: number; f
       }
     }
     out.push(Buffer.from(canvas));
+    prevDisposal = f.disposalType;
   }
   return { width: w, height: h, frames: out };
 }
@@ -252,6 +269,12 @@ function encodeGif(width: number, height: number, frames: Buffer[]): Promise<Buf
     // and stops on the final frame (all cards face-up). 0 would loop
     // forever; the encoder only writes the extension when repeat >= 0.
     enc.setRepeat(-1);
+    // Disposal 2 (restore to background) on every frame, so each strip
+    // frame is a complete image and Discord never composites one frame
+    // over the previous one (that smear is what made flips look bad).
+    // (The encoder also defaults to 2 when a transparent colour is set;
+    // this makes it explicit.)
+    enc.setDispose(2);
     // Transparent background: pixels whose RGB is magenta become the
     // GIF's transparent index (see magentaTransparent above). The
     // bundled gif-encoder-2 types omit setTransparent, so call it
