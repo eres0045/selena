@@ -3,21 +3,14 @@ import {
   AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
-  EmbedBuilder,
   SlashCommandBuilder,
   type APIEmbed,
 } from "discord.js";
 import type { Command, CommandContext } from "../lib/command.js";
-import { errorEmbed, fmt, pointsEmbed, SELENA_COLOR } from "../lib/command.js";
+import { errorEmbed, fmt, pointsEmbed } from "../lib/command.js";
 import { getBalance } from "../lib/economy.js";
-import {
-  cardBackExists,
-  cardBackPath,
-  CARD_SUITS,
-  flipGifExists,
-  flipGifPath,
-  prettyCard,
-} from "../lib/cards.js";
+import { CARD_SUITS } from "../lib/cards.js";
+import { composeHandStrip, type StripCard } from "../lib/handstrip.js";
 import {
   blackjackGames,
   blackjackValue,
@@ -83,7 +76,32 @@ function bjButtons(gameId: string): ActionRowBuilder<ButtonBuilder> {
   );
 }
 
-function bjEmbed(game: BlackjackGame, opts: { over: boolean; note?: string }): ReturnType<typeof pointsEmbed> {
+/**
+ * OwO-style embed colours: blue while the game is live, green on a win
+ * (including a natural blackjack), red on a loss, gray on a push.
+ */
+export type BjOutcome = "playing" | "win" | "lose" | "push" | "blackjack";
+
+export const BJ_COLORS: Record<BjOutcome, number> = {
+  playing: 0x5865f2,
+  win: 0x2ecc71,
+  lose: 0xe74c3c,
+  push: 0x95a5a6,
+  blackjack: 0x2ecc71,
+};
+
+/** Settle outcome (lib/casino.ts) -> embed outcome colour. */
+export function bjOutcomeOf(settled: { outcome: string }): BjOutcome {
+  if (settled.outcome === "player_blackjack") return "blackjack";
+  if (settled.outcome === "win") return "win";
+  if (settled.outcome === "push") return "push";
+  return "lose";
+}
+
+function bjEmbed(
+  game: BlackjackGame,
+  opts: { over: boolean; outcome: BjOutcome; note?: string },
+): ReturnType<typeof pointsEmbed> {
   const player = blackjackValue(game.playerHand);
   const dealer = blackjackValue(game.dealerHand);
   const title = opts.over ? "🃏 Blackjack — Finished" : "🃏 Blackjack";
@@ -91,55 +109,47 @@ function bjEmbed(game: BlackjackGame, opts: { over: boolean; note?: string }): R
     `**Your hand:** ${handText(game.playerHand)}\n` +
     `**Dealer:** ${opts.over ? handText(game.dealerHand) : handText(game.dealerHand, true)}\n` +
     (opts.note ? `\n${opts.note}` : "");
-  return pointsEmbed(title, description).addFields(
-    { name: "Bet", value: fmt(game.bet), inline: true },
-    { name: "Your total", value: String(player), inline: true },
-    { name: "Dealer total", value: opts.over ? String(dealer) : "?", inline: true },
-  );
+  return pointsEmbed(title, description)
+    .setColor(BJ_COLORS[opts.outcome])
+    .addFields(
+      { name: "Bet", value: fmt(game.bet), inline: true },
+      { name: "Your total", value: String(player), inline: true },
+      { name: "Dealer total", value: opts.over ? String(dealer) : "?", inline: true },
+    );
 }
 
 /**
- * Animated card visuals for a blackjack reply: one embed per card showing
- * its flip GIF (back -> 3D flip -> face), plus the static card back for the
- * dealer's hidden hole card. Discord caps a message at 10 embeds, so when
- * a very long hand would exceed that, the caller falls back to text only.
+ * One compact OwO-style embed for a blackjack game state: a single small
+ * strip image (dealer row on top, player row below, ~60px per card) with
+ * the newly dealt cards flipping. The dealer's hole card stays face-down
+ * until the hand is over. When a card has no rendered flip GIF the strip
+ * cannot be built and the reply falls back to the text-only embed.
  */
-function bjCardVisuals(game: BlackjackGame, revealDealer: boolean): { embeds: EmbedBuilder[]; files: AttachmentBuilder[] } {
-  const embeds: EmbedBuilder[] = [];
-  const files: AttachmentBuilder[] = [];
-  const addFlip = (code: string, label: string): void => {
-    if (!flipGifExists(code)) return; // missing render -> text hand still shows
-    files.push(new AttachmentBuilder(flipGifPath(code), { name: `${code}.gif` }));
-    embeds.push(
-      new EmbedBuilder().setColor(SELENA_COLOR).setTitle(label).setImage(`attachment://${code}.gif`),
-    );
-  };
-  for (const code of game.playerHand) addFlip(code, `You: ${prettyCard(code)}`);
-  const dealer = game.dealerHand;
-  if (dealer[0]) addFlip(dealer[0], `Dealer: ${prettyCard(dealer[0])}`);
-  if (dealer[1]) {
-    if (revealDealer) {
-      addFlip(dealer[1], `Dealer: ${prettyCard(dealer[1])}`);
-    } else if (cardBackExists()) {
-      files.push(new AttachmentBuilder(cardBackPath(), { name: "back.png" }));
-      embeds.push(
-        new EmbedBuilder().setColor(SELENA_COLOR).setTitle("Dealer: ?").setImage("attachment://back.png"),
-      );
-    }
-  }
-  return { embeds, files };
-}
-
-/** Full blackjack reply: summary embed first, then one embed per card. */
-function bjReplyPayload(game: BlackjackGame, opts: { over: boolean; note?: string }): {
+async function bjReplyPayload(
+  game: BlackjackGame,
+  opts: { over: boolean; outcome: BjOutcome; note?: string },
+): Promise<{
   embeds: APIEmbed[];
   files: AttachmentBuilder[];
-} {
-  const summary = bjEmbed(game, opts).toJSON();
-  const visuals = bjCardVisuals(game, opts.over);
-  const embeds = [summary, ...visuals.embeds.map((e) => e.toJSON())];
-  if (embeds.length > 10) return { embeds: [summary], files: [] };
-  return { embeds, files: visuals.files };
+}> {
+  const embed = bjEmbed(game, opts);
+  const freshDeal = !opts.over && game.playerHand.length === 2;
+  const dealerRow: StripCard[] = game.dealerHand.map((code, i) => ({
+    code,
+    faceDown: !opts.over && i === 1,
+    animate: !opts.over && i === 0 && freshDeal,
+  }));
+  const playerRow: StripCard[] = game.playerHand.map((code, i) => ({
+    code,
+    animate: !opts.over && (freshDeal || i === game.playerHand.length - 1),
+  }));
+  const strip = await composeHandStrip([dealerRow, playerRow]);
+  if (!strip) return { embeds: [embed.toJSON()], files: [] };
+  embed.setImage("attachment://hand.gif");
+  return {
+    embeds: [embed.toJSON()],
+    files: [new AttachmentBuilder(strip.buffer, { name: "hand.gif" })],
+  };
 }
 
 /**
@@ -229,11 +239,13 @@ export const commands: Command[] = [
           settled.outcome === "player_blackjack"
             ? `🎉 **Blackjack!** You won **${fmt(winAmount)} points** (3:2).`
             : `Both you and the dealer have blackjack — push, your **${fmt(bet)} points** are returned.`;
-        await interaction.editReply(bjReplyPayload(game, { over: true, note }));
+        await interaction.editReply(
+          await bjReplyPayload(game, { over: true, outcome: bjOutcomeOf(settled), note }),
+        );
         return;
       }
       const replyMsg = (await interaction.editReply({
-        ...bjReplyPayload(game, { over: false, note: "Hit or Stand?" }),
+        ...(await bjReplyPayload(game, { over: false, outcome: "playing", note: "Hit or Stand?" })),
         components: [bjButtons(game.id)],
       })) as unknown as { id?: string } | undefined;
       if (replyMsg && typeof replyMsg.id === "string") {
@@ -385,34 +397,33 @@ export const commands: Command[] = [
       }
       const cardCode = `${highLowRankName(card)}${cardSuit}`;
       const nextCode = `${highLowRankName(next)}${nextSuit}`;
-      const files: AttachmentBuilder[] = [];
-      const cardEmbeds: APIEmbed[] = [];
-      for (const [code, label] of [
-        [cardCode, `First card: ${prettyCard(cardCode)}`],
-        [nextCode, `Next card: ${prettyCard(nextCode)}`],
-      ] as const) {
-        if (!flipGifExists(code)) continue;
-        files.push(new AttachmentBuilder(flipGifPath(code), { name: `${code}.gif` }));
-        cardEmbeds.push(
-          new EmbedBuilder().setColor(SELENA_COLOR).setTitle(label).setImage(`attachment://${code}.gif`).toJSON(),
-        );
-      }
-      await interaction.editReply({
-        embeds: [
-          pointsEmbed(
-            "🔼🔽 High / Low",
-            `First card: **${card}** → next card: **${next}**\nYou guessed **${guess}**.\n\n${outcome}`,
-          )
-            .addFields(
-              { name: "Bet", value: fmt(bet), inline: true },
-              { name: "Balance", value: fmt(balance), inline: true },
-            )
-            .setFooter({ text: "Cards 1-13 · win pays 1.9x · tie pushes · house edge ~4.6%. Points only, no real money." })
-            .toJSON(),
-          ...cardEmbeds,
+      // One compact embed: a single small strip with the first card face-up
+      // and the next card flipping in. Outcome colours match OwO: green on
+      // a win, red on a loss, gray on a push.
+      const hlColor =
+        result.outcome === "win" ? BJ_COLORS.win : result.outcome === "push" ? BJ_COLORS.push : BJ_COLORS.lose;
+      const embed = pointsEmbed(
+        "🔼🔽 High / Low",
+        `First card: **${card}** → next card: **${next}**\nYou guessed **${guess}**.\n\n${outcome}`,
+      )
+        .setColor(hlColor)
+        .addFields(
+          { name: "Bet", value: fmt(bet), inline: true },
+          { name: "Balance", value: fmt(balance), inline: true },
+        )
+        .setFooter({ text: "Cards 1-13 · win pays 1.9x · tie pushes · house edge ~4.6%. Points only, no real money." });
+      const strip = await composeHandStrip([
+        [
+          { code: cardCode },
+          { code: nextCode, animate: true },
         ],
-        files,
-      });
+      ]);
+      const files: AttachmentBuilder[] = [];
+      if (strip) {
+        embed.setImage("attachment://hand.gif");
+        files.push(new AttachmentBuilder(strip.buffer, { name: "hand.gif" }));
+      }
+      await interaction.editReply({ embeds: [embed.toJSON()], files });
     },
   },
   {
@@ -482,6 +493,10 @@ async function handleBlackjackButton(interaction: any, ctx: CommandContext): Pro
     return;
   }
 
+  // Acknowledge immediately: composing the strip image takes a moment and
+  // the button ack must not wait on it.
+  await interaction.deferUpdate();
+
   const settleAndShow = async (note: string): Promise<void> => {
     const settled = settleBlackjack(game.playerHand, game.dealerHand);
     const winAmount = Math.floor(game.bet * settled.multiplier);
@@ -496,8 +511,12 @@ async function handleBlackjackButton(interaction: any, ctx: CommandContext): Pro
           : settled.outcome === "push"
             ? `Push — your **${fmt(game.bet)} points** are returned.`
             : `You lost **${fmt(game.bet)} points**.`;
-    await interaction.update({
-      ...bjReplyPayload(game, { over: true, note: `${note}\n${resultNote}\nBalance: **${fmt(balance)} points**` }),
+    await interaction.editReply({
+      ...(await bjReplyPayload(game, {
+        over: true,
+        outcome: bjOutcomeOf(settled),
+        note: `${note}\n${resultNote}\nBalance: **${fmt(balance)} points**`,
+      })),
       components: [],
     });
   };
@@ -514,8 +533,8 @@ async function handleBlackjackButton(interaction: any, ctx: CommandContext): Pro
       await settleAndShow("You hit 21 — the dealer plays out.");
       return;
     }
-    await interaction.update({
-      ...bjReplyPayload(game, { over: false, note: "Hit or Stand?" }),
+    await interaction.editReply({
+      ...(await bjReplyPayload(game, { over: false, outcome: "playing", note: "Hit or Stand?" })),
       components: [bjButtons(game.id)],
     });
     return;

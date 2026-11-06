@@ -9,6 +9,8 @@ Usage:
 Output: assets/cards/flips/<CODE>.gif, e.g. AS.gif, 10H.gif, KD.gif.
 The GIFs are the source of the animated cards Selena attaches to
 /blackjack and /highlow replies (Discord cannot render the HTML itself).
+After capturing, run scripts/resize_flips.py to shrink them to the
+small OwO-style 60px cards the bot actually ships.
 """
 import argparse
 import io

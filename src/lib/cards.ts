@@ -11,6 +11,9 @@ import { dirname, resolve } from "node:path";
  * each card's 3D flip (back -> flip -> face) is captured as an animated
  * GIF in assets/cards/flips/<CODE>.gif. The bot attaches those GIFs to
  * its replies; the HTML file stays in the repo as the source of the GIFs.
+ * The GIFs are shrunk to small OwO-style cards (~60px wide) by
+ * scripts/resize_flips.py; the hand-strip composer (lib/handstrip.ts)
+ * builds the one compact strip image per game from those GIFs.
  */
 
 export const CARD_SUITS = ["S", "H", "D", "C"] as const;
@@ -45,13 +48,4 @@ export function flipGifPath(code: string): string {
 
 export function flipGifExists(code: string): boolean {
   return existsSync(flipGifPath(code));
-}
-
-/** Absolute path of the static card-back image (dealer hole card, face-down). */
-export function cardBackPath(): string {
-  return resolve(cardsAssetDir(), "faces", "back.png");
-}
-
-export function cardBackExists(): boolean {
-  return existsSync(cardBackPath());
 }

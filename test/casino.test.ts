@@ -368,7 +368,7 @@ describe("/blackjack command", () => {
     expect(blackjackGames.size).toBe(0);
   });
 
-  it("defers immediately and attaches a flip GIF per card", async () => {
+  it("defers immediately and replies with ONE compact embed (blue, playing)", async () => {
     seed("user-1", 1000);
     const fake = await run("blackjack", { bet: 100 });
     expect(fake.replies[0]?.kind).toBe("deferReply");
@@ -376,16 +376,15 @@ describe("/blackjack command", () => {
     expect(edit).toBeDefined();
     const payload = edit!.payload as {
       files?: Array<{ name?: string | null }>;
-      embeds?: Array<{ image?: { url?: string } }>;
+      embeds?: Array<{ image?: { url?: string }; color?: number }>;
     };
+    // OwO-style: exactly one embed, one small strip GIF, blue while playing.
+    expect(payload.embeds?.length).toBe(1);
     const gifFiles = (payload.files ?? []).filter((f) => f.name?.endsWith(".gif"));
-    // 2 player cards + dealer up-card (hole card is the static back.png).
-    expect(gifFiles.length).toBeGreaterThanOrEqual(3);
-    const gifEmbeds = (payload.embeds ?? []).filter(
-      (e) => e.image?.url?.startsWith("attachment://") && e.image.url.endsWith(".gif"),
-    );
-    expect(gifEmbeds.length).toBe(gifFiles.length);
-    expect(payload.embeds?.length).toBeLessThanOrEqual(10);
+    expect(gifFiles).toHaveLength(1);
+    expect(gifFiles[0]?.name).toBe("hand.gif");
+    expect(payload.embeds?.[0]?.image?.url).toBe("attachment://hand.gif");
+    expect(payload.embeds?.[0]?.color).toBe(0x5865f2);
   });
 });
 
@@ -402,6 +401,11 @@ describe("blackjack button flow", () => {
     expect(btn.replies.length).toBeGreaterThan(0);
     expect(blackjackGames.has(game.id)).toBe(false);
     expect(getBalance(db, GUILD, "user-1").points).toBe(1000); // bet was never deducted here; loss = no credit
+    // OwO-style: one compact embed, red on a loss.
+    const edit = btn.replies.find((r) => r.kind === "editReply");
+    const payload = edit?.payload as { embeds?: Array<{ color?: number }> } | undefined;
+    expect(payload?.embeds?.length).toBe(1);
+    expect(payload?.embeds?.[0]?.color).toBe(0xe74c3c);
   });
 
   it("stand lets the dealer play and settles (dealer bust = player win 2x)", async () => {
@@ -415,6 +419,11 @@ describe("blackjack button flow", () => {
     await buttonHandlers["selena:bj"]!(btn, ctx);
     expect(blackjackGames.has(game.id)).toBe(false);
     expect(getBalance(db, GUILD, "user-1").points).toBe(1100); // 1000 - 100 + 200
+    // OwO-style: one compact embed, green on a win.
+    const edit = btn.replies.find((r) => r.kind === "editReply");
+    const payload = edit?.payload as { embeds?: Array<{ color?: number }> } | undefined;
+    expect(payload?.embeds?.length).toBe(1);
+    expect(payload?.embeds?.[0]?.color).toBe(0x2ecc71);
   });
 
   it("error path: a different user cannot press the buttons", async () => {
@@ -507,7 +516,7 @@ describe("/highlow command", () => {
     expect(getBalance(db, GUILD, "user-1").points).toBeGreaterThanOrEqual(0);
   });
 
-  it("defers immediately and attaches a flip GIF for each card", async () => {
+  it("defers immediately and replies with ONE compact embed (outcome colour)", async () => {
     seed("user-1", 1000);
     const fake = await run("highlow", { bet: 100, guess: "higher" });
     expect(fake.replies[0]?.kind).toBe("deferReply");
@@ -515,14 +524,15 @@ describe("/highlow command", () => {
     expect(edit).toBeDefined();
     const payload = edit!.payload as {
       files?: Array<{ name?: string | null }>;
-      embeds?: Array<{ image?: { url?: string } }>;
+      embeds?: Array<{ image?: { url?: string }; color?: number }>;
     };
+    expect(payload.embeds?.length).toBe(1);
     const gifFiles = (payload.files ?? []).filter((f) => f.name?.endsWith(".gif"));
-    expect(gifFiles.length).toBe(2);
-    const gifEmbeds = (payload.embeds ?? []).filter(
-      (e) => e.image?.url?.startsWith("attachment://") && e.image.url.endsWith(".gif"),
-    );
-    expect(gifEmbeds.length).toBe(2);
+    expect(gifFiles).toHaveLength(1);
+    expect(gifFiles[0]?.name).toBe("hand.gif");
+    expect(payload.embeds?.[0]?.image?.url).toBe("attachment://hand.gif");
+    // Green win / red loss / gray push.
+    expect([0x2ecc71, 0xe74c3c, 0x95a5a6]).toContain(payload.embeds?.[0]?.color);
   });
 
   it("error path: bet of 0 is rejected", async () => {
