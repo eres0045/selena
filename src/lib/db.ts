@@ -109,18 +109,6 @@ CREATE TABLE IF NOT EXISTS mod_actions (
   created_at INTEGER NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS mlbb_profiles (
-  guild_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  mlbb_id TEXT NOT NULL,
-  ign TEXT,
-  verified INTEGER NOT NULL DEFAULT 0,
-  verify_code TEXT,
-  verify_expires INTEGER,
-  rank_name TEXT,
-  PRIMARY KEY (guild_id, user_id)
-);
-
 CREATE TABLE IF NOT EXISTS squads (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   guild_id TEXT NOT NULL,

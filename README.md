@@ -1,7 +1,7 @@
 # Selena — Discord bot for Zenith Esports (MLBB)
 
 Selena is a custom Discord bot (discord.js v14 + TypeScript, Node 24) for the
-Zenith Esports MLBB server: a fun-only points economy, casino, MLBB helpers,
+Zenith Esports MLBB server: a fun-only points economy, casino,
 squad/scrim management, gacha, games, moderation, levels/XP, and utility
 commands. **No real money anywhere** — points are fun-only, and there are no
 anime actions and no hunting features.
@@ -9,7 +9,7 @@ anime actions and no hunting features.
 All output is text/embeds — no image generation (no canvas in this
 environment).
 
-## Commands (65 total)
+## Commands (58 total)
 
 ### Economy — `/balance`, `/daily`, `/give`, `/leaderboard`
 Points wallet, daily claim, tipping, points leaderboard.
@@ -23,9 +23,6 @@ Profile cards, jokes, shipping, and party commands.
 ### Games — `/tictactoe`, `/connect4`, `/rps`, `/trivia`, `/wordchain`, `/guesshero`, `/giveaway`, `/poll`
 Button-driven board games, trivia, giveaways (auto-ended by the bot timer),
 and polls.
-
-### MLBB — `/hero`, `/counter`, `/register-mlbb`, `/verify-mlbb`, `/mlbbprofile`, `/rankrole`
-Hero info and counters, MLBB ID registration/verification, rank roles.
 
 ### Manage — `/squad`, `/lineup`, `/scrim`, `/tryout`, `/bracket`, `/report-match`, `/draft`
 Squads, lineups, scrims + RSVPs, tryouts, tournament brackets, match
@@ -149,11 +146,17 @@ test/                 vitest suites, one per feature area + boot.test.ts
 
 ## Known issues (as of 2026-11-06)
 
-1. **Duplicate slash-command names — fixed.** `/profile` existed in both Fun
-   and MLBB, and `/rankrole` in both Manage and MLBB (65 registered, 63
-   unique). Resolved in reconciliation: the MLBB profile command is now
-   `/mlbbprofile`, and `/rankrole` exists only in MLBB (the Manage copy was
-   removed along with its command tests). `boot.test.ts` asserts uniqueness.
+1. **MLBB stats module — removed 2026-11-06.** `/hero`, `/counter`,
+   `/register-mlbb`, `/verify-mlbb`, `/mlbbprofile` and `/rankrole` were
+   built on a static hero snapshot, but win/pick/ban rates, counters,
+   builds, live profiles and Moonton verification cannot be verified
+   (there is no official public MLBB API), so the whole module was
+   removed rather than shipped with unverifiable claims. What stays
+   MLBB-flavoured is all Selena's own: the gacha card catalogue
+   (hero names + Selena-assigned rarities, `src/data/heroes.ts`),
+   `/guesshero`, MLBB trivia, the tryout form (self-reported IGN/rank),
+   and the draft helper's hero-name list. `boot.test.ts` asserts
+   command-name uniqueness.
 2. **`npm test` vs `node:sqlite` — fixed via alias.** Root cause (verified in
    `node_modules/vite-node`): vite-node 2.1's `isNodeBuiltin` strips the
    `node:` prefix and then looks up the bare name in a set that only

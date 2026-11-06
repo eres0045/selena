@@ -48,7 +48,7 @@ import { loadHeroNames } from "../lib/gacha.js";
 
 /**
  * Management commands: /squad, /lineup, /scrim, /tryout, /bracket,
- * /report-match, /draft. (/rankrole lives in mlbb.ts — it was a duplicate.)
+ * /report-match, /draft.
  *
  * Each execute() is a thin adapter over the pure lib in ../lib/manage.ts.
  * Discord role assignment is attempted at runtime only when the guild role

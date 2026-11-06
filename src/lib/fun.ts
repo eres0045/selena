@@ -295,10 +295,10 @@ export function memeDescription(meme: GeneratedMeme): string {
 }
 
 // ---------------------------------------------------------------------------
-// /profile — reads the users table (+ mlbb_profiles if present).
-// There is no dedicated "favourite hero" column in the schema, so the
-// favourite hero falls back to the first hero on the member's latest
-// tryout record when one exists, and is otherwise shown as not set.
+// /profile — reads the users table. IGN / rank come from the member's
+// latest tryout record when one exists (self-reported on the tryout form),
+// and are otherwise shown as not set. There is no MLBB profile store:
+// Selena cannot verify MLBB IDs or ranks, so she does not keep them.
 // ---------------------------------------------------------------------------
 
 export interface ProfileData {
@@ -330,13 +330,11 @@ export function getProfileData(db: SelenaDb, guildId: string, userId: string): P
     .get(guildId) as { c: number } | undefined;
   const totalRanked = Math.max(Number(totalRow?.c ?? 0), 1);
 
-  const mlbb = db
-    .prepare("SELECT ign, rank_name FROM mlbb_profiles WHERE guild_id = ? AND user_id = ?")
-    .get(guildId, userId) as { ign: string | null; rank_name: string | null } | undefined;
-
   const tryout = db
-    .prepare("SELECT heroes FROM tryouts WHERE guild_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 1")
-    .get(guildId, userId) as { heroes: string } | undefined;
+    .prepare(
+      "SELECT ign, rank_name, heroes FROM tryouts WHERE guild_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 1",
+    )
+    .get(guildId, userId) as { ign: string | null; rank_name: string | null; heroes: string } | undefined;
   const favouriteHero = tryout?.heroes
     ? tryout.heroes.split(",").map((h) => h.trim()).filter(Boolean)[0] ?? null
     : null;
@@ -348,8 +346,8 @@ export function getProfileData(db: SelenaDb, guildId: string, userId: string): P
     level,
     rank,
     totalRanked,
-    ign: mlbb?.ign ?? null,
-    rankName: mlbb?.rank_name ?? null,
+    ign: tryout?.ign ?? null,
+    rankName: tryout?.rank_name ?? null,
     favouriteHero,
   };
 }

@@ -842,21 +842,3 @@ export function formatDraft(draft: DraftState): string {
     list(`${draft.teamB} picks`, draft.picksB),
   ].join("\n");
 }
-
-// ---------------------------------------------------------------------------
-// Rank roles
-// ---------------------------------------------------------------------------
-
-export function getMemberRank(
-  db: SelenaDb,
-  guildId: string,
-  userId: string,
-): Result<{ rank: string }> {
-  const row = db
-    .prepare("SELECT rank_name FROM mlbb_profiles WHERE guild_id = ? AND user_id = ?")
-    .get(guildId, userId);
-  if (!row) return err("No MLBB profile found — register one first.");
-  const rank = row.rank_name === null || row.rank_name === undefined ? "" : String(row.rank_name);
-  if (!rank) return err("No rank is registered on this MLBB profile.");
-  return { ok: true, rank };
-}

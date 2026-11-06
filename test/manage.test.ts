@@ -303,22 +303,6 @@ describe("drafts (lib)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Rank roles (lib)
-// ---------------------------------------------------------------------------
-
-describe("rankrole (lib)", () => {
-  it("reads the registered rank and errors without a profile/rank", () => {
-    expect(lib.getMemberRank(db, "guild-1", "user-1")).toMatchObject({ ok: false });
-    db.prepare(
-      "INSERT INTO mlbb_profiles (guild_id, user_id, mlbb_id, ign, rank_name) VALUES (?, ?, ?, ?, ?)",
-    ).run("guild-1", "user-1", "123", "Eres", null);
-    expect(lib.getMemberRank(db, "guild-1", "user-1")).toMatchObject({ ok: false });
-    db.prepare("UPDATE mlbb_profiles SET rank_name = ? WHERE user_id = ?").run("Mythic", "user-1");
-    expect(lib.getMemberRank(db, "guild-1", "user-1")).toMatchObject({ ok: true, rank: "Mythic" });
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Mocked-client integration tests
 // ---------------------------------------------------------------------------
 

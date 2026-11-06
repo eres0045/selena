@@ -197,7 +197,7 @@ describe("getProfileData", () => {
     expect(p.favouriteHero).toBeNull();
   });
 
-  it("reads points/xp/level, MLBB profile and favourite hero", () => {
+  it("reads points/xp/level, tryout IGN/rank and favourite hero", () => {
     db.prepare("INSERT INTO users (guild_id, user_id, points, xp, level) VALUES (?, ?, ?, ?, ?)").run(
       "guild-1",
       "user-1",
@@ -212,9 +212,6 @@ describe("getProfileData", () => {
       0,
       0,
     );
-    db.prepare(
-      "INSERT INTO mlbb_profiles (guild_id, user_id, mlbb_id, ign, rank_name) VALUES (?, ?, ?, ?, ?)",
-    ).run("guild-1", "user-1", "12345", "Eres", "Mythic");
     db.prepare(
       "INSERT INTO tryouts (guild_id, user_id, ign, role, rank_name, heroes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
     ).run("guild-1", "user-1", "Eres", "Mid", "Mythic", "Selena,Kagura", Date.now());

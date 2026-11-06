@@ -7,14 +7,16 @@ import type { Command } from "../lib/command.js";
 // (the `?? {}` fallback below). Do NOT add stub files for other workers:
 // import only modules that exist on disk.
 //
-// Status at registry time (2026-11-06): all ten command modules exist.
+// Status at registry time (2026-11-06): nine command modules. The MLBB
+// stats module was removed the same day (no verifiable stats exist — no
+// official MLBB API), so hero names live only in src/data/heroes.ts as a
+// gacha/draft catalogue.
 // Each module must export `commands: Command[]` and (optionally)
 // `buttonHandlers` / `modalHandlers`.
 import * as economy from "./economy.js";
 import * as casino from "./casino.js";
 import * as fun from "./fun.js";
 import * as games from "./games.js";
-import * as mlbb from "./mlbb.js";
 import * as manage from "./manage.js";
 import * as gacha from "./gacha.js";
 import * as mod from "./mod.js";
@@ -37,7 +39,6 @@ const CATEGORY_LABELS: Record<string, string> = {
   casino: "Casino",
   fun: "Fun",
   games: "Games",
-  mlbb: "MLBB",
   manage: "Manage",
   gacha: "Gacha",
 };
@@ -53,7 +54,6 @@ const MODULES: { key: string; module: CommandModule }[] = [
   { key: "casino", module: casino },
   { key: "fun", module: fun },
   { key: "games", module: games },
-  { key: "mlbb", module: mlbb },
   { key: "manage", module: manage },
   { key: "gacha", module: gacha },
   { key: "mod", module: mod },
