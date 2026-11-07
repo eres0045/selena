@@ -27,6 +27,7 @@ let profileLib: typeof import("../src/lib/profile.js");
 let profileBgs: typeof import("../src/lib/profileBgs.js");
 let profileCommands: Command[];
 let marketCommands: Command[];
+let marketButtonHandlers: Record<string, (...args: never[]) => Promise<void>>;
 let allCommands: Command[];
 let handlePrefixMessage: (
   msg: unknown,
@@ -41,7 +42,9 @@ beforeEach(async () => {
   profileLib = await import("../src/lib/profile.js");
   profileBgs = await import("../src/lib/profileBgs.js");
   profileCommands = (await import("../src/commands/profile.js")).commands;
-  marketCommands = (await import("../src/commands/market.js")).commands;
+  const marketModule = await import("../src/commands/market.js");
+  marketCommands = marketModule.commands;
+  marketButtonHandlers = marketModule.buttonHandlers;
   allCommands = (await import("../src/commands/index.js")).allCommands;
   handlePrefixMessage = (await import("../src/lib/router.js")).handlePrefixMessage;
   generateShopStock = (await import("../src/lib/market.js")).generateShopStock;
@@ -471,19 +474,41 @@ describe("profile commands", () => {
 // ---------------------------------------------------------------------------
 
 describe("shop backgrounds", () => {
-  it("uwu shop bg lists all 30 with name + price + static/GIF mark", async () => {
+  /** Flip the bg list to `page` (0-based) via the ◀ N ▶ button handler. */
+  async function flipBgPage(page: number): Promise<string> {
+    const handler = marketButtonHandlers["selena:shopbg"]!;
+    const updates: { content: string; components?: unknown }[] = [];
+    await handler(
+      {
+        customId: `selena:shopbg:list:${page}`,
+        user: { id: USER },
+        update: async (p: { content: string; components?: unknown }) => {
+          updates.push(p);
+        },
+        reply: async () => {},
+      } as never,
+      ctxFor(db) as never,
+    );
+    expect(updates).toHaveLength(1);
+    return String(updates[0]!.content);
+  }
+
+  it("uwu shop bg lists all 30 across 3 pages in the OwO format", async () => {
     const inv = await runCmd(marketCommands, "shop", USER, { action: "bg", item: null });
-    const text = inv.text();
-    expect(text).toContain("30 total");
-    expect(text).toContain("Static (10):");
-    expect(text).toContain("Animated GIF (20):");
+    const page1 = inv.text();
+    expect(page1).toContain("30 total");
+    expect(page1).toContain("Page 1/3");
+    expect(page1).toMatch(/1  🖼️ Meadow Dawn\.+ 10K \[static\]/);
+    expect(page1).toContain("Default — free [static]");
+    // Every background appears exactly once across the three pages,
+    // with its compact price — flip through and collect them all.
+    const all = page1 + "\n" + (await flipBgPage(1)) + "\n" + (await flipBgPage(2));
     for (const b of profileBgs.listBackgrounds()) {
-      expect(text).toContain(b.name);
-      expect(text).toContain(b.price.toLocaleString("en-US"));
+      expect(all).toContain(b.name);
     }
-    expect(text).toContain("Meadow Dawn — 10,000 gold [static]");
-    expect(text).toContain("Starfall — 25,000 gold [GIF]");
-    expect(text).toContain("Default — free [static]");
+    expect(all).toMatch(/11  🖼️ Starfall\.+ 25K \[GIF\]/);
+    expect(all).toContain("Page 2/3");
+    expect(all).toContain("Page 3/3");
   });
 
   it("uwu shop bg marks owned ✓ and equipped ★", async () => {
@@ -492,9 +517,11 @@ describe("shop backgrounds", () => {
     await profileLib.buyBackground(db, GUILD, USER, "starfall", NOW);
     await profileLib.equipBackground(db, USER, "starfall");
     const inv = await runCmd(marketCommands, "shop", USER, { action: "bg", item: null });
-    const text = inv.text();
-    expect(text).toContain("Meadow Dawn — 10,000 gold [static] ✓ owned");
-    expect(text).toContain("Starfall — 25,000 gold [GIF] ✓ owned ★ equipped");
+    const page1 = inv.text();
+    expect(page1).toMatch(/1  🖼️ Meadow Dawn\.+ 10K \[static\] ✓/);
+    // Starfall is #11, on page 2 — flip there for its marks.
+    const page2 = await flipBgPage(1);
+    expect(page2).toMatch(/11  🖼️ Starfall\.+ 25K \[GIF\] ✓ ★/);
   });
 
   it("uwu shop buy bg <name> buys, states name + price + remaining gold", async () => {
@@ -535,7 +562,13 @@ describe("profile via handlePrefixMessage", () => {
     const msg = new FakePrefixMessage("uwu shop bg");
     expect(await handlePrefixMessage(msg as never, { db, guildId: GUILD })).toBe(true);
     expect(msg.allText()).toContain("30 total");
-    expect(msg.allText()).toContain("Starfall");
+    expect(msg.allText()).toContain("Page 1/3");
+    expect(msg.allText()).toContain("Meadow Dawn");
+    // `uwu shop bg 2` jumps straight to page 2 (Starfall is #11).
+    const msg2 = new FakePrefixMessage("uwu shop bg 2");
+    expect(await handlePrefixMessage(msg2 as never, { db, guildId: GUILD })).toBe(true);
+    expect(msg2.allText()).toContain("Page 2/3");
+    expect(msg2.allText()).toContain("Starfall");
   });
 
   it("uwu about <text> sets the line through the router", async () => {

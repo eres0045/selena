@@ -572,6 +572,7 @@ describe("market commands (command-level)", () => {
 
 describe("shop backgrounds", () => {
   let bgShopCmd: { execute: (inv: CommandInvocation, ctx: CommandContext) => Promise<void> };
+  let bgButtonHandlers: Record<string, (...args: never[]) => Promise<void>>;
   let bgProfileLib: typeof import("../src/lib/profile.js");
 
   beforeEach(async () => {
@@ -582,17 +583,88 @@ describe("shop backgrounds", () => {
     vi.resetModules();
     const fresh = await import("../src/commands/market.js");
     bgShopCmd = fresh.commands.find((c) => c.name === "shop")!;
+    bgButtonHandlers = fresh.buttonHandlers;
     bgProfileLib = await import("../src/lib/profile.js");
   });
 
-  it("uwu shop bg lists 30 backgrounds, static + GIF sections", async () => {
+  /** Flip the bg list to `page` (0-based) via the ◀ N ▶ button handler. */
+  async function flipBgPage(page: number): Promise<string> {
+    const handler = bgButtonHandlers["selena:shopbg"]!;
+    const updates: { content: string; components?: unknown }[] = [];
+    await handler(
+      {
+        customId: `selena:shopbg:list:${page}`,
+        user: { id: BIDDER1 },
+        update: async (p: { content: string; components?: unknown }) => {
+          updates.push(p);
+        },
+        reply: async () => {},
+      } as never,
+      ctxFor(db) as never,
+    );
+    expect(updates).toHaveLength(1);
+    return String(updates[0]!.content);
+  }
+
+  function buttonLabels(payload: ReplyPayload): { label: string; disabled?: boolean }[] {
+    const comps = (payload as unknown as {
+      components?: { toJSON: () => { components: { label: string; disabled?: boolean }[] } }[];
+    }).components;
+    if (!comps) return [];
+    return comps.flatMap((row) => row.toJSON().components.map((b) => ({ label: b.label, disabled: b.disabled })));
+  }
+
+  it("uwu shop bg page 1 lists backgrounds 1–10 in the OwO format", async () => {
     const inv = new FakeInv(BIDDER1, { action: "bg", item: null });
     await bgShopCmd.execute(inv, ctxFor(db));
-    expect(inv.text()).toContain("30 total");
-    expect(inv.text()).toContain("Static (10):");
-    expect(inv.text()).toContain("Animated GIF (20):");
-    expect(inv.text()).toContain("Meadow Dawn — 10,000 gold [static]");
-    expect(inv.text()).toContain("Starfall — 25,000 gold [GIF]");
+    const text = inv.text();
+    expect(text).toContain("30 total");
+    expect(text).toContain("Page 1/3");
+    // Numbered rows with dotted leaders and compact prices.
+    expect(text).toMatch(/1  🖼️ Meadow Dawn\.+ 10K \[static\]/);
+    expect(text).toMatch(/10  🖼️ Misty Lake\.+ 20K \[static\]/);
+    // Page 1 is the 10 static backgrounds only — the GIFs live on later pages.
+    expect(text).not.toContain("Starfall");
+    expect(text).not.toContain("Static (10):");
+    expect(text).not.toContain("Animated GIF (20):");
+    // OwO-style ◀ N ▶ buttons: prev disabled, current page "1", next live.
+    expect(buttonLabels(inv.replies[0]!).map((b) => b.label)).toEqual(["◀", "1", "▶"]);
+    expect(buttonLabels(inv.replies[0]!)[0]!.disabled).toBe(true);
+    expect(buttonLabels(inv.replies[0]!)[2]!.disabled).toBe(false);
+  });
+
+  it("flipping pages shows 11–20 then 21–30, and uwu shop bg 2 jumps to page 2", async () => {
+    const page2 = await flipBgPage(1);
+    expect(page2).toContain("Page 2/3");
+    expect(page2).toMatch(/11  🖼️ Starfall\.+ 25K \[GIF\]/);
+    expect(page2).toMatch(/20  🖼️ Butterfly Garden\.+ 45K \[GIF\]/);
+    expect(page2).not.toContain("Meadow Dawn");
+    const page3 = await flipBgPage(2);
+    expect(page3).toContain("Page 3/3");
+    expect(page3).toMatch(/21  🖼️ Cloud Drift\.+ 26K \[GIF\]/);
+    expect(page3).toMatch(/30  🖼️ Cosmic Dust\.+ 44K \[GIF\]/);
+    // `uwu shop bg 2` jumps straight to page 2.
+    const inv = new FakeInv(BIDDER1, { action: "bg", item: "2" });
+    await bgShopCmd.execute(inv, ctxFor(db));
+    expect(inv.text()).toContain("Page 2/3");
+    expect(inv.text()).toContain("Starfall");
+  });
+
+  it("uwu shop buy bg <number> buys by list number", async () => {
+    await giveGold(BIDDER1, 100000);
+    const buy1 = new FakeInv(BIDDER1, { action: "buy", item: "bg 1" });
+    await bgShopCmd.execute(buy1, ctxFor(db));
+    expect(buy1.text()).toContain("Bought **Meadow Dawn** for 10,000 gold");
+    const buy11 = new FakeInv(BIDDER1, { action: "buy", item: "bg 11" });
+    await bgShopCmd.execute(buy11, ctxFor(db));
+    expect(buy11.text()).toContain("Bought **Starfall** for 25,000 gold");
+    expect(await bgProfileLib.getOwnedBackgrounds(db, BIDDER1)).toEqual(["meadow-dawn", "starfall"]);
+    const bad = new FakeInv(BIDDER1, { action: "buy", item: "bg 99" });
+    await bgShopCmd.execute(bad, ctxFor(db));
+    expect(bad.text()).toContain("no background #99");
+    const zero = new FakeInv(BIDDER1, { action: "buy", item: "bg 0" });
+    await bgShopCmd.execute(zero, ctxFor(db));
+    expect(zero.text()).toContain("no background #0");
   });
 
   it("uwu shop buy bg buys one of each type and the daily shop is untouched", async () => {

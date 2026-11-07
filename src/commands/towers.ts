@@ -1,8 +1,9 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder } from "discord.js";
 import { type Command, type CommandContext, type CommandInvocation } from "../lib/command.js";
 import { addPoints } from "../lib/economy.js";
 import { awardGuildXpBestEffort } from "../lib/guilds.js";
 import { secureFloat } from "../lib/rng.js";
+import { pageButtons, shopRow } from "../lib/shopFormat.js";
 import { findWorldArea, REGIONS } from "../lib/world.js";
 import {
   climbFloor,
@@ -50,11 +51,13 @@ import { resolveCurrentArea } from "./world.js";
  * as ???) and is entered only by exact name/id.
  *
  * `uwu tower` — list the known towers, paginated one region per page
- * with ◀ ▶ buttons: 29 towers in the old one-shot format blew past
- * Discord's 2,000-character message limit and the reply failed
- * outright, so EVERY page is built to fit (compact one-line-per-tower
- * rows) and every page stays under the limit. The header counts only
- * the DISCOVERED towers on that page — it never shows a total.
+ * with ◀ N ▶ buttons, in the OwO big-list shop format (numbered rows,
+ * dotted leader, compact facts — src/lib/shopFormat.ts): 29 towers in
+ * the old one-shot format blew past Discord's 2,000-character message
+ * limit and the reply failed outright, so EVERY page is built to fit
+ * (compact one-line-per-tower rows) and every page stays under the
+ * limit. The header counts only the DISCOVERED towers on that page —
+ * it never shows a total.
  * `uwu tower <name>` — detail for one tower, but only if you have
  * discovered it (or already have progress on it): floors, level req,
  * recommended party, cooldown timer, your checkpoint, and one line
@@ -93,23 +96,30 @@ async function runAction(inv: Inv, fn: () => Promise<string>): Promise<void> {
 }
 
 /**
- * One compact tower row. The old verbose row ("Small · 10 floors ·
+ * One tower row in the OwO big-list shop format (src/lib/shopFormat.ts):
+ * numbered, dotted leader to the compact facts (size, floors, entry
+ * level), then ready/cooldown + checkpoint. Numbers run 1–29 across
+ * ALL region pages (OwO's shop numbers globally), so a number is a
+ * stable list position. The old verbose row ("Small · 10 floors ·
  * party 2+ recommended · ...") ran ~130 characters per tower, so 29
  * towers blew past Discord's 2,000-character message limit and the
- * whole list reply failed. This row keeps the facts that matter in
- * the list (size, floors, area, entry level, ready/cooldown, your
- * checkpoint); the rest lives in the detail view (`uwu tower <name>`).
+ * whole list reply failed — this row keeps the facts that matter in
+ * the list; the rest lives in the detail view (`uwu tower <name>`).
  */
-function towerLine(t: TowerRow, cooldownMs: number, checkpoint: number | null): string {
+function towerLine(num: number, t: TowerRow, cooldownMs: number, checkpoint: number | null): string {
   const size = t.type === "small" ? "S" : "B";
-  const cd = cooldownMs > 0 ? ` · ⏳ ${formatCooldown(cooldownMs)}` : " · ✅";
-  const cp = checkpoint !== null && checkpoint > 0 ? ` · 📍 ${checkpoint}/${t.floors}` : "";
-  return `🗼 ${t.name} · ${size} · ${t.floors}F · ${towerAreaLabel(t)} · Lv ${t.levelReq}+${cd}${cp}`;
+  const status = cooldownMs > 0 ? ` ⏳ ${formatCooldown(cooldownMs)}` : " ✅";
+  const cp = checkpoint !== null && checkpoint > 0 ? ` 📍 ${checkpoint}/${t.floors}` : "";
+  return shopRow(num, "🗼", t.name, `${size} · ${t.floors}F · Lv ${t.levelReq}+`, status + cp);
 }
 
-/** An undiscovered tower: no name, no area, no floors, no level, nothing. */
-function undiscoveredLine(): string {
-  return "??? · undiscovered tower — explore the area to find it";
+/**
+ * An undiscovered tower: numbered like every other row (the number
+ * is just a list position and leaks nothing), but no name, no area,
+ * no floors, no level, nothing.
+ */
+function undiscoveredLine(num: number): string {
+  return shopRow(num, "", "???", "undiscovered");
 }
 
 interface TowerListPage {
@@ -157,15 +167,19 @@ async function towerPageContent(
   let discoveredOnPage = 0;
   const lines: string[] = [];
   const rows: string[] = [];
+  // Row numbers run 1–29 across ALL region pages (OwO's shop numbers
+  // globally), so count the towers on the earlier pages first.
+  let num = 1;
+  for (let i = 0; i < page; i++) num += pages[i]!.towers.length;
   for (const t of region.towers) {
     if (!discovered.has(t.towerId)) {
-      rows.push(undiscoveredLine());
+      rows.push(undiscoveredLine(num++));
       continue;
     }
     discoveredOnPage++;
     const cd = await towerCooldownRemainingMs(ctx.db, t.towerId, now);
     const progress = await getProgress(ctx.db, userId, t.towerId);
-    rows.push(towerLine(t, cd, progress ? progress.floorReached : null));
+    rows.push(towerLine(num++, t, cd, progress ? progress.floorReached : null));
   }
   lines.push(`🗼 Towers — ${region.regionName} (page ${page + 1}/${pages.length} · ${discoveredOnPage} discovered):`);
   lines.push(...rows);
@@ -175,20 +189,9 @@ async function towerPageContent(
 }
 
 function towerListButtons(page: number, pageCount: number): ActionRowBuilder<ButtonBuilder>[] {
-  return [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`selena:tower:list:${page - 1}`)
-        .setLabel("◀ Prev")
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(page <= 0),
-      new ButtonBuilder()
-        .setCustomId(`selena:tower:list:${page + 1}`)
-        .setLabel("Next ▶")
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(page >= pageCount - 1),
-    ),
-  ];
+  // OwO-style ◀ N ▶ buttons (the middle button shows the current
+  // page number, disabled) — same helper as the background shop.
+  return pageButtons("selena:tower:list", page, pageCount);
 }
 
 async function handleTowerListButton(inv: any, ctx: CommandContext): Promise<void> {

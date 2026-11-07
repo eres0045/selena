@@ -92,6 +92,12 @@ reveal progressively — detail shows cleared floors + the current floor
 only; future floors are `???` until cleared. The Main tower is never
 discoverable by explore/travel — exact name/id only, never listed even
 as `???`.
+**List format (built 2026-11-07, Ronit's order):** the OwO big-list
+shop format — numbered rows 1–29 globally across region pages, dotted
+leader to compact facts (`B · 20F · Lv 5+`), `Page X/Y` footer with
+◀ N ▶ buttons. Undiscovered towers are numbered `???` rows (the
+number leaks nothing). Same format as `uwu shop bg`; the rule lives in
+the design doc §9.4 and the shared helper is `src/lib/shopFormat.ts`.
 Floor scaling (built): monster level = area unlock + floor (cap 100);
 stats × (1 + 5%/floor above 1) on top of +2%/level. Mini-boss: one tier
 above the area's top tier (cap UwU), HP ×3, ATK/DEF ×1.5. Final boss:

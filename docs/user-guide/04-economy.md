@@ -86,10 +86,14 @@ Tables: `user_profiles` (about + equipped bg, global per user),
   `"static"` or `"animated"`); nothing hardcodes a price.
 - **Default is free** — every user starts on it, it always equips, and it
   is never sold.
-- `uwu shop bg` — lists all 30 with name + price + `[static]`/`[GIF]` mark
-  + `✓ owned` / `★ equipped` marks. `uwu shop buy bg <name>` — buys with
-  **guild-scoped gold** (the guild the purchase ran in, same as every shop
-  buy); one transaction — unknown / already-owned / can't-afford all refuse
+- `uwu shop bg` — lists all 30 in the **OwO big-list shop format**
+  (numbered rows 1–30 in manifest order, dotted leader to a compact
+  price like `12K`, `[static]`/`[GIF]` trailing mark, `✓ owned` /
+  `★ equipped` marks; **10 per page, 3 pages**, `Page X/Y` footer with
+  ◀ N ▶ buttons; `uwu shop bg <page>` jumps to a page). `uwu shop buy
+  bg <number|name>` — buys by list number or name with **guild-scoped
+  gold** (the guild the purchase ran in, same as every shop buy); one
+  transaction — unknown / already-owned / can't-afford all refuse
   before any gold moves. Ownership is **global**: a background bought in one
   server is yours everywhere.
 - `uwu bg <name>` (alias `background`) — equips a background you own, by

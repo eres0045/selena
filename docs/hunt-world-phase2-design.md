@@ -401,6 +401,19 @@ After a high-tier monster is caught (by hunt, roll, or auto-hunt — **any** sou
 
 ---
 
+### 9.4 Big-list display rule — the OwO shop format (BUILT 2026-11-07, Ronit's order: "for stuff that are big use this format")
+
+Any list with 10+ items renders in OwO's shop format (modelled on OwO Shop: Rings / Wallpapers): header (title + one-line description + the relevant commands as `code`), then NUMBERED rows — number, item emoji, name, a dotted leader filling to a right-aligned compact price/value, then a small trailing icon — then a `Page X/Y` footer with ◀ N ▶ buttons (the middle button shows the current page number, disabled). Prices use OwO's compact form (10, 100, 1K, 10K, 100K, 1M, 10M). Pages hold **10 items each**.
+
+```
+1  🖼️ Neon Street .................. 20K [static] ✓
+2  🖼️ Rainy Street ................. 18K [static]
+Page 1/3
+```
+
+- **Where it applies (built):** `uwu shop bg` (30 backgrounds, numbered 1–30 in manifest order, 3 pages; `uwu shop bg <page>` jumps to a page; `uwu shop buy bg <number>` buys by list number) and `uwu tower` (29 towers, numbered 1–29 globally across region pages; undiscovered towers stay `???` rows — the mystery rules in §4.7 still stand, the number is just a list position and leaks nothing).
+- **Rule for future lists:** any new list with 10+ items uses this format from the start — numbered, dotted leader, compact value, 10/page, ◀ N ▶ buttons. Shared helper: `src/lib/shopFormat.ts` (`compactGold`, `dotted`, `shopRow`, `pageButtons`).
+
 ## 10. Data model additions (Supabase — sketch)
 
 Phase 1 tables stay as they are (§9 of Phase 1 doc). New tables (all created by the bot on startup with `CREATE TABLE IF NOT EXISTS`, same pattern as Phase 1 — no direct DB access):

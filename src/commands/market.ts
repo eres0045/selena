@@ -31,6 +31,7 @@ import {
 import { utcDayString } from "../lib/huntDb.js";
 import { buyBackground, findBackground, getOwnedBackgrounds, getUserProfile } from "../lib/profile.js";
 import { DEFAULT_BG_ID, getBackground, listBackgrounds } from "../lib/profileBgs.js";
+import { compactGold, pageButtons, shopRow } from "../lib/shopFormat.js";
 
 /**
  * Market commands — auction house + daily shop + crates + gems
@@ -351,39 +352,84 @@ async function handleShopBuy(
   }
 }
 
-async function handleShopBgList(inv: Parameters<Command["execute"]>[0], ctx: CommandContext): Promise<void> {
+const BG_PAGE_SIZE = 10;
+
+/**
+ * One page of the background catalogue in the OwO big-list shop
+ * format (src/lib/shopFormat.ts): numbered rows 1–30 in manifest
+ * order, dotted leader to a compact price, [static]/[GIF] trailing
+ * mark, owned ✓ / equipped ★ kept — 10 per page, ◀ N ▶ buttons.
+ * The free Default is not numbered (it is never sold); it renders
+ * as a header line. Numbers are stable catalogue positions, so
+ * `uwu shop buy bg <number>` buys the same entry the list shows.
+ */
+async function shopBgPageContent(
+  ctx: CommandContext,
+  userId: string,
+  wantedPage: number,
+): Promise<{ content: string; page: number; pageCount: number }> {
+  const bgs = listBackgrounds();
+  const pageCount = Math.max(1, Math.ceil(bgs.length / BG_PAGE_SIZE));
+  const page = Math.min(Math.max(0, Math.floor(wantedPage) || 0), pageCount - 1);
+  const owned = new Set(await getOwnedBackgrounds(ctx.db, userId));
+  const equipped = (await getUserProfile(ctx.db, userId)).equippedBg;
+  const bal = await getBalance(ctx.db, ctx.guildId, userId);
+  const slice = bgs.slice(page * BG_PAGE_SIZE, (page + 1) * BG_PAGE_SIZE);
+  const lines = [
+    `🖼️ Profile Backgrounds — ${bgs.length} total, permanent catalogue, never rotates (you have ${fmt(bal.points)} gold):`,
+    "• `uwu shop buy bg <number|name>` to buy · `uwu bg <name>` to equip · `uwu profile` to see your card",
+    `· Default — free [static]${equipped === DEFAULT_BG_ID ? " ★ equipped" : " ✓ owned"}`,
+  ];
+  slice.forEach((b, i) => {
+    const num = page * BG_PAGE_SIZE + i + 1;
+    const marks = `${owned.has(b.id) ? " ✓" : ""}${equipped === b.id ? " ★" : ""}`;
+    const kind = b.type === "animated" ? "[GIF]" : "[static]";
+    lines.push(shopRow(num, "🖼️", b.name, `${compactGold(b.price)} ${kind}`, marks));
+  });
+  lines.push(`Page ${page + 1}/${pageCount}`);
+  return { content: lines.join("\n"), page, pageCount };
+}
+
+async function handleShopBgList(
+  inv: Parameters<Command["execute"]>[0],
+  ctx: CommandContext,
+  pageArg = "",
+): Promise<void> {
   try {
     const bgs = listBackgrounds();
     if (bgs.length === 0) {
       await replyError(inv, "Profile backgrounds aren't available yet — the background catalogue hasn't landed. Try again later.");
       return;
     }
-    const owned = new Set(await getOwnedBackgrounds(ctx.db, inv.user.id));
-    const equipped = (await getUserProfile(ctx.db, inv.user.id)).equippedBg;
-    const statics = bgs.filter((b) => b.type === "static");
-    const animated = bgs.filter((b) => b.type === "animated");
-    const lineFor = (b: { id: string; name: string; price: number; type: string }): string => {
-      const marks = `${owned.has(b.id) ? " ✓ owned" : ""}${equipped === b.id ? " ★ equipped" : ""}`;
-      const kind = b.type === "animated" ? "GIF" : "static";
-      return `· ${b.name} — ${fmt(b.price)} gold [${kind}]${marks}`;
-    };
-    const lines = [
-      `· Default — free [static]${equipped === DEFAULT_BG_ID ? " ★ equipped" : " ✓ owned"}`,
-      `Static (${statics.length}):`,
-      ...statics.map(lineFor),
-      `Animated GIF (${animated.length}):`,
-      ...animated.map(lineFor),
-    ];
-    const bal = await getBalance(ctx.db, ctx.guildId, inv.user.id);
+    // `uwu shop bg 2` jumps straight to page 2 (OwO's shop takes a page).
+    const wanted = /^\d+$/.test(pageArg.trim()) ? Number(pageArg.trim()) - 1 : 0;
+    const { content, page, pageCount } = await shopBgPageContent(ctx, inv.user.id, wanted);
     await inv.reply({
-      content:
-        `🖼️ Profile backgrounds — ${bgs.length} total, permanent catalogue, never rotates (you have ${fmt(bal.points)} gold):\n` +
-        `${lines.join("\n")}\n` +
-        `Buy with \`uwu shop buy bg <name>\`, equip with \`uwu bg <name>\` — your card shows it with \`uwu profile\`.`,
+      content,
+      components: pageCount > 1 ? pageButtons("selena:shopbg:list", page, pageCount) : [],
     });
   } catch (e) {
     console.error("uwu: shop bg failed:", e instanceof Error ? e.message : e);
     await replyError(inv, "Couldn't load the backgrounds — try again in a bit.");
+  }
+}
+
+async function handleShopBgListButton(inv: any, ctx: CommandContext): Promise<void> {
+  const parts = String(inv.customId ?? "").split(":");
+  const wanted = Number.parseInt(parts[3] ?? "0", 10);
+  const userId = String(inv.user?.id ?? "");
+  try {
+    const { content, page, pageCount } = await shopBgPageContent(ctx, userId, Number.isNaN(wanted) ? 0 : wanted);
+    await inv.update({
+      content,
+      components: pageCount > 1 ? pageButtons("selena:shopbg:list", page, pageCount) : [],
+    });
+  } catch (e) {
+    try {
+      await inv.reply({ content: "Couldn't load that page — try `uwu shop bg` again.", ephemeral: true });
+    } catch {
+      // The interaction is already answered/expired; nothing more to do.
+    }
   }
 }
 
@@ -394,13 +440,27 @@ async function handleShopBuyBg(
 ): Promise<void> {
   const q = query.trim();
   if (!q) {
-    await replyError(inv, "Usage: `uwu shop buy bg <name>` — see `uwu shop bg` for the full list.");
+    await replyError(inv, "Usage: `uwu shop buy bg <number|name>` — see `uwu shop bg` for the full list.");
     return;
   }
-  const bg = findBackground(q);
-  if (!bg) {
-    await replyError(inv, `I don't know a background called "${q}" — see \`uwu shop bg\` for the full list.`);
-    return;
+  // Buy by list number (`uwu shop buy bg 5`) — the numbers are the
+  // stable catalogue positions the list shows; anything else resolves
+  // by name/id exactly as before.
+  const bgs = listBackgrounds();
+  let bg;
+  if (/^\d+$/.test(q)) {
+    const n = Number(q);
+    bg = n >= 1 && n <= bgs.length ? bgs[n - 1] : undefined;
+    if (!bg) {
+      await replyError(inv, `There's no background #${q} — the list runs 1–${bgs.length}. See \`uwu shop bg\`.`);
+      return;
+    }
+  } else {
+    bg = findBackground(q);
+    if (!bg) {
+      await replyError(inv, `I don't know a background called "${q}" — see \`uwu shop bg\` for the full list.`);
+      return;
+    }
   }
   try {
     const res = await buyBackground(ctx.db, ctx.guildId, inv.user.id, bg.id, Date.now());
@@ -520,7 +580,7 @@ export const commands: Command[] = [
       const action = (inv.options.getString("action") ?? "").trim().toLowerCase();
       const target = inv.options.getString("item") ?? "";
       if (action === "buy") return handleShopBuy(inv, ctx, target);
-      if (action === "bg") return handleShopBgList(inv, ctx);
+      if (action === "bg") return handleShopBgList(inv, ctx, target);
       if (!action) return handleShopShow(inv, ctx);
       await inv.reply({ content: "Shop — `uwu shop` to browse, `uwu shop buy <item> [qty]` to buy, `uwu shop bg` for profile backgrounds." });
     },
@@ -552,7 +612,9 @@ export const commands: Command[] = [
   },
 ];
 
-export const buttonHandlers: Record<string, (...args: never[]) => Promise<void>> = {};
+export const buttonHandlers: Record<string, (...args: never[]) => Promise<void>> = {
+  "selena:shopbg": handleShopBgListButton as (...args: never[]) => Promise<void>,
+};
 
 export const modalHandlers: Record<string, (...args: never[]) => Promise<void>> = {};
 

@@ -70,7 +70,7 @@ registry (`src/commands/index.ts`), and deployed. Counted from the registry:
 | Command | Aliases | Args | Notes |
 |---|---|---|---|
 | `auction` | `auctions` | `<action> [args]` | `sell <item> <price>` (min 100), `bid <id> <amount>` (min +10%), `list`, `info <id>`, `cancel <id>`, `mine`; 24h, 5% fee, escrowed bids |
-| `shop` | `store` | `[buy <item> [qty]]` | Daily stock, same for everyone, midnight UTC; max 3 per item per player per day; gold + gems; `shop bg` lists the 30 profile backgrounds, `shop buy bg <name>` buys one (see §4.3 in [04-economy.md](04-economy.md)) |
+| `shop` | `store` | `[buy <item> [qty]]` | Daily stock, same for everyone, midnight UTC; max 3 per item per player per day; gold + gems; `shop bg` lists the 30 profile backgrounds in the OwO format (numbered, 10/page, ◀ N ▶), `shop buy bg <number\|name>` buys one (see §4.3 in [04-economy.md](04-economy.md)) |
 | `crates` | `crate` | — | List owned crates |
 | `open` | `opencrate` | `<crate>` | Open one crate, reveal loot |
 | `gems` | `gem` | — | Gem balance + how to earn gems |

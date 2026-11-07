@@ -438,12 +438,21 @@ describe("recommended party sizes", () => {
 });
 
 describe("tower list pagination — mystery rules (undiscovered towers are ???)", () => {
-  /** Tower names listed on one page's content (compact rows only — the header also starts with 🗼). */
+  /** Tower names listed on one page's content (OwO-format rows: `1  🗼 Name ..... B · 20F · Lv 5+ ✅`). */
   function namesOnPage(content: string): string[] {
     return content
       .split("\n")
-      .filter((l) => l.startsWith("🗼 ") && (l.includes(" · S · ") || l.includes(" · B · ")))
-      .map((l) => l.slice(3).split(" · ")[0]!);
+      .filter((l) => /^\d+\s+🗼\s/.test(l) && / [SB] · \d+F · Lv \d+\+/.test(l))
+      .map((l) => {
+        const m = l.match(/^\d+\s+🗼\s+(.+?)\s*\.+\s+[SB] · /);
+        return m ? m[1]! : "";
+      })
+      .filter(Boolean);
+  }
+
+  /** Numbered ??? rows on one page (OwO-format: `2  ??? ..... undiscovered`). */
+  function unknownRowsOnPage(content: string): string[] {
+    return content.split("\n").filter((l) => /^\d+\s+\?\?\?\s*\.+\s+undiscovered$/.test(l));
   }
 
   function nextButtonId(payload: unknown): string | null {
@@ -451,7 +460,7 @@ describe("tower list pagination — mystery rules (undiscovered towers are ???)"
     if (!comps) return null;
     for (const row of comps) {
       for (const b of row.toJSON().components) {
-        if (b.label === "Next ▶" && !b.disabled) return b.custom_id;
+        if (b.label === "▶" && !b.disabled) return b.custom_id;
       }
     }
     return null;
@@ -502,7 +511,10 @@ describe("tower list pagination — mystery rules (undiscovered towers are ???)"
       expect(c).not.toContain("tower-main");
       for (const t of visible) expect(c).not.toContain(t.name);
       expect(namesOnPage(c)).toHaveLength(0);
-      expect(c).toContain("??? · undiscovered tower — explore the area to find it");
+      // Every row on a fresh page is a numbered ??? row — no name, no
+      // area, no floors, no level leaked.
+      expect(unknownRowsOnPage(c).length).toBeGreaterThan(0);
+      for (const l of unknownRowsOnPage(c)) expect(l).toContain("undiscovered");
       expect(c).toContain("uwu explore");
     }
     // The first page's header counts discovered towers on that page: 0.
@@ -520,11 +532,42 @@ describe("tower list pagination — mystery rules (undiscovered towers are ???)"
       expect(c).not.toContain("29 known towers");
       expect(c).not.toContain(main.name);
       expect(c).not.toContain("tower-main");
-      expect(c).not.toContain("??? · undiscovered tower");
+      expect(c).not.toContain("undiscovered");
       for (const n of namesOnPage(c)) seen.add(n);
     }
     expect(seen.size).toBe(29);
     for (const t of visible) expect(seen.has(t.name)).toBe(true);
+  });
+
+  it("list rows use the OwO big-list format — numbered 1–29 globally, dotted leaders, compact facts, ◀ N ▶ buttons", async () => {
+    const seeded = await seedTowers(db);
+    const visible = await listVisibleTowers(db);
+    for (const t of visible) await discoverTower(db, ALICE, t.towerId, NOW);
+    const pages = await collectPages(await runCommand({}));
+    const all = pages.join("\n");
+    // Numbers run 1–29 across all pages (OwO numbers globally).
+    for (let n = 1; n <= 29; n++) {
+      expect(all).toMatch(new RegExp(`^${n}  🗼 `, "m"));
+    }
+    // Dotted leaders + compact size/floors/level on every row.
+    for (const c of pages) {
+      for (const l of c.split("\n")) {
+        if (/^\d+\s+🗼\s/.test(l)) {
+          expect(l).toMatch(/\.{3,}/);
+          expect(l).toMatch(/ [SB] · \d+F · Lv \d+\+/);
+        }
+      }
+    }
+    // Buttons are ◀, current page number, ▶ — check page 1's row.
+    const first = await runCommand({});
+    const payload = first.firstReplyPayload() as {
+      components?: { toJSON: () => { components: { label: string; disabled?: boolean }[] } }[];
+    };
+    const labels = payload.components!.flatMap((row) => row.toJSON().components.map((b) => b.label));
+    expect(labels).toEqual(["◀", "1", "▶"]);
+    // The seeded towers include both sizes, so both appear in the rows.
+    expect(seeded.some((t) => t.type === "small")).toBe(true);
+    expect(seeded.some((t) => t.type === "big")).toBe(true);
   });
 });
 
