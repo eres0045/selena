@@ -24,6 +24,7 @@ import {
   suitOf,
 } from "../src/lib/casino.js";
 import { buttonHandlers, commands as casinoCommands } from "../src/commands/casino.js";
+import { VISUAL_SUSPENSE } from "../src/lib/visualgames.js";
 import type { CommandContext } from "../src/lib/command.js";
 
 let db: SelenaDb;
@@ -57,6 +58,9 @@ beforeEach(async () => {
   db = getTestDb();
   ctx = { db, guildId: GUILD };
   blackjackGames.clear();
+  // The visual games wait ~2.4s between the spin and the reveal edit;
+  // tests exercise the flow, not the wait.
+  VISUAL_SUSPENSE.ms = 0;
 });
 
 // ---------------------------------------------------------------------------
@@ -518,6 +522,85 @@ describe("/coinflip command", () => {
     const fake = await run("coinflip", { bet: 10, guess: "edge" });
     expect(fake.allText()).toMatch(/heads or tails/i);
     expect((await getBalance(db, GUILD, "user-1")).points).toBe(100);
+  });
+});
+
+describe("visual games: suspense -> reveal flow", () => {
+  function edits(fake: FakeChatInput) {
+    return fake.replies.filter((r) => r.kind === "editReply");
+  }
+  function fileNames(payload: unknown): string[] {
+    const p = payload as { files?: Array<{ name?: string | null }> };
+    return (p.files ?? []).map((f) => f.name ?? "");
+  }
+  function embedOf(payload: unknown): { title?: string; description?: string; image?: { url?: string } } | undefined {
+    const p = payload as { embeds?: Array<{ title?: string; description?: string; image?: { url?: string } }> };
+    return p.embeds?.[0];
+  }
+
+  it("coinflip: defers, shows the flip, then edits to the landed face matching the result text", async () => {
+    await seed("user-1", 1000);
+    const fake = await run("coinflip", { bet: 100, guess: "heads" });
+    expect(fake.replies[0]?.kind).toBe("deferReply");
+    const [spin, settled] = edits(fake);
+    expect(spin).toBeDefined();
+    expect(settled).toBeDefined();
+    expect(embedOf(spin!.payload)?.description).toMatch(/Flipping/);
+    expect(fileNames(spin!.payload)).toEqual(["flip.gif"]);
+    const settledEmbed = embedOf(settled!.payload);
+    const landed = /landed \*\*(heads|tails)\*\*/.exec(settledEmbed?.description ?? "")?.[1];
+    expect(landed).toMatch(/^(heads|tails)$/);
+    expect(fileNames(settled!.payload)).toEqual([`${landed}.png`]);
+    expect(settledEmbed?.image?.url).toBe(`attachment://${landed}.png`);
+  });
+
+  it("slots: defers, shows the spinning reels, then edits to the settled strip", async () => {
+    await seed("user-1", 1000);
+    const fake = await run("slots", { bet: 100 });
+    expect(fake.replies[0]?.kind).toBe("deferReply");
+    const [spin, settled] = edits(fake);
+    expect(spin).toBeDefined();
+    expect(settled).toBeDefined();
+    expect(embedOf(spin!.payload)?.description).toMatch(/Spinning/);
+    expect(fileNames(spin!.payload)).toEqual(["spin.gif"]);
+    expect(fileNames(settled!.payload)).toEqual(["settled.gif"]);
+    expect(embedOf(settled!.payload)?.image?.url).toBe("attachment://settled.gif");
+  });
+
+  it("roulette: defers, shows the spinning wheel, then edits to the wheel with the ball on the rolled number", async () => {
+    await seed("user-1", 1000);
+    const fake = await run("roulette", { bet: 100, "bet-on": "red" });
+    expect(fake.replies[0]?.kind).toBe("deferReply");
+    const [spin, settled] = edits(fake);
+    expect(spin).toBeDefined();
+    expect(settled).toBeDefined();
+    expect(embedOf(spin!.payload)?.description).toMatch(/Spinning/);
+    expect(fileNames(spin!.payload)).toEqual(["spin.gif"]);
+    const settledEmbed = embedOf(settled!.payload);
+    const rolled = /landed on \*\*(\d+) /.exec(settledEmbed?.description ?? "")?.[1];
+    expect(rolled).toMatch(/^\d+$/);
+    const wheelName = `wheel-${String(rolled).padStart(2, "0")}.png`;
+    expect(fileNames(settled!.payload)).toEqual([wheelName]);
+    expect(settledEmbed?.image?.url).toBe(`attachment://${wheelName}`);
+  });
+
+  it("scratch: defers, shows the covered foil tiles, then edits to the revealed tiles", async () => {
+    await seed("user-1", 1000);
+    const fake = await run("scratch", { bet: 100 });
+    expect(fake.replies[0]?.kind).toBe("deferReply");
+    const [spin, settled] = edits(fake);
+    expect(spin).toBeDefined();
+    expect(settled).toBeDefined();
+    expect(embedOf(spin!.payload)?.description).toMatch(/Scratching/);
+    expect(fileNames(spin!.payload)).toEqual(["covered.gif"]);
+    expect(fileNames(settled!.payload)).toEqual(["revealed.gif"]);
+    expect(embedOf(settled!.payload)?.image?.url).toBe("attachment://revealed.gif");
+  });
+
+  it("visual games reply with a single message (defer + 2 edits), never a new reply", async () => {
+    await seed("user-1", 1000);
+    const fake = await run("coinflip", { bet: 100, guess: "tails" });
+    expect(fake.replies.map((r) => r.kind)).toEqual(["deferReply", "editReply", "editReply"]);
   });
 });
 

@@ -36,6 +36,18 @@ import {
   type BlackjackGame,
 } from "../lib/casino.js";
 import { secureFloat } from "../lib/rng.js";
+import {
+  VISUAL_SUSPENSE,
+  coinflipFlipPath,
+  coinflipLandedPath,
+  composeScratch,
+  composeSlotsSettled,
+  rouletteSpinPath,
+  rouletteWheelPath,
+  sleep,
+  slotsSpinPath,
+  tryReadAsset,
+} from "../lib/visualgames.js";
 
 type Interaction = Parameters<Command["execute"]>[0];
 
@@ -161,6 +173,41 @@ async function bjReplyPayload(
 }
 
 /**
+ * Suspense -> reveal (Ronit: the player must WATCH the flip/spin, then
+ * see it land — not a text result). The bot defers, shows the action
+ * animation with neutral text that leaks nothing about the result,
+ * waits, then edits the SAME reply to the settled visual + result.
+ * When the spin asset is missing (spin === null) the suspense is
+ * skipped and the settled reply goes out directly, so a missing file
+ * can never break the game.
+ */
+async function playVisual(
+  interaction: Interaction,
+  spin: { embeds: APIEmbed[]; files: AttachmentBuilder[] } | null,
+  settled: { embeds: APIEmbed[]; files: AttachmentBuilder[] },
+): Promise<void> {
+  await interaction.deferReply();
+  if (spin) {
+    await interaction.editReply(spin);
+    await sleep(VISUAL_SUSPENSE.ms);
+  }
+  await interaction.editReply(settled);
+}
+
+/** Embed + image payload, or the text-only payload when image is null. */
+function attachPayload(
+  embed: ReturnType<typeof pointsEmbed>,
+  image: { buffer: Buffer; name: string } | null,
+): { embeds: APIEmbed[]; files: AttachmentBuilder[] } {
+  if (!image) return { embeds: [embed.toJSON()], files: [] };
+  embed.setImage(`attachment://${image.name}`);
+  return {
+    embeds: [embed.toJSON()],
+    files: [new AttachmentBuilder(image.buffer, { name: image.name })],
+  };
+}
+
+/**
  * Explicit balance pre-check (defense in depth behind the atomic placeBet
  * below): a bet can never exceed the balance, and the error names the
  * balance so the player sees why. Runs before any defer, so the error
@@ -207,18 +254,29 @@ export const commands: Command[] = [
         spin.multiplier > 0
           ? `You won **${fmt(winAmount)} points** (${spin.multiplier}x)!`
           : "No match — better luck next spin.";
-      await interaction.reply({
-        embeds: [
-          pointsEmbed(emoji("slots") + " Slots", `${spin.symbols.join(" | ")}\n\n${outcome}`)
-            .addFields(
-              { name: "Bet", value: fmt(bet), inline: true },
-              { name: "Multiplier", value: `${spin.multiplier}x`, inline: true },
-              { name: "Balance", value: fmt(balance), inline: true },
-            )
-            .setFooter({ text: "Odds: jackpot 7️⃣7️⃣7️⃣ 50x · 3-of-a-kind 10x · pair 2x · house edge ~10.9%. Points only, no real money." })
-            .toJSON(),
-        ],
-      });
+      // The settled strip shows the REAL result symbols (never a canned
+      // 7-7-7); the text symbols stay only as the no-asset fallback.
+      const settledStrip = await composeSlotsSettled(spin.symbols);
+      const settledEmbed = pointsEmbed(
+        emoji("slots") + " Slots",
+        settledStrip ? outcome : `${spin.symbols.join(" | ")}\n\n${outcome}`,
+      )
+        .addFields(
+          { name: "Bet", value: fmt(bet), inline: true },
+          { name: "Multiplier", value: `${spin.multiplier}x`, inline: true },
+          { name: "Balance", value: fmt(balance), inline: true },
+        )
+        .setFooter({ text: "Odds: jackpot 7️⃣7️⃣7️⃣ 50x · 3-of-a-kind 10x · pair 2x · house edge ~10.9%. Points only, no real money." })
+        .setColor(spin.multiplier > 0 ? BJ_COLORS.win : BJ_COLORS.lose);
+      const spinBuf = tryReadAsset(slotsSpinPath());
+      const spinEmbed = pointsEmbed(emoji("slots") + " Slots", "Spinning…")
+        .addFields({ name: "Bet", value: fmt(bet), inline: true })
+        .setColor(BJ_COLORS.playing);
+      await playVisual(
+        interaction,
+        spinBuf ? attachPayload(spinEmbed, { buffer: spinBuf, name: "spin.gif" }) : null,
+        attachPayload(settledEmbed, settledStrip ? { buffer: settledStrip, name: "settled.gif" } : null),
+      );
     },
   },
   {
@@ -293,18 +351,31 @@ export const commands: Command[] = [
       const outcome = result.win
         ? `${emoji("party")} You won **${fmt(winAmount)} points** (${result.multiplier}x)!`
         : "You lost this spin.";
-      await interaction.reply({
-        embeds: [
-          pointsEmbed(emoji("roulette") + " Roulette", `The ball landed on **${result.roll} ${result.color}**.\nYou bet on **${result.betOn}**.\n\n${outcome}`)
-            .addFields(
-              { name: "Bet", value: fmt(bet), inline: true },
-              { name: "Multiplier", value: `${result.multiplier}x`, inline: true },
-              { name: "Balance", value: fmt(balance), inline: true },
-            )
-            .setFooter({ text: "European wheel (single zero) · even-money 2x · single number 36x · house edge 2.70%. Points only, no real money." })
-            .toJSON(),
-        ],
-      });
+      // Settled wheel: the ball sits on the ACTUAL winning pocket.
+      const wheelBuf = tryReadAsset(rouletteWheelPath(result.roll));
+      const settledEmbed = pointsEmbed(emoji("roulette") + " Roulette", `The ball landed on **${result.roll} ${result.color}**.\nYou bet on **${result.betOn}**.\n\n${outcome}`)
+        .addFields(
+          { name: "Bet", value: fmt(bet), inline: true },
+          { name: "Multiplier", value: `${result.multiplier}x`, inline: true },
+          { name: "Balance", value: fmt(balance), inline: true },
+        )
+        .setFooter({ text: "European wheel (single zero) · even-money 2x · single number 36x · house edge 2.70%. Points only, no real money." })
+        .setColor(result.win ? BJ_COLORS.win : BJ_COLORS.lose);
+      const spinBuf = tryReadAsset(rouletteSpinPath());
+      const spinEmbed = pointsEmbed(emoji("roulette") + " Roulette", "Spinning…")
+        .addFields(
+          { name: "Bet", value: fmt(bet), inline: true },
+          { name: "You bet on", value: `**${result.betOn}**`, inline: true },
+        )
+        .setColor(BJ_COLORS.playing);
+      await playVisual(
+        interaction,
+        spinBuf ? attachPayload(spinEmbed, { buffer: spinBuf, name: "spin.gif" }) : null,
+        attachPayload(
+          settledEmbed,
+          wheelBuf ? { buffer: wheelBuf, name: `wheel-${String(result.roll).padStart(2, "0")}.png` } : null,
+        ),
+      );
     },
   },
   {
@@ -338,17 +409,29 @@ export const commands: Command[] = [
       const outcome = result.win
         ? `${emoji("party")} You won **${fmt(winAmount)} points** (1.9x)!`
         : "Wrong call — you lost this flip.";
-      await interaction.reply({
-        embeds: [
-          pointsEmbed(emoji("coin") + " Coinflip", `You called **${guess}**. The coin landed **${result.result}**.\n\n${outcome}`)
-            .addFields(
-              { name: "Bet", value: fmt(bet), inline: true },
-              { name: "Balance", value: fmt(balance), inline: true },
-            )
-            .setFooter({ text: "50/50 flip · win pays 1.9x · house edge 5%. Points only, no real money." })
-            .toJSON(),
-        ],
-      });
+      // The coin spins, then LANDS on the actual result face (heads = the
+      // $ face, tails = the star disc — same canvas, so the edit feels
+      // like the coin just stops).
+      const landedBuf = tryReadAsset(coinflipLandedPath(result.result));
+      const settledEmbed = pointsEmbed(emoji("coin") + " Coinflip", `You called **${guess}**. The coin landed **${result.result}**.\n\n${outcome}`)
+        .addFields(
+          { name: "Bet", value: fmt(bet), inline: true },
+          { name: "Balance", value: fmt(balance), inline: true },
+        )
+        .setFooter({ text: "50/50 flip · win pays 1.9x · house edge 5%. Points only, no real money." })
+        .setColor(result.win ? BJ_COLORS.win : BJ_COLORS.lose);
+      const spinBuf = tryReadAsset(coinflipFlipPath());
+      const spinEmbed = pointsEmbed(emoji("coin") + " Coinflip", "Flipping…")
+        .addFields(
+          { name: "Bet", value: fmt(bet), inline: true },
+          { name: "You called", value: `**${guess}**`, inline: true },
+        )
+        .setColor(BJ_COLORS.playing);
+      await playVisual(
+        interaction,
+        spinBuf ? attachPayload(spinEmbed, { buffer: spinBuf, name: "flip.gif" }) : null,
+        attachPayload(settledEmbed, landedBuf ? { buffer: landedBuf, name: `${result.result}.png` } : null),
+      );
     },
   },
   {
@@ -459,18 +542,32 @@ export const commands: Command[] = [
           : result.multiplier === 1
             ? `Two matching — your **${fmt(bet)} points** are returned.`
             : "No match — better luck next card.";
-      await interaction.reply({
-        embeds: [
-          pointsEmbed("🎫 Scratch Card", `${result.symbols.join("  ")}\n\n${outcome}`)
-            .addFields(
-              { name: "Bet", value: fmt(bet), inline: true },
-              { name: "Multiplier", value: `${result.multiplier}x`, inline: true },
-              { name: "Balance", value: fmt(balance), inline: true },
-            )
-            .setFooter({ text: "Odds: 3 matching 5x · 2 matching 1x · house edge 12.5%. Points only, no real money." })
-            .toJSON(),
-        ],
-      });
+      // Visual reveal: three covered foil tiles first, then the same
+      // three tiles revealed with the real drawn symbols. The text
+      // symbols stay only as the no-asset fallback.
+      const revealedStrip = await composeScratch(result.symbols);
+      const coveredStrip = await composeScratch(null);
+      const settledEmbed = pointsEmbed(
+        "🎫 Scratch Card",
+        revealedStrip ? outcome : `${result.symbols.join("  ")}\n\n${outcome}`,
+      )
+        .addFields(
+          { name: "Bet", value: fmt(bet), inline: true },
+          { name: "Multiplier", value: `${result.multiplier}x`, inline: true },
+          { name: "Balance", value: fmt(balance), inline: true },
+        )
+        .setFooter({ text: "Odds: 3 matching 5x · 2 matching 1x · house edge 12.5%. Points only, no real money." })
+        .setColor(
+          result.multiplier === 5 ? BJ_COLORS.win : result.multiplier === 1 ? BJ_COLORS.push : BJ_COLORS.lose,
+        );
+      const spinEmbed = pointsEmbed("🎫 Scratch Card", "Scratching…")
+        .addFields({ name: "Bet", value: fmt(bet), inline: true })
+        .setColor(BJ_COLORS.playing);
+      await playVisual(
+        interaction,
+        coveredStrip ? attachPayload(spinEmbed, { buffer: coveredStrip, name: "covered.gif" }) : null,
+        attachPayload(settledEmbed, revealedStrip ? { buffer: revealedStrip, name: "revealed.gif" } : null),
+      );
     },
   },
 ];
