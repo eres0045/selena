@@ -63,6 +63,13 @@ const ID_TABLES = new Set([
   "polls",
   "tickets",
   "reminders",
+  "guilds",
+  "user_monster_instances",
+  "auctions",
+  "auction_bids",
+  "announcements",
+  "rare_logs",
+  "battle_challenges",
 ]);
 
 /**
@@ -471,6 +478,203 @@ CREATE TABLE IF NOT EXISTS user_roll (
   rolls_today INTEGER NOT NULL DEFAULT 0,
   roll_day TEXT,
   PRIMARY KEY (guild_id, user_id)
+);
+
+-- Hunt world Phase 2 (2026-11-07). Global world state is keyed by
+-- user_id alone (the world is shared across all of Discord); ownership
+-- rows keep guild_id so per-server caps still count per (guild_id,
+-- monster_id). All tables are created by the bot on startup, same
+-- pattern as Phase 1. Spec: docs/hunt-world-phase2-design.md §10.
+CREATE TABLE IF NOT EXISTS user_location (
+  user_id TEXT PRIMARY KEY,
+  current_area TEXT NOT NULL DEFAULT 'meadow',
+  travelling_to TEXT,
+  travel_ends_at BIGINT,
+  travel_origin TEXT,
+  travel_channel_id TEXT,
+  auto_hunt INTEGER NOT NULL DEFAULT 0,
+  auto_hunt_seconds INTEGER NOT NULL DEFAULT 0,
+  auto_hunt_charged INTEGER NOT NULL DEFAULT 0,
+  map_marks TEXT NOT NULL DEFAULT '[]',
+  map_zoom TEXT NOT NULL DEFAULT 'world',
+  last_location TEXT
+);
+
+CREATE TABLE IF NOT EXISTS towers (
+  tower_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  region TEXT NOT NULL,
+  area TEXT NOT NULL,
+  floors INTEGER NOT NULL,
+  hidden INTEGER NOT NULL DEFAULT 0,
+  level_req INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS tower_parties (
+  party_id TEXT PRIMARY KEY,
+  tower_id TEXT NOT NULL,
+  leader_id TEXT NOT NULL,
+  members TEXT NOT NULL DEFAULT '[]',
+  created_at BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tower_progress (
+  user_id TEXT NOT NULL,
+  tower_id TEXT NOT NULL,
+  floor_reached INTEGER NOT NULL DEFAULT 0,
+  checkpoint_at BIGINT,
+  party_id TEXT,
+  PRIMARY KEY (user_id, tower_id)
+);
+
+CREATE TABLE IF NOT EXISTS tower_cooldowns (
+  tower_id TEXT PRIMARY KEY,
+  cleared_at BIGINT NOT NULL,
+  resets_at BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS spawn_cooldowns (
+  monster_id INTEGER PRIMARY KEY,
+  caught_at BIGINT NOT NULL,
+  available_at BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS guilds (
+  id BIGSERIAL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  leader_id TEXT NOT NULL,
+  level INTEGER NOT NULL DEFAULT 1,
+  xp INTEGER NOT NULL DEFAULT 0,
+  created_at BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS guild_members (
+  guild_id BIGINT NOT NULL,
+  user_id TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'member',
+  joined_at BIGINT NOT NULL,
+  PRIMARY KEY (guild_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_monster_instances (
+  id BIGSERIAL PRIMARY KEY,
+  guild_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  monster_id INTEGER NOT NULL,
+  level INTEGER NOT NULL DEFAULT 1,
+  xp INTEGER NOT NULL DEFAULT 0,
+  fuse_level INTEGER NOT NULL DEFAULT 0,
+  source TEXT NOT NULL DEFAULT 'hunt',
+  caught_at BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_wallet (
+  user_id TEXT PRIMARY KEY,
+  gems INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS auctions (
+  id BIGSERIAL PRIMARY KEY,
+  seller_id TEXT NOT NULL,
+  item_type TEXT NOT NULL,
+  item_ref TEXT NOT NULL,
+  start_price INTEGER NOT NULL,
+  current_bid INTEGER,
+  current_bidder TEXT,
+  ends_at BIGINT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  created_at BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS auction_bids (
+  id BIGSERIAL PRIMARY KEY,
+  auction_id BIGINT NOT NULL,
+  bidder_id TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  created_at BIGINT NOT NULL,
+  refunded INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS shop_stock (
+  date TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  price INTEGER NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'gold',
+  qty_per_player INTEGER NOT NULL DEFAULT 3,
+  PRIMARY KEY (date, item_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_shop_buys (
+  date TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  qty INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (date, user_id, item_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_crates (
+  user_id TEXT NOT NULL,
+  crate_tier TEXT NOT NULL,
+  qty INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, crate_tier)
+);
+
+CREATE TABLE IF NOT EXISTS user_materials (
+  user_id TEXT NOT NULL,
+  material TEXT NOT NULL,
+  qty INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, material)
+);
+
+CREATE TABLE IF NOT EXISTS user_items (
+  user_id TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  qty INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, item_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_badges (
+  user_id TEXT NOT NULL,
+  badge TEXT NOT NULL,
+  awarded_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, badge)
+);
+
+CREATE TABLE IF NOT EXISTS announcements (
+  id BIGSERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  posted_by TEXT NOT NULL,
+  posted_at BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS rare_logs (
+  id BIGSERIAL PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  guild_id TEXT NOT NULL,
+  item_type TEXT NOT NULL,
+  item_ref TEXT NOT NULL,
+  tier TEXT NOT NULL,
+  source TEXT NOT NULL,
+  caught_at BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS battle_challenges (
+  id BIGSERIAL PRIMARY KEY,
+  challenger_id TEXT NOT NULL,
+  opponent_id TEXT NOT NULL,
+  wager INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'pending',
+  channel_id TEXT NOT NULL,
+  guild_id TEXT NOT NULL,
+  created_at BIGINT NOT NULL,
+  expires_at BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_battle (
+  user_id TEXT PRIMARY KEY,
+  last_battle_at BIGINT
 );
 `;
 
