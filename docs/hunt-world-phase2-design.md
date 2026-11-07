@@ -415,12 +415,40 @@ Phase 1 tables stay as they are (§9 of Phase 1 doc). New tables (all created by
 | `shop_stock` | date, item_id, price, currency (gold/gems), qty_per_player | Daily shop (§9.1) — one row per item per day, same for everyone |
 | `user_crates` | user_id, crate_tier, qty | Crate inventory (§9.2) |
 | `user_materials` | user_id, material, qty | Shards, cores, scales, etc. (§9.3) |
+| `announcements` | id, title, body, posted_by, posted_at | Update feed (§11.1) |
+| `rare_logs` | id, user_id, guild_id (Discord server), item_type, item_ref, tier, source (hunt/roll/auction/trade/shop), caught_at | Rare-catch feed (§11.2) |
 
 **Enforcement notes:** caps (§7.2) and escrow (§8.2) are fail-closed like Phase 1 §9: a failed count/balance query refuses the award or bid, never grants it. Auction escrow, tower checkpoints, travel state, and spawn cooldowns must all survive redeploys (database, never in-memory).
 
 ---
 
-## 11. Open questions (Ronit's call — everything unconfirmed)
+## 11. Announcements + logs
+
+Added 2026-11-07 (Ron's words: "Add announcment as uwu announcement to see what we add like new monsters or whatever / And logs as uwu logs to see who got epic or legendary monster or weapons"). Doc only — NOT built yet.
+
+### 11.1 `uwu announcements` — what's new
+
+- **What it shows:** the update feed — new monsters, new weapons, new pets, new areas, new features, balance changes, events. Newest first, latest 10, plain text (one short line per update with its date).
+- **How entries get there:** bot owner / server admins post with `uwu announce <title> | <text>` (admin-only; exact permission set unconfirmed — §12). Entries are stored in `announcements`, never hard-coded, so the feed survives redeploys.
+- **Auto-entries (working default):** when a content update ships (new monsters/weapons added to the roster), the deploy notes are posted automatically as one announcement — so players see "12 new monsters added" without an admin typing it.
+- **Scope:** global — the same feed for every server, because the world is one shared world (§2). A server that wants only its own news uses the log channel instead (§11.3).
+
+### 11.2 `uwu logs` — who got the rare stuff
+
+- **What it shows:** the rare-catch feed — every Epic, Legendary, Mythic, and UwU monster caught or rolled, and every Epic+ weapon obtained, with the player's name, the item, its tier, how they got it (hunt / roll / auction / trade / shop), and when.
+- **Default scope:** your Discord server's recent catches (latest 10, plain text). `uwu logs global` shows the same feed across all of Discord.
+- **What is NOT logged:** Common / Uncommon / Rare catches (too noisy). Only Epic+ — the feed stays a brag board, not a spam list.
+- **How entries get there:** automatic — every qualifying catch/roll writes a `rare_logs` row at the same moment the monster is awarded (same DB transaction, so a logged catch is a real catch). Auction/trade/shop entries are written when the item changes hands. Nothing is logged by hand.
+- **Privacy:** public by design — the point is showing off. A player who does not want their catches shown has no opt-out in this design (flagged in §12).
+
+### 11.3 Optional: server log channel
+
+- **Working default (unconfirmed):** a server admin can set a channel with `uwu setlogchannel #channel` — Epic+ catches from that server are auto-posted there as they happen (same plain-text format as `uwu logs`). Without it set, nothing is auto-posted and the feed lives only in the `uwu logs` command.
+- **Announcements are NOT auto-posted to servers** — they live in `uwu announcements` only, so servers are never spammed by global update posts.
+
+---
+
+## 12. Open questions (Ronit's call — everything unconfirmed)
 
 | # | Item | Working default in this doc | Needs |
 |---|---|---|---|
@@ -448,6 +476,9 @@ Phase 1 tables stay as they are (§9 of Phase 1 doc). New tables (all created by
 | 22 | Auction shill protection | None in Phase 2 | Decide if/when to add |
 | 23 | Guild perks exact numbers (§3.2) | Working defaults | Confirm or tune |
 | 24 | Tower Key: unlocks one tower floor entry without the level requirement | Working default | Confirm the item exists and what it does |
+| 25 | Announcements: who can post (`uwu announce`) | Bot owner + server admins | Confirm permission set |
+| 26 | Logs: default scope server vs global; opt-out? | Default server, `uwu logs global` for all-Discord; no opt-out | Confirm scope + whether players can hide their catches |
+| 27 | Server log channel (`uwu setlogchannel`) | Optional, off by default | Confirm it exists at all |
 
 ---
 
@@ -458,4 +489,4 @@ Phase 1 tables stay as they are (§9 of Phase 1 doc). New tables (all created by
 - [x] Spawn cooldowns + per-server caps + no-cap-on-buying are stated in one place (§7) and repeated in the auction rules (§8.3) so the distinction cannot be missed.
 - [x] No new currency is invented: gold and gems only (gems already exist from Phase 1 §2.4). Shards/materials are inventory items, not currencies.
 - [x] Every system that moves gold or items is fail-closed and database-backed (§10 table notes; §7.2, §8.2).
-- [x] Open questions are all listed in §11 with their working defaults — nothing in this doc is silently decided.
+- [x] Open questions are all listed in §12 with their working defaults — nothing in this doc is silently decided.
