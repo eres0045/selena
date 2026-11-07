@@ -289,7 +289,7 @@ Every entry's stats sit inside its tier band (§3.1). Effects reference the cata
 | 32 | Static Eel | Lightning | 48 / 12 / 5 | Shock | W |
 | 33 | Dusk Moth | Shadow | 46 / 11 / 5 | Dust Wing | W |
 | 34 | River Otter | Water | 62 / 9 / 7 | Slide Tackle | W |
-| 35 | Thorn Hedgehog | Nature | 60 / 10 / 7 | Spike Roll | W |
+| 35 | Spike Puffer | Water | 60 / 10 / 7 | Spike Roll | W |
 | 36 | Cinder Imp | Fire | 45 / 12 / 5 | Impish Jab (Burn) | W |
 | 37 | Gale Chick | Wind | 43 / 12 / 5 | Gust Peck | W |
 | 38 | Pebble Golemlet | Earth | 70 / 9 / 8 | Rock Toss | W |

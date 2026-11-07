@@ -1,13 +1,13 @@
 # Hunt emoji art — sources
 
 Collected 2026-11-07 for the uwu bot's hunt world (100 monsters, 50 weapons, 20 pets).
-**169/170 matched, 1 unmatched** (Thorn Hedgehog — no non-franchise hedgehog art exists on emoji.gg).
+**170/170 matched, 0 unmatched** (2026-11-07: Thorn Hedgehog was replaced by Spike Puffer — every hedgehog emoji on emoji.gg is Sonic-franchise, so the monster itself was swapped for a pufferfish with clean animated art).
 Every file is a GIF, animated, ≤128×128 px, under 262,144 bytes (Discord's limit), verified with PIL.
 Per-file source URL + licence is in `manifest.json` (and the per-category fragments).
 
 ## Sources used
 
-### Monsters (99/100) + Pets (20/20) — emoji.gg (free, user uploads)
+### Monsters (100/100) + Pets (20/20) — emoji.gg (free, user uploads)
 - Animated listings scraped: `emoji.gg/emojis/<category>?sort=animated` — creature (40+ pages),
   monster, demon, horror, magic, plus targeted categories (slime, dragon, wolf, fox, slime, phoenix, etc.).
 - Downloaded from the CDN `cdn3.emoji.gg/emojis/<id>-<slug>.gif` (IDs taken from listing/per-emoji
@@ -40,9 +40,7 @@ Per-file source URL + licence is in `manifest.json` (and the per-category fragme
 - discordemoji.com / emotes.net — not used (small/stale, or paid static packs).
 
 ## Unmatched
-- **Thorn Hedgehog** (monster, Common) — every hedgehog emoji found on emoji.gg is Sonic-franchise;
-  left unmatched rather than forcing a bad fit. Options: draw one, or pick a different small spiky
-  creature as the art and keep the roster name.
+- None. The former unmatched entry (Thorn Hedgehog, monster, Common) was **replaced 2026-11-07 by Spike Puffer** (monster, Common, Water, Woods): every hedgehog emoji found on emoji.gg is Sonic-franchise, so the monster was swapped rather than forcing a bad fit. Art: emoji.gg `4215-pufferfish` (animated GIF, 56×56, 100 frames, 176,955 bytes, Basic licence) — a real pufferfish eating a carrot; see `manifest.json`.
 
 ## Weak stand-ins (for the tier re-check before launch)
 Some emoji.gg art is a concept stand-in, not an exact match: Root Mole → hamster; Iron Rhino →

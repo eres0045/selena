@@ -326,7 +326,7 @@ const MONSTER_ROWS: readonly MonsterRow[] = [
   [32, "Static Eel", "Lightning", "Common", 48, 12, 5, "Shock", [], "W"],
   [33, "Dusk Moth", "Shadow", "Common", 46, 11, 5, "Dust Wing", [], "W"],
   [34, "River Otter", "Water", "Common", 62, 9, 7, "Slide Tackle", [], "W"],
-  [35, "Thorn Hedgehog", "Nature", "Common", 60, 10, 7, "Spike Roll", [], "W"],
+  [35, "Spike Puffer", "Water", "Common", 60, 10, 7, "Spike Roll", [], "W"],
   [36, "Cinder Imp", "Fire", "Common", 45, 12, 5, "Impish Jab", ["Burn"], "W"],
   [37, "Gale Chick", "Wind", "Common", 43, 12, 5, "Gust Peck", [], "W"],
   [38, "Pebble Golemlet", "Earth", "Common", 70, 9, 8, "Rock Toss", [], "W"],
