@@ -17,9 +17,6 @@ Points wallet, daily claim, tipping, points leaderboard.
 ### Casino — `/slots`, `/blackjack`, `/roulette`, `/coinflip`, `/highlow`, `/scratch`
 Fun-only points gambling with buttons (blackjack hit/stand). No real money.
 
-### Fun — `/8ball`, `/meme`, `/ship`, `/rate`, `/joke`, `/roast`, `/compliment`, `/wouldyourather`, `/truthordare`, `/uwu`, `/profile`
-Profile cards, jokes, shipping, and party commands.
-
 ### Games — `/tictactoe`, `/connect4`, `/rps`, `/trivia`, `/wordchain`, `/guesshero`, `/giveaway`, `/poll`
 Button-driven board games, trivia, giveaways (auto-ended by the bot timer),
 and polls.

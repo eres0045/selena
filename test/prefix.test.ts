@@ -130,7 +130,7 @@ describe("tokenizeArgs", () => {
 
 describe("resolveCommand / alias table", () => {
   it("resolves every command by name", () => {
-    expect(allCommands.length).toBe(47);
+    expect(allCommands.length).toBe(36);
     for (const cmd of allCommands) {
       expect(resolveCommand(cmd.name)).toBe(cmd);
     }
@@ -145,7 +145,6 @@ describe("resolveCommand / alias table", () => {
     expect(resolveCommand("c4")?.name).toBe("connect4");
     expect(resolveCommand("h")?.name).toBe("help");
     expect(resolveCommand("lbxp")?.name).toBe("leaderboard-xp");
-    expect(resolveCommand("uwuify")?.name).toBe("uwu");
     expect(resolveCommand("rr")?.name).toBe("reactionrole");
   });
 
@@ -168,6 +167,29 @@ describe("resolveCommand / alias table", () => {
 
   it("returns undefined for unknown words", () => {
     expect(resolveCommand("frobnicate")).toBeUndefined();
+  });
+
+  it("the removed Fun commands (and every alias) resolve to nothing", () => {
+    // 2026-11-07: Ronit removed the whole Fun category — 8ball, meme,
+    // ship, rate, joke, roast, compliment, wouldyourather, truthordare,
+    // uwu, profile. None of them (nor any alias) may resolve anymore,
+    // and the help box must not list a Fun group.
+    for (const name of [
+      "8ball", "8b", "eightball", "ask",
+      "meme", "memes",
+      "ship", "love",
+      "rate", "rating",
+      "joke", "jokes",
+      "roast", "burn",
+      "compliment", "comp", "praise",
+      "wouldyourather", "wyr", "rather",
+      "truthordare", "tod",
+      "uwu", "uwuify", "owo",
+      "profile", "prof", "me",
+    ]) {
+      expect(resolveCommand(name)).toBeUndefined();
+    }
+    expect(HELP_GROUPS.some((g) => g.category === "Fun")).toBe(false);
   });
 });
 
@@ -200,9 +222,10 @@ describe("buildOptions", () => {
   });
 
   it("joins rest args (free text) and leaves them null when absent", () => {
-    expect(optsFor("8ball", ["will", "I", "win?"]).getString("question")).toBe("will I win?");
-    expect(optsFor("rate", ["pizza", "is", "great"]).getString("thing")).toBe("pizza is great");
-    expect(optsFor("8ball", []).getString("question")).toBeNull();
+    expect(optsFor("ban", ["<@222>", "spamming", "the", "chat"]).getString("reason")).toBe(
+      "spamming the chat",
+    );
+    expect(optsFor("ban", ["<@222>"]).getString("reason")).toBeNull();
   });
 
   it("skips an optional integer that does not parse, so a later rest arg still works", () => {

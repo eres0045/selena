@@ -5,7 +5,6 @@
 import { describe, expect, it } from "vitest";
 import { allCommands, HELP_GROUPS } from "../src/commands/index.js";
 import { pointsEmbed } from "../src/lib/command.js";
-import { DARES, generateMeme, memeDescription } from "../src/lib/fun.js";
 import { getTestDb } from "./testDb.js";
 import { FakeChatInput } from "../src/lib/testkit.js";
 
@@ -49,16 +48,5 @@ describe("uwu rename (user-visible strings)", () => {
     expect(footer).toBe("uwu gold is fun-only — no real money.");
     expect(footer).not.toContain("Selena");
     expect(footer).not.toContain("points");
-  });
-
-  it("the dare list says 'I love uwu' and has no Selena", () => {
-    expect(DARES.some((d) => d.includes("I love uwu"))).toBe(true);
-    expect(DARES.some((d) => d.includes("Selena"))).toBe(false);
-  });
-
-  it("the meme text-only note names uwu, not Selena", () => {
-    const text = memeDescription(generateMeme(() => 0.5));
-    expect(text).toContain("uwu has no Canvas");
-    expect(text).not.toContain("Selena");
   });
 });

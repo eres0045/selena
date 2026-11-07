@@ -19,7 +19,6 @@ export const HELP_EMBED_LIMIT = 6000;
 export const CATEGORY_EMOJI: Record<string, string> = {
   Economy: "💰",
   Casino: "🎰",
-  Fun: "🎉",
   Games: "🎮",
   Moderation: "🛡️",
   Utility: "🔧",
@@ -55,7 +54,7 @@ export function helpAuthor(user: {
 /** Build the one-box command list: title + short intro, then one field
  * per category holding ONLY the command names as inline `code` chips —
  * no descriptions, no aliases in the list. That is what keeps it short:
- * all 47 commands fit in a single embed. When `author` is given, the
+ * all 36 commands fit in a single embed. When `author` is given, the
  * requesting user's name + avatar head the box (OwO-style). */
 export function buildHelpEmbed(
   groups: HelpGroupLike[],

@@ -19,7 +19,6 @@ import type { Command } from "../lib/command.js";
 // `buttonHandlers` / `modalHandlers`.
 import * as economy from "./economy.js";
 import * as casino from "./casino.js";
-import * as fun from "./fun.js";
 import * as games from "./games.js";
 import * as mod from "./mod.js";
 import * as utility from "./utility.js";
@@ -39,7 +38,6 @@ const CATEGORY_LABELS: Record<string, string> = {
   help: "Help",
   economy: "Economy",
   casino: "Casino",
-  fun: "Fun",
   games: "Games",
 };
 
@@ -52,7 +50,6 @@ interface CommandModule {
 const MODULES: { key: string; module: CommandModule }[] = [
   { key: "economy", module: economy },
   { key: "casino", module: casino },
-  { key: "fun", module: fun },
   { key: "games", module: games },
   { key: "mod", module: mod },
   { key: "utility", module: utility },

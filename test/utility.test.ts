@@ -256,7 +256,7 @@ describe("/help", () => {
     // Discord's 2000-char message cap, so `uwu help` failed every time
     // until it was split across 3 messages — then Ronit asked for the
     // OwO one-box list instead. Names only, no descriptions/aliases, so
-    // all 47 commands fit in a single embed.
+    // all 36 commands fit in a single embed.
     const cmd = helpCommands.find((c) => c.name === "help")!;
     const run = async (options: Record<string, unknown>) => {
       const db = getTestDb();
