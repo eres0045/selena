@@ -28,6 +28,8 @@ import * as world from "./world.js";
 import * as guilds from "./guilds.js";
 import * as battle from "./battle.js";
 import * as feeds from "./feeds.js";
+import * as towers from "./towers.js";
+import * as market from "./market.js";
 
 /** Command modules that do not exist yet (empty when the registry is complete). */
 export const PENDING_MODULES: readonly string[] = [];
@@ -49,6 +51,8 @@ const CATEGORY_LABELS: Record<string, string> = {
   guilds: "Guilds",
   battle: "Battles",
   feeds: "Announcements",
+  towers: "Towers",
+  market: "Market",
 };
 
 interface CommandModule {
@@ -72,6 +76,8 @@ const MODULES: { key: string; module: CommandModule }[] = [
   { key: "guilds", module: guilds },
   { key: "battle", module: battle },
   { key: "feeds", module: feeds },
+  { key: "towers", module: towers },
+  { key: "market", module: market },
 ];
 
 function toHelpGroup(key: string, cmds: Command[]): HelpGroup {

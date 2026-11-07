@@ -28,6 +28,8 @@ export const CATEGORY_EMOJI: Record<string, string> = {
   Guilds: "👥",
   Battles: "⚔️",
   Announcements: "📢",
+  Towers: "🗼",
+  Market: "🏪",
 };
 
 export interface HelpGroupLike {

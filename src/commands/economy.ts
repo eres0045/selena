@@ -2,6 +2,7 @@ import type { Command, CommandInvocation } from "../lib/command.js";
 import { emoji } from "../lib/emoji.js";
 import { errorEmbed, fmt, pointsEmbed, resolveDisplayNames } from "../lib/command.js";
 import { claimDaily, getBalance, getLeaderboard, transferPoints } from "../lib/economy.js";
+import { getGems } from "../lib/market.js";
 
 async function replyError(inv: CommandInvocation, message: string): Promise<void> {
   await inv.reply({ embeds: [errorEmbed(message).toJSON()], ephemeral: true });
@@ -16,11 +17,19 @@ export const commands: Command[] = [
     async execute(inv, ctx) {
       const target = inv.options.getUser("user") ?? inv.user;
       const bal = await getBalance(ctx.db, ctx.guildId, target.id);
+      // Gems ride along on the same one-liner (Phase 2 market). Fail soft
+      // to 0 — a missing wallet row must never break the balance line.
+      let gems = 0;
+      try {
+        gems = await getGems(ctx.db, target.id);
+      } catch {
+        gems = 0;
+      }
       // OwO-style: one plain line, no embed box — the mention, then the
       // coin right before the amount like a currency symbol, gold with
       // XP/level inline, so nothing is lost.
       await inv.reply({
-        content: `Hey <@${target.id}>, you currently have ${emoji("gold")} ${fmt(bal.points)} gold! (${fmt(bal.xp)} XP · Level ${bal.level})`,
+        content: `Hey <@${target.id}>, you currently have ${emoji("gold")} ${fmt(bal.points)} gold! (💎 ${fmt(gems)} gems · ${fmt(bal.xp)} XP · Level ${bal.level})`,
       });
     },
   },

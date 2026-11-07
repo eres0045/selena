@@ -174,6 +174,17 @@ export async function runDueTasks(db: SelenaDb, client: Client | null): Promise<
   } catch (e) {
     console.error("Selena: battle-expiry sweep failed:", e instanceof Error ? e.message : e);
   }
+
+  // Phase 2 market: close due auctions (settles each in one transaction;
+  // DMs winner + seller when a client is present, silent otherwise).
+  try {
+    const { closeDueAuctions } = (await import("./commands/market.js")) as {
+      closeDueAuctions: (db: SelenaDb, client: Client | null, nowMs: number) => Promise<unknown>;
+    };
+    await closeDueAuctions(db, client, now);
+  } catch (e) {
+    console.error("Selena: auction-close sweep failed:", e instanceof Error ? e.message : e);
+  }
 }
 
 // ---------------------------------------------------------------------------
