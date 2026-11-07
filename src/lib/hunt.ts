@@ -648,13 +648,16 @@ export function rollTier(rand: () => number = secureFloat): Tier {
   );
 }
 
-/** Pity draw: Epic minimum — weighted only over Epic+ by their roll rates. */
-export function pityTier(rand: () => number = secureFloat): Tier {
-  const epicPlus: readonly Tier[] = ["Epic", "Legendary", "Mythic", "UwU"];
-  return weightedPick(
-    epicPlus.map((t) => [t, TIERS[t].rollRate] as const),
-    rand,
-  );
+/**
+ * PITY = EPIC EXACTLY. A pity roll guarantees an Epic-tier monster and
+ * NOTHING above it — never Legendary, Mythic, or UwU. Phase 1 design
+ * §1.2 ("Pity never guarantees Legendary or above") and §9 rule 9
+ * ("Pity is Epic-only"), restated in Phase 2 §7.1: "Legendary+ stays
+ * pure luck". The old implementation weighted over Epic+ by roll rate,
+ * so ~20% of pity pulls leaked into Legendary+ — that was a bug.
+ */
+export function pityTier(_rand: () => number = secureFloat): Tier {
+  return "Epic";
 }
 
 /** True when the pity rule fires for this pull. */

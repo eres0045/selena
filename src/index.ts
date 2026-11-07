@@ -163,6 +163,17 @@ export async function runDueTasks(db: SelenaDb, client: Client | null): Promise<
       console.error("Selena: rare-log sweep failed:", e instanceof Error ? e.message : e);
     }
   }
+
+  // Phase 2 battles: expire unanswered 60s challenges (marks DB rows
+  // only — the challenge message's buttons reply "expired" themselves).
+  try {
+    const { expireBattleChallenges } = (await import("./commands/battle.js")) as {
+      expireBattleChallenges: (db: SelenaDb, nowMs: number) => Promise<unknown>;
+    };
+    await expireBattleChallenges(db, now);
+  } catch (e) {
+    console.error("Selena: battle-expiry sweep failed:", e instanceof Error ? e.message : e);
+  }
 }
 
 // ---------------------------------------------------------------------------

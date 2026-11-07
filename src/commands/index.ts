@@ -26,6 +26,7 @@ import * as utility from "./utility.js";
 import * as help from "./help.js";
 import * as world from "./world.js";
 import * as guilds from "./guilds.js";
+import * as battle from "./battle.js";
 import * as feeds from "./feeds.js";
 
 /** Command modules that do not exist yet (empty when the registry is complete). */
@@ -46,6 +47,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   games: "Games",
   world: "World",
   guilds: "Guilds",
+  battle: "Battles",
   feeds: "Announcements",
 };
 
@@ -68,6 +70,7 @@ const MODULES: { key: string; module: CommandModule }[] = [
   // to the rare-catch feed, not mod's modlog (alias now "modlogs").
   { key: "world", module: world },
   { key: "guilds", module: guilds },
+  { key: "battle", module: battle },
   { key: "feeds", module: feeds },
 ];
 

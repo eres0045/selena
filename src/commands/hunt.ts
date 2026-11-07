@@ -35,17 +35,30 @@ import {
   type Tier,
 } from "../lib/hunt.js";
 import {
+  fusedEffects,
+  fuseUnlockText,
+  huntReward,
+  leveledStats,
+} from "../lib/monsterLevels.js";
+import {
+  addMonsterXp,
+  applyFuse,
   awardMonster,
+  getFusePlan,
   getHuntState,
   getOwnedCount,
   getRollState,
+  getUserInstances,
   getUserMonsters,
   getUserPets,
   getUserWeapons,
+  grantPlayerXp,
   removeOneMonster,
   setHuntState,
   utcDayString,
+  type AwardResult,
 } from "../lib/huntDb.js";
+import { findWorldArea, wildLevelForArea } from "../lib/world.js";
 import { secureFloat } from "../lib/rng.js";
 
 /**
@@ -57,8 +70,8 @@ import { secureFloat } from "../lib/rng.js";
  * embed in this module is the Mythic/UwU special announcement embed —
  * the one embed exception the design allows (design §1.1).
  *
- * NOTE: hunt gives no XP (the design never says it does) — area
- * unlocks progress through the existing chat-XP system (`uwu rank`).
+ * NOTE: hunt/roll catches grant XP + gold that scale with the caught
+ * monster's level (Phase 2 §6.3, huntReward in monsterLevels.ts).
  * NOTE: rolls award monsters only. Weapons/pets exist in the catalogue
  * but have no acquisition path in Phase 1 (no weapon/pet rolls), so
  * `uwu inv` starts empty for everyone.
@@ -70,22 +83,35 @@ async function replyError(inv: Inv, message: string): Promise<void> {
   await inv.reply({ embeds: [errorEmbed(message).toJSON()], ephemeral: true });
 }
 
-function monsterLine(m: Monster): string {
-  return `${monsterEmoji(m)} ${m.name} (${m.tier})`;
+function monsterLine(m: Monster, level?: number, fuseLevel?: number): string {
+  const tag =
+    level !== undefined ? ` · Lv ${level}${fuseLevel ? ` +${fuseLevel}` : ""}` : "";
+  return `${monsterEmoji(m)} ${m.name} (${m.tier})${tag}`;
 }
 
-function monsterStatsLine(m: Monster): string {
-  const effects = m.effects.length > 0 ? ` — ${m.move} (${m.effects.join(", ")})` : ` — ${m.move}`;
-  return `HP ${m.hp} · ATK ${m.atk} · DEF ${m.def}${effects}`;
+function monsterStatsLine(m: Monster, level = 1, fuseLevel = 0): string {
+  const s = leveledStats(m, level, fuseLevel);
+  const effects = fusedEffects(m, fuseLevel);
+  const effectText = effects.length > 0 ? ` — ${m.move} (${effects.join(", ")})` : ` — ${m.move}`;
+  return `HP ${s.hp} · ATK ${s.atk} · DEF ${s.def}${effectText}`;
+}
+
+/** "in 2 days", "in 5h", "in 30m" — for spawn-cooldown messages. */
+function fmtCooldownIn(ms: number): string {
+  const totalMin = Math.max(1, Math.ceil(ms / 60_000));
+  if (totalMin < 60) return `in ${totalMin}m`;
+  const hours = Math.floor(totalMin / 60);
+  if (hours < 48) return `in ${hours}h`;
+  return `in ${Math.floor(hours / 24)} days`;
 }
 
 // ---------------------------------------------------------------------------
 // Announcements (design §1.1). Legendary = server-wide plain text.
-// Mythic = server-wide + special embed. UwU = server-wide + embed, and
-// the text says it is the only copy that will ever exist in this
-// server. (True bot-wide broadcast to OTHER guilds needs client access
-// in commands — not wired in Phase 1; the catching server still gets
-// the full announcement.)
+// Mythic = server-wide + special embed. UwU = server-wide + embed.
+// Phase 2 §1.2: the UwU cap is 1 per server AT A TIME (not 1 ever) with
+// a 14-day global spawn cooldown — the copy says so. (True bot-wide
+// broadcast to OTHER guilds needs client access in commands — not wired;
+// the catching server still gets the full announcement.)
 // ---------------------------------------------------------------------------
 
 interface AnnounceTarget {
@@ -100,7 +126,7 @@ function mythicEmbed(monster: Monster, userId: string): EmbedBuilder {
     .setDescription(
       `<@${userId}> caught ${monsterEmoji(monster)} **${monster.name}**!\n${monsterStatsLine(monster)}`,
     )
-    .setFooter({ text: monster.tier === "UwU" ? "Only one will ever exist in this server." : "Limited to 3 copies per server." });
+    .setFooter({ text: monster.tier === "UwU" ? "One at a time per server — the next UwU can appear in 14 days." : "Limited to 3 copies per server." });
 }
 
 async function announceCatch(target: AnnounceTarget, monster: Monster, userId: string): Promise<void> {
@@ -118,7 +144,7 @@ async function announceCatch(target: AnnounceTarget, monster: Monster, userId: s
       });
     } else {
       await target.followUp({
-        content: `🌈 <@${userId}> pulled ${monsterLine(monster)} — the UwU-tier monster! Only one will ever exist in this server.`,
+        content: `🌈 <@${userId}> pulled ${monsterLine(monster)} — the UwU-tier monster! Only one at a time in this server — the next one can appear in 14 days.`,
         embeds: [mythicEmbed(monster, userId).toJSON()],
       });
     }
@@ -140,6 +166,8 @@ interface HuntEncounter {
   userId: string;
   monster: Monster;
   areaId: string;
+  /** Wild level rolled for this encounter (Phase 2 §6.1, by area). */
+  level: number;
   createdAt: number;
 }
 
@@ -173,11 +201,11 @@ function huntButtons(encounterId: string): ActionRowBuilder<ButtonBuilder>[] {
   ];
 }
 
-function huntText(area: Area, monster: Monster): string {
+function huntText(area: Area, monster: Monster, level: number): string {
   return (
     `You wander into the ${area.name}...\n` +
-    `A wild ${monsterLine(monster)} appeared!\n` +
-    `${monsterStatsLine(monster)}`
+    `A wild ${monsterLine(monster, level)} appeared!\n` +
+    `${monsterStatsLine(monster, level)}`
   );
 }
 
@@ -222,20 +250,45 @@ async function handleHuntButton(inv: any, ctx: CommandContext): Promise<void> {
     });
     return;
   }
-  // Caught — award with the per-guild cap check (fail closed: a failed
-  // count query refuses the award instead of granting a capped monster).
-  let awarded: { monster: Monster; downgradedFrom: Tier | null };
+  // Caught — award with the per-guild cap check + global spawn
+  // cooldown (fail closed: a failed count/cooldown query refuses the
+  // award instead of granting a capped/resting monster). The catch also
+  // pays XP + gold scaled to the monster's level (Phase 2 §6.3): the
+  // same XP goes to the player and to the caught monster instance.
+  const nowMs = Date.now();
+  let awarded: AwardResult & {
+    reward: { xp: number; coins: number };
+    playerLeveledUp: boolean;
+    playerLevel: number;
+    monsterLevelsGained: number;
+    monsterLevel: number;
+    balance: number;
+  };
   try {
     awarded = await ctx.db.transaction(async (tx) => {
-      return await awardMonster(
+      const res = await awardMonster(
         tx,
         enc.guildId,
         enc.userId,
         enc.monster.tier,
         "hunt",
         (t) => (t === enc.monster.tier ? enc.monster : drawMonsterOfTier(t, secureFloat)),
-        Date.now(),
+        nowMs,
+        enc.level,
       );
+      const reward = huntReward(res.level, secureFloat);
+      const playerXp = await grantPlayerXp(tx, enc.guildId, enc.userId, reward.xp);
+      const balance = await addPoints(tx, enc.guildId, enc.userId, reward.coins, `hunt ${res.monster.name}`);
+      const monXp = await addMonsterXp(tx, res.instanceId, reward.xp);
+      return {
+        ...res,
+        reward,
+        playerLeveledUp: playerXp.leveledUp,
+        playerLevel: playerXp.level,
+        monsterLevelsGained: monXp.levelsGained,
+        monsterLevel: monXp.level,
+        balance,
+      };
     });
   } catch (e) {
     console.error("uwu: hunt award failed:", e instanceof Error ? e.message : e);
@@ -246,11 +299,18 @@ async function handleHuntButton(inv: any, ctx: CommandContext): Promise<void> {
     return;
   }
   const capNote =
-    awarded.downgradedFrom !== null
+    awarded.downgradedFrom !== null && awarded.downgradedReason === "cap"
       ? ` (the ${awarded.downgradedFrom} you found is maxed out in this server, so you got this one instead)`
-      : "";
+      : awarded.downgradedFrom !== null && awarded.downgradedReason === "cooldown"
+        ? ` (the ${awarded.downgradedFrom} you found is resting — it will return ${fmtCooldownIn((awarded.cooldownAvailableAt ?? nowMs) - nowMs)}, so you got this one instead)`
+        : "";
+  const levelNote =
+    awarded.monsterLevelsGained > 0 ? ` ${awarded.monster.name} reached Lv ${awarded.monsterLevel}!` : "";
+  const playerNote = awarded.playerLeveledUp ? ` You reached level ${awarded.playerLevel}!` : "";
   await inv.editReply({
-    content: `Caught it! ${monsterLine(awarded.monster)} joined your zoo.${capNote}`,
+    content:
+      `Caught it! ${monsterLine(awarded.monster, awarded.level)} joined your zoo.${capNote}\n` +
+      `+${awarded.reward.xp} XP, +${awarded.reward.coins} gold (balance: ${fmt(awarded.balance)} gold).${levelNote}${playerNote}`,
     components: [],
   });
   await announceCatch(inv, awarded.monster, enc.userId);
@@ -331,9 +391,13 @@ export const commands: Command[] = [
       }
       await setHuntState(ctx.db, ctx.guildId, inv.user.id, now, area.id);
       const monster = encounterMonster(area, secureFloat);
+      // Wild level for the area (Phase 2 §6.1 — Meadow 1–5, Woods 5–15,
+      // Peaks 10–25, Hollow 15–40). The caught instance spawns at it.
+      const worldArea = findWorldArea(area.id);
+      const level = worldArea ? wildLevelForArea(worldArea, secureFloat) : 1;
       const id = `${Date.now().toString(36)}-${Math.floor(secureFloat() * 1e9).toString(36)}`;
-      storeEncounter({ id, guildId: ctx.guildId, userId: inv.user.id, monster, areaId: area.id, createdAt: now });
-      await inv.reply({ content: huntText(area, monster), components: huntButtons(id) });
+      storeEncounter({ id, guildId: ctx.guildId, userId: inv.user.id, monster, areaId: area.id, level, createdAt: now });
+      await inv.reply({ content: huntText(area, monster, level), components: huntButtons(id) });
     },
   },
   {
@@ -370,15 +434,20 @@ export const commands: Command[] = [
       }
       // The whole roll is one transaction: gold out, pulls + pity +
       // daily counts in. A failure anywhere rolls everything back.
+      // Each pull also pays XP + gold scaled to the pulled monster's
+      // level (Phase 2 §6.3 — rolled monsters spawn at level 1).
       let pulls: { monster: Monster; tier: Tier; pity: boolean; downgradedFrom: Tier | null }[];
+      let rewardTotals: { xp: number; coins: number };
       try {
-        pulls = await ctx.db.transaction(async (tx) => {
+        const out = await ctx.db.transaction(async (tx) => {
           // Atomic re-check of the daily cap inside the transaction.
           const st0 = await getRollState(tx, ctx.guildId, inv.user.id);
           const today0 = st0.rollDay === today ? st0.rollsToday : 0;
           if (today0 + count > DAILY_ROLL_CAP) throw new Error("Daily roll cap reached");
           await addPoints(tx, ctx.guildId, inv.user.id, -cost, count === 10 ? "roll10" : "roll");
           let sinceEpic = st0.rollsSinceEpic;
+          let totalXp = 0;
+          let totalCoins = 0;
           const results: { monster: Monster; tier: Tier; pity: boolean; downgradedFrom: Tier | null }[] = [];
           for (let i = 0; i < count; i++) {
             const pity = shouldUsePity(sinceEpic);
@@ -392,6 +461,15 @@ export const commands: Command[] = [
               (t) => drawMonsterOfTier(t, secureFloat),
               now,
             );
+            // Pity is Epic EXACTLY (Phase 1 §1.2 / §9 rule 9, Phase 2
+            // §7.1): a pity pull can never be Legendary+. The reward
+            // below is for the monster actually awarded.
+            const reward = huntReward(awarded.level, secureFloat);
+            await grantPlayerXp(tx, ctx.guildId, inv.user.id, reward.xp);
+            await addPoints(tx, ctx.guildId, inv.user.id, reward.coins, `roll ${awarded.monster.name}`);
+            await addMonsterXp(tx, awarded.instanceId, reward.xp);
+            totalXp += reward.xp;
+            totalCoins += reward.coins;
             if (TIER_INDEX[awarded.monster.tier] >= TIER_INDEX.Epic) sinceEpic = 0;
             else sinceEpic += 1;
             results.push({ monster: awarded.monster, tier, pity, downgradedFrom: awarded.downgradedFrom });
@@ -402,8 +480,10 @@ export const commands: Command[] = [
                 "ON CONFLICT (guild_id, user_id) DO UPDATE SET rolls_since_epic = EXCLUDED.rolls_since_epic, rolls_today = EXCLUDED.rolls_today, roll_day = EXCLUDED.roll_day",
             )
             .run(ctx.guildId, inv.user.id, sinceEpic, today0 + count, today);
-          return results;
+          return { results, totals: { xp: totalXp, coins: totalCoins } };
         });
+        pulls = out.results;
+        rewardTotals = out.totals;
       } catch (e) {
         if (e instanceof Error && (e.message === "Insufficient gold" || e.message === "Daily roll cap reached")) {
           await replyError(
@@ -431,12 +511,71 @@ export const commands: Command[] = [
         content:
           `🎰 Roll ×${count} — ${emoji("gold")} ${fmt(cost)} gold\n` +
           `${lines.join("\n")}\n` +
+          `+${rewardTotals.xp} XP, +${rewardTotals.coins} gold from your catches\n` +
           `Balance: ${fmt(newBal.points)} gold · Rolls today: ${rollsToday}/${DAILY_ROLL_CAP}`,
       });
       // Announcements for Legendary+ pulls (one message per pull).
       for (const p of pulls) {
         await announceCatch(inv, p.monster, inv.user.id);
       }
+    },
+  },
+  {
+    name: "fuse",
+    description: "Fuse 2 copies of a monster into 1 stronger one (up to +6).",
+    aliases: ["combine"],
+    args: [{ name: "monster", type: "string", rest: true, required: true }],
+    async execute(inv, ctx) {
+      const name = inv.options.getString("monster");
+      if (!name) {
+        await replyError(inv, "Tell me which monster to fuse: `uwu fuse <name>`.");
+        return;
+      }
+      const monster = findMonsterByName(name);
+      if (!monster) {
+        await replyError(inv, `No monster called "${name}" — check the name with \`uwu zoo\`.`);
+        return;
+      }
+      const now = Date.now();
+      // Fail-closed: the plan check refuses when there aren't 2 copies
+      // or the best copy is already +6 — before any gold moves.
+      const plan = await getFusePlan(ctx.db, ctx.guildId, inv.user.id, monster.id, now);
+      if (!plan.ok || plan.cost === undefined) {
+        await replyError(inv, plan.error ?? "You can't fuse that monster.");
+        return;
+      }
+      const bal = await getBalance(ctx.db, ctx.guildId, inv.user.id);
+      if (bal.points < plan.cost) {
+        await replyError(
+          inv,
+          `Fusing ${monsterLine(monster)} costs ${emoji("gold")} ${fmt(plan.cost)} gold — you have ${fmt(bal.points)} gold.`,
+        );
+        return;
+      }
+      // One transaction: gold out + fuse. A failure anywhere (including
+      // a race that leaves fewer than 2 copies) rolls everything back.
+      let fused: { newFuseLevel: number; newLevel: number };
+      try {
+        fused = await ctx.db.transaction(async (tx) => {
+          await addPoints(tx, ctx.guildId, inv.user.id, -plan.cost!, `fuse ${monster.name}`);
+          return await applyFuse(tx, ctx.guildId, inv.user.id, monster.id, now);
+        });
+      } catch (e) {
+        if (e instanceof Error && e.message === "Insufficient gold") {
+          await replyError(inv, `Not enough gold — fusing ${monsterLine(monster)} costs ${emoji("gold")} ${fmt(plan.cost)} gold.`);
+          return;
+        }
+        throw e;
+      }
+      const remaining = await getOwnedCount(ctx.db, ctx.guildId, inv.user.id, monster.id);
+      const stats = leveledStats(monster, fused.newLevel, fused.newFuseLevel);
+      const effects = fusedEffects(monster, fused.newFuseLevel);
+      await inv.reply({
+        content:
+          `🔥 Fused! ${monsterLine(monster, fused.newLevel, fused.newFuseLevel)} — one copy consumed, ${remaining} left.\n` +
+          `HP ${stats.hp} · ATK ${stats.atk} · DEF ${stats.def} — ${monster.move} (${effects.join(", ") || "no effect"})\n` +
+          `Unlocked: ${fuseUnlockText(fused.newFuseLevel)} · Cost: ${emoji("gold")} ${fmt(plan.cost)} gold`,
+      });
     },
   },
   {
@@ -459,11 +598,20 @@ export const commands: Command[] = [
           return;
         }
         const area = AREAS.find((a) => a.id === { M: "meadow", W: "woods", P: "peaks", H: "hollow" }[monster.area])!;
+        const instances = await getUserInstances(ctx.db, ctx.guildId, inv.user.id, monster.id);
+        const best = instances[0];
+        const detailLines = instances.map((inst, i) => {
+          const s = leveledStats(monster, inst.level, inst.fuseLevel);
+          const fx = fusedEffects(monster, inst.fuseLevel);
+          const xpNeed = inst.level >= 100 ? "MAX" : `${inst.xp}/${100 * inst.level} XP`;
+          return `${i + 1}. Lv ${inst.level}${inst.fuseLevel > 0 ? ` +${inst.fuseLevel}` : ""} · HP ${s.hp} · ATK ${s.atk} · DEF ${s.def} · ${xpNeed}${fx.length > 0 ? ` · ${fx.join(", ")}` : ""}`;
+        });
         await inv.reply({
           content:
-            `${monsterLine(monster)} ×${entry.count}\n` +
-            `Type ${monster.type} · ${monsterStatsLine(monster)}\n` +
-            `Found in: ${area.name} · Caught via ${entry.source}`,
+            `${monsterLine(monster, best?.level, best?.fuseLevel)} ×${entry.count}\n` +
+            `Type ${monster.type} · ${monsterStatsLine(monster, best?.level ?? 1, best?.fuseLevel ?? 0)}\n` +
+            `Found in: ${area.name} · Caught via ${entry.source}\n` +
+            `${detailLines.join("\n")}`,
         });
         return;
       }
@@ -472,12 +620,23 @@ export const commands: Command[] = [
         return;
       }
       const total = owned.reduce((s, o) => s + o.count, 0);
+      const allInstances = await getUserInstances(ctx.db, ctx.guildId, inv.user.id);
+      const bestByMonster = new Map<number, { level: number; fuseLevel: number }>();
+      for (const inst of allInstances) {
+        if (!bestByMonster.has(inst.monsterId)) {
+          bestByMonster.set(inst.monsterId, { level: inst.level, fuseLevel: inst.fuseLevel });
+        }
+      }
       const lines: string[] = [];
       for (const tier of ["Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "UwU"] as const) {
         const group = owned.filter((o) => o.monster.tier === tier);
         if (group.length === 0) continue;
         lines.push(`— ${tier} —`);
-        for (const o of group) lines.push(`${monsterEmoji(o.monster)} ${o.monster.name} ×${o.count}`);
+        for (const o of group) {
+          const best = bestByMonster.get(o.monster.id);
+          const tag = best ? ` · Lv ${best.level}${best.fuseLevel > 0 ? ` +${best.fuseLevel}` : ""}` : "";
+          lines.push(`${monsterEmoji(o.monster)} ${o.monster.name} ×${o.count}${tag}`);
+        }
       }
       const MAX_LINES = 40;
       const shown = lines.slice(0, MAX_LINES);

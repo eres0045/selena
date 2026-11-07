@@ -26,6 +26,7 @@ export const CATEGORY_EMOJI: Record<string, string> = {
   Help: "❓",
   World: "🌍",
   Guilds: "👥",
+  Battles: "⚔️",
   Announcements: "📢",
 };
 

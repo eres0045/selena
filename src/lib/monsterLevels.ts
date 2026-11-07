@@ -1,4 +1,4 @@
-import type { Monster, Tier } from "./hunt.js";
+import type { Monster, MonsterType, Tier } from "./hunt.js";
 
 /**
  * Monster levels + fusion (Phase 2, design §6).
@@ -89,4 +89,102 @@ export function battleWinXp(avgEnemyLevel: number): number {
 /** Tower floor-clear XP: 50 + floor × 5 (design §6.3). */
 export function towerFloorXp(floor: number): number {
   return 50 + floor * 5;
+}
+
+// ---------------------------------------------------------------------------
+// Fusion effect unlocks (Phase 2 §6.4, working defaults — §12 item 10).
+//
+// The design says +3/+6 grant "a second/third signature effect (chosen
+// from its type's effect list)" but no per-type effect list exists in
+// either design doc, so the table below is a working default: thematic
+// picks from the Phase 1 §4 catalogue of 15 effects. The pick is
+// deterministic (first candidate the monster does not already carry),
+// so the same monster + fuse level always shows the same effects.
+// The Phase 1 control-effect budget (§4.5: at most ONE control effect
+// per monster) is respected: when the monster already carries a control
+// effect, control candidates are skipped.
+// ---------------------------------------------------------------------------
+
+const CONTROL_EFFECTS: ReadonlySet<string> = new Set([
+  "Stun",
+  "Freeze",
+  "Paralyze",
+  "Sleep",
+  "Confuse",
+]);
+
+/** Candidate extra signature effects per monster type (working default). */
+export const TYPE_EFFECTS: Record<MonsterType, readonly string[]> = {
+  Fire: ["Burn", "Attack Down", "Crit Up"],
+  Water: ["Freeze", "Defense Down", "Regen"],
+  Earth: ["Stun", "Defense Down", "Shield"],
+  Wind: ["Attack Down", "Evasion Up", "Bleed"],
+  Nature: ["Poison", "Bleed", "Regen"],
+  Ice: ["Freeze", "Attack Down", "Shield"],
+  Lightning: ["Paralyze", "Crit Up", "Attack Down"],
+  Shadow: ["Confuse", "Bleed", "Lifesteal"],
+  Light: ["Shield", "Regen", "Crit Up"],
+  Spirit: ["Sleep", "Lifesteal", "Confuse"],
+};
+
+/**
+ * Effective signature effects of a monster at a fuse level: its base
+ * effects, plus one extra at +3 and another at +6 (design §6.4).
+ * Never duplicates an effect the monster already has, never breaks the
+ * one-control-effect budget.
+ */
+export function fusedEffects(m: Monster, fuseLevel: number): string[] {
+  const out = [...m.effects];
+  const extraSlots = fuseLevel >= 6 ? 2 : fuseLevel >= 3 ? 1 : 0;
+  if (extraSlots === 0) return out;
+  const hasControl = out.some((e) => CONTROL_EFFECTS.has(e));
+  for (const candidate of TYPE_EFFECTS[m.type]) {
+    if (out.length >= m.effects.length + extraSlots) break;
+    if (out.includes(candidate)) continue;
+    if (hasControl && CONTROL_EFFECTS.has(candidate)) continue;
+    out.push(candidate);
+  }
+  return out;
+}
+
+/** Extra effect slots unlocked by fusion (+1 rung, design §6.4). */
+export function extraEffectSlots(fuseLevel: number): number {
+  return fuseLevel >= 1 ? 1 : 0;
+}
+
+/**
+ * Signature-move trigger bonus in percentage points from fusion:
+ * +10pp at +2, another +10pp at +4 (design §6.4).
+ */
+export function fuseTriggerBonus(fuseLevel: number): number {
+  return (fuseLevel >= 2 ? 10 : 0) + (fuseLevel >= 4 ? 10 : 0);
+}
+
+/** Human-readable text for what a fuse step unlocks (FUSE_LADDER[step-1]). */
+export function fuseUnlockText(fuseLevel: number): string {
+  if (fuseLevel < 1 || fuseLevel > 6) return "";
+  return FUSE_LADDER[fuseLevel - 1]!;
+}
+
+/**
+ * Pure monster-XP math: apply `gained` XP to a monster at (level, xp).
+ * Level-up threshold is 100 × current level (design §6.3); XP past a
+ * level-up carries over; level caps at MONSTER_LEVEL_CAP. Returns the
+ * new state plus how many levels were gained.
+ */
+export function applyMonsterXp(
+  level: number,
+  xp: number,
+  gained: number,
+): { level: number; xp: number; levelsGained: number } {
+  let lvl = Math.max(1, Math.min(MONSTER_LEVEL_CAP, Math.floor(level)));
+  let cur = Math.max(0, Math.floor(xp)) + Math.max(0, Math.floor(gained));
+  let gained_levels = 0;
+  while (lvl < MONSTER_LEVEL_CAP && cur >= monsterXpForLevel(lvl)) {
+    cur -= monsterXpForLevel(lvl);
+    lvl += 1;
+    gained_levels += 1;
+  }
+  if (lvl >= MONSTER_LEVEL_CAP) cur = 0;
+  return { level: lvl, xp: cur, levelsGained: gained_levels };
 }
