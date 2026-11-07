@@ -80,7 +80,7 @@ One shared world across **all of Discord** (every server with the bot). The 4 Ph
 ### 2.3 Travel
 
 - `uwu travel <area>` — start travelling to an area (must be unlocked). Travel is **not instant**: it takes real time.
-  - **Working default: 5 minutes per hop** between neighbouring areas; a far region takes proportionally longer (e.g. 3 hops = 15 minutes). Exact minutes are **unconfirmed** (§10).
+  - **Travel time scales with distance: 5 minutes per kilometre** (Ron's rule — "traveling 2km in our map will be like 10 mins"). A 2 km trip takes 10 minutes; a 10 km trip takes 50 minutes. Distances are measured on the world map in km.
   - While travelling, the player is "on the road": they cannot hunt manually in the destination until they arrive, but **auto-hunt runs** (see §2.4).
   - Arriving is announced with a plain-text message ("You arrived at Ember Peaks."). The player's current area updates in the database (survives redeploys — stored, not in-memory).
 - Travel is free (no gold cost). The cost is time.
@@ -90,7 +90,8 @@ One shared world across **all of Discord** (every server with the bot). The 4 Ph
 - **Roaming monsters appear on the map during travel.** While a player is travelling, the bot periodically (on the hunt cadence — every 30s, the Phase 1 hunt cooldown) shows an encountered monster from the areas being passed through. This is what auto-hunt catches: **rarer in deeper regions** (the encounter pool follows the region's tiers, §2.1).
 - **Auto-hunt** (`uwu autohunt on/off` — working default command name, unconfirmed):
   - While travelling with auto-hunt on, the bot auto-attempts catches using the Phase 1 catch rates (§1.3 of Phase 1 doc) — no button press needed. Caught monsters go to the zoo; missed ones flee.
-  - **Travel time is the natural cap:** a 5-minute hop allows ~10 auto-hunt attempts; a 15-minute trip allows ~30. There is no separate daily auto-hunt cap in this design — the clock limits it. (If farming abuse appears in live play, a cap is a one-line follow-up — flagged in §10.)
+  - **Travel time is the natural cap:** a 10-minute trip allows ~20 auto-hunt attempts; a 50-minute trip allows ~100. There is no separate daily auto-hunt cap in this design — the clock limits it. (If farming abuse appears in live play, a cap is a one-line follow-up — flagged in §10.)
+  - **Auto-hunt costs 200 gold per hour of travel** (Ron's rule). The cost is charged for the travelling time while auto-hunt is on — a 10-minute trip with auto-hunt on costs ~33 gold. Auto-hunt is a paid convenience, not free farming.
   - Auto-hunt only runs while travelling. Standing still, hunting is manual (`uwu hunt`, Phase 1). Auto-hunt never runs while the player is idle in an area.
 - Roaming encounters use the same per-server caps and the same global spawn cooldowns (§7) as manual hunts and rolls. A Legendary on spawn cooldown cannot appear as a roaming monster either.
 
@@ -140,7 +141,7 @@ One shared world across **all of Discord** (every server with the bot). The 4 Ph
 |---|---|
 | Total towers | **30** across the world |
 | Types | Small (10 floors) · Big (20 floors) · Main (50 floors) |
-| Party | Up to **4 players**; each player brings their monsters (battle team = top 3 per player, Phase 1 §2.3) |
+| Party | **Party size depends on the tower** (Ron's rule): Small tower up to 2 players, Big tower up to 4, Main tower up to 6 (working defaults, unconfirmed — §12). Each player brings their monsters (battle team = top 3 per player, Phase 1 §2.3) |
 | Solo | Allowed, but needs the level requirement and is **hard** — needs strong pets/monsters (Phase 1 stat bands apply; solo players face the same floors with 3 monsters instead of up to 12) |
 | Floors | Each floor = a set of wild monsters to defeat (using Phase 1 stats + the 15 status effects). Mini-boss every **5th floor** (working default). Final boss on the top floor. |
 | Checkpoints | **Every floor.** Stop anytime, resume later, change party members between sessions. Progress is stored per player/party in Supabase (survives redeploys). |
@@ -148,14 +149,7 @@ One shared world across **all of Discord** (every server with the bot). The 4 Ph
 
 ### 4.2 Tower counts — the open arithmetic
 
-Ron's message said "2 small tower with 10 floor and 2 big like 20 floor and one main tower". It is **unconfirmed whether those counts are per region or world-total** (§10), and neither reading reaches 30 on its own:
-
-| Reading | Arithmetic | Result |
-|---|---|---|
-| Per region (5 regions) | 5 × (2 small + 2 big) = 20, + main towers? | 20 — short of 30 by 10 |
-| World-total | 2 small + 2 big + 1 main | 5 — far short of 30 |
-
-**Working resolution (unconfirmed, §10):** the "2 small + 2 big" is the **per-region mix**, and the world holds 30 towers because regions hold extra towers beyond that mix (e.g. 6 towers per region × 5 regions = 30, of which 2 small + 2 big are the named types and the rest are Small/Big variants). The **1 main tower is world-total** (a single 50-floor tower, §4.3). The exact per-region distribution is for Ronit to settle — this doc does not invent it.
+Ron's message said "2 small tower with 10 floor and 2 big like 20 floor and one main tower". **Resolved 2026-11-07: towers are placed RANDOMLY across the world map** ("Random tower drop them") — the 30 towers (small 10-floor, big 20-floor, plus the 1 hidden 50-floor main tower) are dropped at random locations across regions, not fixed at "2 small + 2 big" per region. The per-region arithmetic question is closed by randomness; the main tower stays hidden (random location, never revealed).
 
 ### 4.3 The Main tower (50 floors)
 
@@ -184,7 +178,7 @@ Ron's message said "2 small tower with 10 floor and 2 big like 20 floor and one 
 
 ### 4.6 Tower commands (working defaults)
 
-`uwu towers` (list towers in your region with floors + cooldown status) · `uwu tower <name>` (detail: floors, requirements, cooldown timer) · `uwu party invite @user` (form a party, up to 4) · `uwu tower enter <name>` (start/resume a run from your checkpoint) · `uwu tower leave` (stop at a checkpoint; progress saved).
+`uwu towers` (list towers in your region with floors + cooldown status) · `uwu tower <name>` (detail: floors, requirements, cooldown timer) · `uwu party invite @user` (form a party — size depends on the tower: Small 2, Big 4, Main 6) · `uwu tower enter <name>` (start/resume a run from your checkpoint) · `uwu tower leave` (stop at a checkpoint; progress saved).
 
 ---
 
@@ -238,7 +232,7 @@ Ron's message said "2 small tower with 10 floor and 2 big like 20 floor and one 
 
 - **Rolled monsters** (gacha) spawn at level 1 (working default — rolls are a fresh start, not a shortcut to high levels).
 - **Caught monsters level up** through battles and hunts (§6.3). A caught monster keeps its level forever (until fused — §6.4, fusion keeps the higher level).
-- **Monster level cap: 100** (working default — **unconfirmed**, §10).
+- **Monster level cap: 100** (confirmed by Ronit 2026-11-07).
 
 ### 6.2 What a level does
 
@@ -358,17 +352,17 @@ After a high-tier monster is caught (by hunt, roll, or auto-hunt — **any** sou
 ### 9.2 Crates (drops)
 
 - **Crates drop** from tower floors, final bosses, and occasionally from hunts/battles. A crate contains a random bundle of items (§9.3).
-- **Name undecided: "Cache" or "Hoard"** — Ronit has not picked. Both are recorded here; the doc does **not** choose. (Proposed tiers use the name as a suffix so either word works.)
+- **Name: "Crate"** (decided by Ronit 2026-11-07 — just "Crate", not "Cache" or "Hoard").
 - **Crate tiers** (same tier names as monsters):
 
-| Crate tier | Crate name (if "Cache") | Crate name (if "Hoard") | Where it drops |
-|---|---|---|---|
-| Common | Wooden Cache | Wooden Hoard | Any hunt, small tower floors |
-| Uncommon | Iron Cache | Iron Hoard | Hunts, small tower floors |
-| Rare | Silver Cache | Silver Hoard | Rare hunts, big tower floors |
-| Epic | Golden Cache | Golden Hoard | Big tower floors, mini-bosses |
-| Legendary | Crystal Cache | Crystal Hoard | Big tower final boss, Main tower floors |
-| Mythic | Void Cache | Void Hoard | Main tower final boss only |
+| Crate tier | Crate name | Where it drops |
+|---|---|---|
+| Common | Wooden Crate | Any hunt, small tower floors |
+| Uncommon | Iron Crate | Hunts, small tower floors |
+| Rare | Silver Crate | Rare hunts, big tower floors |
+| Epic | Golden Crate | Big tower floors, mini-bosses |
+| Legendary | Crystal Crate | Big tower final boss, Main tower floors |
+| Mythic | Void Crate | Main tower final boss only |
 
 - **Opening a crate** (`uwu open <crate>` — working default command, unconfirmed): the crate is consumed and its contents are revealed in plain text. Contents are random within the crate's tier band — a Wooden Cache never contains Mythic loot; a Void Cache never contains Commons.
 - Crate drop rates are unconfirmed (§10) — working default: a crate drops on ~10% of tower floor clears, ~5% of hunts, 100% from final bosses (one crate of the tower's tier).
@@ -453,12 +447,12 @@ Added 2026-11-07 (Ron's words: "Add announcment as uwu announcement to see what 
 | # | Item | Working default in this doc | Needs |
 |---|---|---|---|
 | 1 | "Last Location" map button meaning | Return to previous location/view | Confirm what the 4th button does ("last somthing") |
-| 2 | Tower counts: "2 small + 2 big" | Per-region mix; 30 total via extra towers per region (§4.2) | Confirm per-region vs world-total, and the exact distribution that totals 30 |
+| 2 | ~~Tower counts: "2 small + 2 big"~~ — RESOLVED 2026-11-07: towers placed randomly across the world map | Resolved | — |
 | 3 | Region names, area lists, unlock levels (Regions 2–5) | Working defaults in §2.1 | Names, areas, levels |
 | 4 | 5th endgame area ("Void Rift", level 20) | Listed as a Region 5 area | Confirm whether it exists, and at what level |
-| 5 | Travel time | 5 min per hop | Confirm minutes per hop / per region |
-| 6 | Auto-hunt abuse cap | None — travel time is the cap | Decide if a separate cap is needed after live play |
-| 7 | Monster level cap | 100 | Confirm 50 / 100 / other |
+| 5 | ~~Travel time~~ — RESOLVED 2026-11-07: 5 minutes per kilometre (2 km = 10 min) | Resolved | — |
+| 6 | Auto-hunt abuse cap | None — travel time is the cap; auto-hunt costs 200 gold/hour (decided 2026-11-07) | Decide if a separate cap is needed after live play |
+| 7 | ~~Monster level cap~~ — RESOLVED 2026-11-07: 100 | Resolved | — |
 | 8 | Monster level stat scaling (+2%/level) + XP/coin reward formulas (§6.2–6.3) | Working defaults | Confirm or tune |
 | 9 | Battle team pick | Auto top-3 | Confirm auto vs manual `uwu team` pick |
 | 10 | Fusion numbers: +10% stats, effect unlocks at +1..+6, gold costs by tier (§6.4) | Working defaults | Confirm or tune |
@@ -468,7 +462,7 @@ Added 2026-11-07 (Ron's words: "Add announcment as uwu announcement to see what 
 | 14 | Main tower discovery (how players find a hidden tower) | Unspecified | Hint system / rare map drop / pure exploration? |
 | 15 | Tower entry level requirements | Small = area level, Big = +5, Main = 60 | Confirm numbers |
 | 16 | Guild create cost (5,000 gold), guild XP awards, level thresholds, max level 10 | Working defaults | Confirm or change |
-| 17 | Crate name: **"Cache" or "Hoard"** | Both recorded, no pick | **Pick one** |
+| 17 | ~~Crate name: "Cache" or "Hoard"~~ — RESOLVED 2026-11-07: just **"Crate"** | Resolved | — |
 | 18 | Crate drop rates (tower floors ~10%, hunts ~5%, final boss 100%) | Working defaults | Confirm or tune |
 | 19 | Shop details: Tower Key effect, roll ticket vs the 20/day cap, `uwu use` command | Working defaults | Confirm mechanics |
 | 20 | Drop rates per source (§9.3) | Unspecified — tune after live data | Set after Phase 2 has been live |
