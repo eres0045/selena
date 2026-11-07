@@ -9,6 +9,37 @@ import { errorEmbed } from "../lib/command.js";
 export const buttonHandlers: Record<string, (...args: never[]) => Promise<void>> = {};
 export const modalHandlers: Record<string, (...args: never[]) => Promise<void>> = {};
 
+/** Discord caps plain-text message content at 2000 chars. The full
+ * grouped help list renders at ~3.8k chars, so a single reply throws
+ * inside discord.js and surfaces as the generic "Couldn't run that"
+ * error — keep every chunk under the limit with margin. */
+export const HELP_MESSAGE_LIMIT = 1900;
+
+/** Split rendered help text into messages that each fit Discord's
+ * 2000-char content limit, breaking only on line boundaries (a single
+ * over-long line is hard-sliced as a last resort). */
+export function splitHelpMessage(text: string, limit: number = HELP_MESSAGE_LIMIT): string[] {
+  const messages: string[] = [];
+  let current = "";
+  const flush = () => {
+    if (current) {
+      messages.push(current);
+      current = "";
+    }
+  };
+  for (const line of text.split("\n")) {
+    if (line.length > limit) {
+      flush();
+      for (let i = 0; i < line.length; i += limit) messages.push(line.slice(i, i + limit));
+      continue;
+    }
+    if (current && current.length + 1 + line.length > limit) flush();
+    current = current ? `${current}\n${line}` : line;
+  }
+  flush();
+  return messages;
+}
+
 export const commands: Command[] = [
   {
     name: "help",
@@ -30,7 +61,8 @@ export const commands: Command[] = [
         return;
       }
       // OwO-style plain text, no embed box: one grouped list, same
-      // commands + aliases as before, just as text lines.
+      // commands + aliases as before, just as text lines — split across
+      // messages so no single reply exceeds Discord's 2000-char cap.
       const lines: string[] = [category ? `Help — ${groups[0]!.category}` : "uwu — all commands", ""];
       for (const group of groups) {
         lines.push(group.category);
@@ -40,7 +72,11 @@ export const commands: Command[] = [
         }
         lines.push("");
       }
-      await inv.reply({ content: lines.join("\n").trimEnd(), ephemeral: true });
+      const messages = splitHelpMessage(lines.join("\n").trimEnd());
+      await inv.reply({ content: messages[0], ephemeral: true });
+      for (const rest of messages.slice(1)) {
+        await inv.followUp({ content: rest, ephemeral: true });
+      }
     },
   },
 ];

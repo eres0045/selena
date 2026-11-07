@@ -329,6 +329,16 @@ describe("handlePrefixMessage", () => {
     for (const group of HELP_GROUPS) {
       expect(text).toContain(group.category);
     }
+    // Regression 2026-11-07: the full list (~3.8k chars) was sent as one
+    // message, over Discord's 2000-char cap, so `uwu help` failed every
+    // time. It must now arrive as several sub-limit chunks.
+    const chunks = [...msg.replies, ...msg.channelSends]
+      .map((p) => p.content)
+      .filter((c): c is string => typeof c === "string");
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(2000);
+    }
   });
 });
 

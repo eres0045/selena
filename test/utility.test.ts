@@ -4,7 +4,7 @@ import { FakeChatInput } from "../src/lib/testkit.js";
 import { awardXp, levelFromXp, rankCard, resetXpCooldowns, xpForLevel } from "../src/lib/levels.js";
 import { checkStarboard, containsBannedWord, containsLink, isSpam } from "../src/lib/automod.js";
 import { commands as utilityCommands, createReminder, getAfk, setAfk, topByXp } from "../src/commands/utility.js";
-import { commands as helpCommands } from "../src/commands/help.js";
+import { commands as helpCommands, splitHelpMessage } from "../src/commands/help.js";
 import { allCommands, HELP_GROUPS } from "../src/commands/index.js";
 import type { Command } from "../src/lib/command.js";
 
@@ -226,5 +226,48 @@ describe("/help", () => {
     await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(good, { db, guildId: GUILD });
     expect(good.allText()).toContain("uwu rank");
     expect(good.allText()).not.toContain("uwu warn");
+  });
+
+  it("regression: every help reply fits Discord's 2000-char message limit", async () => {
+    // 2026-11-07: the full grouped list renders at ~3.8k chars; sending
+    // it as one message threw inside discord.js and `uwu help` failed
+    // every time with the generic "Couldn't run that" error.
+    const cmd = helpCommands.find((c) => c.name === "help")!;
+    const run = async (options: Record<string, unknown>) => {
+      const db = getTestDb();
+      const fake = new FakeChatInput({ commandName: "help", options });
+      await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(fake, { db, guildId: GUILD });
+      return fake;
+    };
+    const variants: Record<string, unknown>[] = [{}];
+    for (const g of HELP_GROUPS) variants.push({ category: g.category });
+    for (const options of variants) {
+      const fake = await run(options);
+      expect(fake.allText()).not.toContain("Couldn't run that");
+      const contents = fake.replies
+        .map((r) => (r.payload as Record<string, unknown>).content)
+        .filter((c): c is string => typeof c === "string");
+      expect(contents.length).toBeGreaterThan(0);
+      for (const content of contents) {
+        expect(content.length).toBeLessThanOrEqual(2000);
+      }
+    }
+    // Full (unfiltered) help must split into several messages, each under
+    // the limit, and the joined text must still list every command.
+    const full = await run({});
+    expect(full.replies.length).toBeGreaterThan(1);
+    for (const c of allCommands) {
+      expect(full.allText()).toContain(`uwu ${c.name}`);
+    }
+  });
+
+  it("splitHelpMessage keeps chunks under the limit and loses no text", () => {
+    const text = Array.from({ length: 200 }, (_, i) => `line ${i} with some filler text here`).join("\n");
+    const chunks = splitHelpMessage(text);
+    expect(chunks.every((c) => c.length <= 2000)).toBe(true);
+    expect(chunks.join("\n")).toBe(text);
+    expect(splitHelpMessage("short")).toEqual(["short"]);
+    expect(splitHelpMessage("")).toEqual([]);
+    expect(splitHelpMessage("x".repeat(4500)).every((c) => c.length <= 2000)).toBe(true);
   });
 });
