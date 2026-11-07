@@ -1,5 +1,5 @@
 import type { Command, CommandContext, CommandInvocation } from "../lib/command.js";
-import { errorEmbed, selenaEmbed } from "../lib/command.js";
+import { errorEmbed } from "../lib/command.js";
 import type { SelenaDb } from "../lib/db.js";
 
 // ---------------------------------------------------------------------------
@@ -183,7 +183,7 @@ export const commands: Command[] = [
       }
       const id = await warnUser(ctx.db, ctx.guildId, target.id, inv.user.id, reason);
       await inv.reply({
-        embeds: [selenaEmbed("User warned", `**${target.username}** warned (#${id}).\nReason: ${reason}`).toJSON()],
+        content: `User warned\n${target.username} warned (#${id}).\nReason: ${reason}`,
         ephemeral: true,
       });
     },
@@ -211,7 +211,7 @@ export const commands: Command[] = [
         await member.timeout(minutes * 60_000, reason);
       });
       await inv.reply({
-        embeds: [selenaEmbed("User muted", `**${target.username}** muted for ${minutes} minute(s).\nReason: ${reason}\n${note}`).toJSON()],
+        content: `User muted\n${target.username} muted for ${minutes} minute(s).\nReason: ${reason}\n${note}`,
         ephemeral: true,
       });
     },
@@ -239,7 +239,7 @@ export const commands: Command[] = [
         await member.timeout(minutes * 60_000, reason);
       });
       await inv.reply({
-        embeds: [selenaEmbed("User timed out", `**${target.username}** timed out for ${minutes} minute(s).\nReason: ${reason}\n${note}`).toJSON()],
+        content: `User timed out\n${target.username} timed out for ${minutes} minute(s).\nReason: ${reason}\n${note}`,
         ephemeral: true,
       });
     },
@@ -266,7 +266,7 @@ export const commands: Command[] = [
         await member.kick(reason);
       });
       await inv.reply({
-        embeds: [selenaEmbed("User kicked", `**${target.username}** was kicked.\nReason: ${reason}\n${note}`).toJSON()],
+        content: `User kicked\n${target.username} was kicked.\nReason: ${reason}\n${note}`,
         ephemeral: true,
       });
     },
@@ -293,7 +293,7 @@ export const commands: Command[] = [
         await g.members.ban(target.id, { reason, deleteMessageDays: deleteDays });
       });
       await inv.reply({
-        embeds: [selenaEmbed("User banned", `**${target.username}** was banned.\nReason: ${reason}\n${note}`).toJSON()],
+        content: `User banned\n${target.username} was banned.\nReason: ${reason}\n${note}`,
         ephemeral: true,
       });
     },
@@ -319,7 +319,7 @@ export const commands: Command[] = [
         await g.members.unban(userId, reason);
       });
       await inv.reply({
-        embeds: [selenaEmbed("User unbanned", `<@${userId}> was unbanned.\nReason: ${reason}\n${note}`).toJSON()],
+        content: `User unbanned\n<@${userId}> was unbanned.\nReason: ${reason}\n${note}`,
         ephemeral: true,
       });
     },
@@ -339,7 +339,7 @@ export const commands: Command[] = [
       const rows = await listWarnings(ctx.db, ctx.guildId, target.id);
       if (rows.length === 0) {
         await inv.reply({
-          embeds: [selenaEmbed("Warnings", `**${target.username}** has no warnings.`).toJSON()],
+          content: `Warnings\n${target.username} has no warnings.`,
           ephemeral: true,
         });
         return;
@@ -348,7 +348,7 @@ export const commands: Command[] = [
         (w) => `#${w.id} — ${w.reason} (by <@${w.moderator_id}>, <t:${Math.floor(w.created_at / 1000)}:d>)`,
       );
       await inv.reply({
-        embeds: [selenaEmbed(`Warnings for ${target.username} (${rows.length})`, lines.join("\n")).toJSON()],
+        content: `Warnings for ${target.username} (${rows.length})\n${lines.join("\n")}`,
         ephemeral: true,
       });
     },
@@ -364,7 +364,7 @@ export const commands: Command[] = [
       const rows = await listModActions(ctx.db, ctx.guildId, limit);
       if (rows.length === 0) {
         await inv.reply({
-          embeds: [selenaEmbed("Mod log", "No moderation actions recorded yet.").toJSON()],
+          content: "Mod log\nNo moderation actions recorded yet.",
           ephemeral: true,
         });
         return;
@@ -373,7 +373,7 @@ export const commands: Command[] = [
         (a) => `#${a.id} **${a.action}** <@${a.user_id}> — ${a.reason ?? "no reason"} (by <@${a.moderator_id}>)`,
       );
       await inv.reply({
-        embeds: [selenaEmbed(`Mod log (latest ${rows.length})`, lines.join("\n")).toJSON()],
+        content: `Mod log (latest ${rows.length})\n${lines.join("\n")}`,
         ephemeral: true,
       });
     },
@@ -406,7 +406,7 @@ export const commands: Command[] = [
           channelNote = `Ticket recorded, but channel creation failed: ${e instanceof Error ? e.message : String(e)}`;
         }
         await inv.reply({
-          embeds: [selenaEmbed(`Ticket #${ticket.id} opened`, `${reason}\n${channelNote}`).toJSON()],
+          content: `Ticket #${ticket.id} opened\n${reason}\n${channelNote}`,
           ephemeral: true,
         });
         return;
@@ -418,7 +418,7 @@ export const commands: Command[] = [
           return;
         }
         await inv.reply({
-          embeds: [selenaEmbed(`Ticket #${closed.id} closed`, "Thanks — staff have been notified.").toJSON()],
+          content: `Ticket #${closed.id} closed\nThanks — staff have been notified.`,
           ephemeral: true,
         });
         return;
@@ -443,7 +443,7 @@ export const commands: Command[] = [
       const channelId = (inv as unknown as { channelId?: string }).channelId ?? "";
       await setReactionRole(ctx.db, ctx.guildId, channelId, messageId, emoji, role.id);
       await inv.reply({
-        embeds: [selenaEmbed("Reaction role saved", `Reacting ${emoji} on message \`${messageId}\` grants **${role.name}**.`).toJSON()],
+        content: `Reaction role saved\nReacting ${emoji} on message \`${messageId}\` grants ${role.name}.`,
         ephemeral: true,
       });
     },

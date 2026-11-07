@@ -1,13 +1,7 @@
-import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  type EmbedBuilder,
-} from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import {
   errorEmbed,
   fmt,
-  selenaEmbed,
   type Command,
   type CommandContext,
   type CommandInvocation,
@@ -78,7 +72,8 @@ function truncateLabel(text: string, max = 80): string {
 // Tic-tac-toe
 // ---------------------------------------------------------------------------
 
-function tttEmbed(game: TttGame): EmbedBuilder {
+/** OwO-style plain text, no embed box: title line, board, status. */
+function tttText(game: TttGame): string {
   const xName = game.playerXName;
   const oName = game.playerOName;
   let status: string;
@@ -92,10 +87,7 @@ function tttEmbed(game: TttGame): EmbedBuilder {
   } else {
     status = game.turn === "X" ? `❌ <@${game.playerX}>'s turn` : `⭕ <@${game.playerO}>'s turn`;
   }
-  return selenaEmbed(
-    `Tic-Tac-Toe — ${xName} ❌ vs ${oName} ⭕`,
-    `${tttRender(game.board)}\n\n${status}`,
-  );
+  return `Tic-Tac-Toe — ${xName} ❌ vs ${oName} ⭕\n${tttRender(game.board)}\n\n${status}`;
 }
 
 function tttComponents(game: TttGame): ActionRowBuilder<ButtonBuilder>[] {
@@ -156,14 +148,15 @@ async function handleTtt(inv: any, _ctx: CommandContext): Promise<void> {
   } else {
     game.turn = symbol === "X" ? "O" : "X";
   }
-  await inv.update({ embeds: [tttEmbed(game)], components: tttComponents(game) });
+  await inv.update({ content: tttText(game), components: tttComponents(game) });
 }
 
 // ---------------------------------------------------------------------------
 // Connect 4
 // ---------------------------------------------------------------------------
 
-function c4Embed(game: C4Game): EmbedBuilder {
+/** OwO-style plain text, no embed box: title line, board, status. */
+function c4Text(game: C4Game): string {
   let status: string;
   if (game.status === "done") {
     status =
@@ -175,10 +168,7 @@ function c4Embed(game: C4Game): EmbedBuilder {
   } else {
     status = game.turn === "R" ? `🔴 <@${game.playerR}>'s turn` : `🟡 <@${game.playerY}>'s turn`;
   }
-  return selenaEmbed(
-    `Connect 4 — ${game.playerRName} 🔴 vs ${game.playerYName} 🟡`,
-    `${c4Render(game.board)}\n\n${status}`,
-  );
+  return `Connect 4 — ${game.playerRName} 🔴 vs ${game.playerYName} 🟡\n${c4Render(game.board)}\n\n${status}`;
 }
 
 function c4Components(game: C4Game): ActionRowBuilder<ButtonBuilder>[] {
@@ -234,14 +224,15 @@ async function handleC4(inv: any, _ctx: CommandContext): Promise<void> {
   } else {
     game.turn = symbol === "R" ? "Y" : "R";
   }
-  await inv.update({ embeds: [c4Embed(game)], components: c4Components(game) });
+  await inv.update({ content: c4Text(game), components: c4Components(game) });
 }
 
 // ---------------------------------------------------------------------------
 // Rock-paper-scissors
 // ---------------------------------------------------------------------------
 
-function rpsEmbed(game: RpsGame): EmbedBuilder {
+/** OwO-style plain text, no embed box. */
+function rpsText(game: RpsGame): string {
   if (game.status === "done") {
     const a = game.picks[game.challengerId]!;
     const b = game.picks[game.opponentId]!;
@@ -251,9 +242,9 @@ function rpsEmbed(game: RpsGame): EmbedBuilder {
         : game.winnerId === game.challengerId
           ? `${emoji("trophy")} <@${game.challengerId}> wins!`
           : `${emoji("trophy")} <@${game.opponentId}> wins!`;
-    return selenaEmbed(
-      `Rock Paper Scissors — ${game.challengerName} vs ${game.opponentName}`,
-      `<@${game.challengerId}> played ${rpsEmoji(a)} **${a}**\n<@${game.opponentId}> played ${rpsEmoji(b)} **${b}**\n\n${result}`,
+    return (
+      `Rock Paper Scissors — ${game.challengerName} vs ${game.opponentName}\n` +
+      `<@${game.challengerId}> played ${rpsEmoji(a)} ${a}\n<@${game.opponentId}> played ${rpsEmoji(b)} ${b}\n\n${result}`
     );
   }
   const pickedChallenger = !!game.picks[game.challengerId];
@@ -263,9 +254,9 @@ function rpsEmbed(game: RpsGame): EmbedBuilder {
     : pickedOpponent
       ? `Waiting for <@${game.challengerId}> to pick…`
       : "Both players pick — challenger first, then the opponent.";
-  return selenaEmbed(
-    `Rock Paper Scissors — ${game.challengerName} vs ${game.opponentName}`,
-    `🪨 Rock • 📄 Paper • ✂️ Scissors — best of 1.\n\n${waiting}`,
+  return (
+    `Rock Paper Scissors — ${game.challengerName} vs ${game.opponentName}\n` +
+    `🪨 Rock • 📄 Paper • ✂️ Scissors — best of 1.\n\n${waiting}`
   );
 }
 
@@ -315,14 +306,18 @@ async function handleRps(inv: any, _ctx: CommandContext): Promise<void> {
     game.status = "done";
     game.winnerId = outcome === "draw" ? null : outcome === "win" ? game.challengerId : game.opponentId;
   }
-  await inv.update({ embeds: [rpsEmbed(game)], components: rpsComponents(game) });
+  await inv.update({ content: rpsText(game), components: rpsComponents(game) });
 }
 
 // ---------------------------------------------------------------------------
 // Trivia
 // ---------------------------------------------------------------------------
 
-function triviaEmbed(game: TriviaGame, reveal: boolean, pickedIndex?: number): EmbedBuilder {
+/**
+ * OwO-style plain text, no embed box. When a result line is given (the
+ * answer handler), it replaces the footer — the correct/wrong outcome.
+ */
+function triviaText(game: TriviaGame, reveal: boolean, pickedIndex?: number, resultLine?: string): string {
   const q = game.question;
   const lines = q.options.map((opt, i) => {
     const letter = String.fromCharCode(65 + i);
@@ -331,14 +326,16 @@ function triviaEmbed(game: TriviaGame, reveal: boolean, pickedIndex?: number): E
       if (i === q.answerIndex) marker = " ✅";
       else if (i === pickedIndex) marker = " ❌";
     }
-    return `**${letter}.** ${opt}${marker}`;
+    return `${letter}. ${opt}${marker}`;
   });
-  const footer = reveal
-    ? game.answeredBy
-      ? `Answered by <@${game.answeredBy}>. Correct answer: ${String.fromCharCode(65 + q.answerIndex)}.`
-      : `Correct answer: ${String.fromCharCode(65 + q.answerIndex)}.`
-    : `You have ${TRIVIA_TIME_LIMIT_MS / 1000} seconds — first answer counts! Worth ${TRIVIA_POINTS} gold.`;
-  return selenaEmbed(`🧠 Trivia`, `${q.question}\n\n${lines.join("\n")}\n\n${footer}`);
+  const footer =
+    resultLine ??
+    (reveal
+      ? game.answeredBy
+        ? `Answered by <@${game.answeredBy}>. Correct answer: ${String.fromCharCode(65 + q.answerIndex)}.`
+        : `Correct answer: ${String.fromCharCode(65 + q.answerIndex)}.`
+      : `You have ${TRIVIA_TIME_LIMIT_MS / 1000} seconds — first answer counts! Worth ${TRIVIA_POINTS} gold.`);
+  return `🧠 Trivia\n${q.question}\n\n${lines.join("\n")}\n\n${footer}`;
 }
 
 /** Build trivia buttons with the real game id baked into the customId. */
@@ -382,20 +379,13 @@ async function handleTrivia(inv: any, ctx: CommandContext): Promise<void> {
   if (correct) {
     await awardPoints(ctx.db, ctx.guildId, inv.user.id, TRIVIA_POINTS, "trivia");
   }
-  const embed = triviaEmbed(game, true, idx).setDescription(
-    `${game.question.question}\n\n${game.question.options
-      .map((opt, i) => {
-        const letter = String.fromCharCode(65 + i);
-        const marker = i === game.question.answerIndex ? " ✅" : i === idx ? " ❌" : "";
-        return `**${letter}.** ${opt}${marker}`;
-      })
-      .join("\n")}\n\n${
-      correct
-        ? `${emoji("party")} <@${inv.user.id}> got it right and earned **${TRIVIA_POINTS} gold**!`
-        : `❌ <@${inv.user.id}> got it wrong. The correct answer was **${String.fromCharCode(65 + game.question.answerIndex)}**.`
-    }`,
-  );
-  await inv.update({ embeds: [embed], components: triviaComponentsFor(game, true) });
+  const resultLine = correct
+    ? `${emoji("party")} <@${inv.user.id}> got it right and earned ${TRIVIA_POINTS} gold!`
+    : `❌ <@${inv.user.id}> got it wrong. The correct answer was ${String.fromCharCode(65 + game.question.answerIndex)}.`;
+  await inv.update({
+    content: triviaText(game, true, idx, resultLine),
+    components: triviaComponentsFor(game, true),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -434,17 +424,18 @@ async function handleGiveaway(inv: any, ctx: CommandContext): Promise<void> {
 // Poll
 // ---------------------------------------------------------------------------
 
-function pollEmbed(question: string, options: string[], counts: number[]): EmbedBuilder {
+/** OwO-style plain text, no embed box: question, options with vote bars, total. */
+function pollText(question: string, options: string[], counts: number[]): string {
   const total = counts.reduce((s, c) => s + c, 0);
   const lines = options.map((opt, i) => {
     const count = counts[i] ?? 0;
     const pct = total === 0 ? 0 : Math.round((count / total) * 100);
     const bar = "█".repeat(Math.round(pct / 10)) + "░".repeat(10 - Math.round(pct / 10));
-    return `**${i + 1}. ${opt}** — ${count} vote${count === 1 ? "" : "s"} (${pct}%)\n${bar}`;
+    return `${i + 1}. ${opt} — ${count} vote${count === 1 ? "" : "s"} (${pct}%)\n${bar}`;
   });
-  return selenaEmbed(
-    `📊 ${question}`,
-    `${lines.join("\n\n")}\n\n*${total} total vote${total === 1 ? "" : "s"} — click a button to vote (one vote per person, click again to change it).*`,
+  return (
+    `📊 ${question}\n${lines.join("\n\n")}\n\n` +
+    `${total} total vote${total === 1 ? "" : "s"} — click a button to vote (one vote per person, click again to change it).`
   );
 }
 
@@ -485,7 +476,7 @@ async function handlePoll(inv: any, ctx: CommandContext): Promise<void> {
   }
   await recordPollVote(ctx.db, pollId, inv.user.id, idx);
   const counts = await getPollCounts(ctx.db, pollId, options.length);
-  await inv.update({ embeds: [pollEmbed(row.question, options, counts)], components: pollComponents(pollId, options, counts) });
+  await inv.update({ content: pollText(row.question, options, counts), components: pollComponents(pollId, options, counts) });
 }
 
 export const buttonHandlers: Record<string, (inv: any, ctx: CommandContext) => Promise<void>> = {
@@ -533,7 +524,7 @@ export const commands: Command[] = [
         status: "active",
       };
       tttGames.set(game.id, game);
-      await inv.reply({ embeds: [tttEmbed(game)], components: tttComponents(game) });
+      await inv.reply({ content: tttText(game), components: tttComponents(game) });
     },
   },
   {
@@ -563,7 +554,7 @@ export const commands: Command[] = [
         status: "active",
       };
       c4Games.set(game.id, game);
-      await inv.reply({ embeds: [c4Embed(game)], components: c4Components(game) });
+      await inv.reply({ content: c4Text(game), components: c4Components(game) });
     },
   },
   {
@@ -592,7 +583,7 @@ export const commands: Command[] = [
         status: "active",
       };
       rpsGames.set(game.id, game);
-      await inv.reply({ embeds: [rpsEmbed(game)], components: rpsComponents(game) });
+      await inv.reply({ content: rpsText(game), components: rpsComponents(game) });
     },
   },
   {
@@ -609,7 +600,7 @@ export const commands: Command[] = [
         expiresAt: Date.now() + TRIVIA_TIME_LIMIT_MS,
       };
       triviaGames.set(game.id, game);
-      await inv.reply({ embeds: [triviaEmbed(game, false)], components: triviaComponentsFor(game, false) });
+      await inv.reply({ content: triviaText(game, false), components: triviaComponentsFor(game, false) });
     },
   },
   {
@@ -630,12 +621,8 @@ export const commands: Command[] = [
         }
         wordChainGames.set(guildId, createWordChain());
         await inv.reply({
-          embeds: [
-            selenaEmbed(
-              "🔗 Word Chain",
-              "A new word chain has started!\n\n**Rules:** each word must be at least 3 letters, letters only, start with the last letter of the previous word, and never repeat a word.\n\nPlay with `uwu wordchain <your word>` — any word can start the chain.",
-            ),
-          ],
+          content:
+            "🔗 Word Chain\nA new word chain has started!\n\nRules: each word must be at least 3 letters, letters only, start with the last letter of the previous word, and never repeat a word.\n\nPlay with `uwu wordchain <your word>` — any word can start the chain.",
         });
         return;
       }
@@ -651,14 +638,10 @@ export const commands: Command[] = [
       }
       wordChainGames.set(guildId, result.state);
       await inv.reply({
-        embeds: [
-          selenaEmbed(
-            "🔗 Word Chain",
-            `**${inv.user.username}** played **${word.trim().toLowerCase()}**.\n\n` +
-              `Next word must start with **${result.state.currentLetter!.toUpperCase()}**.\n` +
-              `Chain length: ${result.state.moves} word${result.state.moves === 1 ? "" : "s"}.`,
-          ),
-        ],
+        content:
+          `🔗 Word Chain\n${inv.user.username} played ${word.trim().toLowerCase()}.\n\n` +
+          `Next word must start with ${result.state.currentLetter!.toUpperCase()}.\n` +
+          `Chain length: ${result.state.moves} word${result.state.moves === 1 ? "" : "s"}.`,
       });
     },
   },
@@ -701,12 +684,8 @@ export const commands: Command[] = [
         .setStyle(ButtonStyle.Success);
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(button);
       await inv.reply({
-        embeds: [
-          selenaEmbed(
-            emoji("party") + " Giveaway!",
-            `**Prize:** ${prize.trim()}\n**Winners:** ${fmt(winners)}\n**Ends in:** ${endsIn}\n\nClick the button below to enter! Winners are drawn automatically when the giveaway ends.`,
-          ).setFooter({ text: `Giveaway #${giveawayId}` }),
-        ],
+        content:
+          `${emoji("party")} Giveaway!\nPrize: ${prize.trim()}\nWinners: ${fmt(winners)}\nEnds in: ${endsIn}\n\nClick the button below to enter! Winners are drawn automatically when the giveaway ends.\nGiveaway #${giveawayId}`,
         components: [row],
       });
     },
@@ -745,7 +724,7 @@ export const commands: Command[] = [
       const pollId = Number(res.lastInsertRowid);
       const counts = Array<number>(options.length).fill(0);
       await inv.reply({
-        embeds: [pollEmbed(question.trim(), options, counts)],
+        content: pollText(question.trim(), options, counts),
         components: pollComponents(pollId, options, counts),
       });
     },

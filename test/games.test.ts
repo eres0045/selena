@@ -534,8 +534,8 @@ describe("/trivia command", () => {
     const fake = await run("trivia", {});
     const text = replyText(fake);
     expect(text).toMatch(/Trivia/);
-    expect(text).toMatch(/\*\*A\.\*\*/);
-    expect(text).toMatch(/\*\*D\.\*\*/);
+    expect(text).toMatch(/^A\. /m);
+    expect(text).toMatch(/^D\. /m);
     expect(triviaGames.size).toBe(1);
   });
 });
@@ -578,9 +578,9 @@ describe("/wordchain command", () => {
   it("starts a game, then accepts a chain of valid words", async () => {
     expect(replyText(await run("wordchain", {}))).toMatch(/new word chain has started/i);
     const a = await run("wordchain", { word: "apple" });
-    expect(replyText(a)).toMatch(/Next word must start with \*\*E\*\*/);
+    expect(replyText(a)).toMatch(/Next word must start with E\./);
     const b = await run("wordchain", { word: "elephant" });
-    expect(replyText(b)).toMatch(/Next word must start with \*\*T\*\*/);
+    expect(replyText(b)).toMatch(/Next word must start with T\./);
   });
 
   it("errors when starting a second game", async () => {

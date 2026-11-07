@@ -1,5 +1,5 @@
 import type { Command, CommandInvocation } from "../lib/command.js";
-import { errorEmbed, selenaEmbed } from "../lib/command.js";
+import { errorEmbed } from "../lib/command.js";
 
 // HELP_GROUPS lives in the registry (./index.js), which imports this file —
 // so it is loaded lazily inside execute() instead of at module top level.
@@ -29,20 +29,18 @@ export const commands: Command[] = [
         });
         return;
       }
-      const embed = selenaEmbed(category ? `Help — ${groups[0]!.category}` : "uwu — all commands");
+      // OwO-style plain text, no embed box: one grouped list, same
+      // commands + aliases as before, just as text lines.
+      const lines: string[] = [category ? `Help — ${groups[0]!.category}` : "uwu — all commands", ""];
       for (const group of groups) {
-        embed.addFields({
-          name: group.category,
-          value: group.commands
-            .map((c) => {
-              const aliasText = c.aliases.length > 0 ? ` (${c.aliases.join(", ")})` : "";
-              return `\`uwu ${c.name}\`${aliasText} — ${c.description}`;
-            })
-            .join("\n"),
-          inline: false,
-        });
+        lines.push(group.category);
+        for (const c of group.commands) {
+          const aliasText = c.aliases.length > 0 ? ` (${c.aliases.join(", ")})` : "";
+          lines.push(`\`uwu ${c.name}\`${aliasText} — ${c.description}`);
+        }
+        lines.push("");
       }
-      await inv.reply({ embeds: [embed.toJSON()], ephemeral: true });
+      await inv.reply({ content: lines.join("\n").trimEnd(), ephemeral: true });
     },
   },
 ];

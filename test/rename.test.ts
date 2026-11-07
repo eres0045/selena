@@ -29,7 +29,7 @@ describe("uwu rename (user-visible strings)", () => {
     expect(cmd!.description).not.toContain("Selena");
   });
 
-  it("the /help embed title is 'uwu — all commands'", async () => {
+  it("the /help first line is 'uwu — all commands' (plain text, no embed)", async () => {
     const cmd = allCommands.find((c) => c.name === "help")!;
     const fake = new FakeChatInput({ commandName: "help", options: {} });
     await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(fake, {
@@ -37,8 +37,8 @@ describe("uwu rename (user-visible strings)", () => {
       guildId: GUILD,
     });
     const payload = fake.firstReplyPayload() as Record<string, unknown>;
-    const embed = (payload.embeds as { title?: string }[] | undefined)?.[0];
-    expect(embed?.title).toBe("uwu — all commands");
+    expect(payload.embeds).toBeUndefined();
+    expect(payload.content as string).toMatch(/^uwu — all commands/);
   });
 
   it("the points footer names uwu, not Selena", () => {

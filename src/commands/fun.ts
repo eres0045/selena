@@ -1,7 +1,6 @@
 import {
   errorEmbed,
   fmt,
-  selenaEmbed,
   type Command,
   type CommandInvocation,
 } from "../lib/command.js";
@@ -26,7 +25,8 @@ import {
 /**
  * Fun slash commands. Each execute() is a thin adapter over the pure
  * functions in ../lib/fun.ts. No Canvas is used anywhere here — meme
- * effects and profile cards are text/embeds only (see fun.ts).
+ * effects and profile cards are plain text only (see fun.ts). All
+ * replies are plain-text message content, no embed box (OwO-style).
  */
 
 async function replyError(
@@ -50,9 +50,7 @@ export const commands: Command[] = [
       }
       const answer = eightBall();
       await inv.reply({
-        embeds: [
-          selenaEmbed("🎱 Magic 8-Ball", `**Question:** ${question.trim()}\n**Answer:** ${answer}`),
-        ],
+        content: `🎱 Magic 8-Ball\nQuestion: ${question.trim()}\nAnswer: ${answer}`,
       });
     },
   },
@@ -73,7 +71,7 @@ export const commands: Command[] = [
         effect: effect ?? undefined,
       });
       await inv.reply({
-        embeds: [selenaEmbed(`😂 ${meme.template.name}`, memeDescription(meme))],
+        content: `😂 ${meme.template.name}\n${memeDescription(meme)}`,
       });
     },
   },
@@ -92,12 +90,7 @@ export const commands: Command[] = [
       const { percent, label } = shipCompatibility(user1.id, user2.id);
       const hearts = "💜".repeat(Math.max(1, Math.round(percent / 20)));
       await inv.reply({
-        embeds: [
-          selenaEmbed(
-            "💘 Ship Result",
-            `**${user1.username}** ❤️ **${user2.username}**\n\n${hearts}\n# ${percent}%\n${label}`,
-          ),
-        ],
+        content: `💘 Ship Result\n${user1.username} ❤️ ${user2.username}\n\n${hearts}\n${percent}% — ${label}`,
       });
     },
   },
@@ -114,12 +107,7 @@ export const commands: Command[] = [
       }
       const percent = rateThing(thing, inv.user.id);
       await inv.reply({
-        embeds: [
-          selenaEmbed(
-            emoji("star") + " Rating",
-            `**${thing.trim()}** scores **${percent}/100**.\n${rateVerdict(percent)}`,
-          ),
-        ],
+        content: `${emoji("star")} Rating\n${thing.trim()} scores ${percent}/100.\n${rateVerdict(percent)}`,
       });
     },
   },
@@ -128,7 +116,7 @@ export const commands: Command[] = [
     description: "Tell a random joke.",
     aliases: ["jokes"],
     async execute(inv, _ctx) {
-      await inv.reply({ embeds: [selenaEmbed("😂 Joke", randomJoke())] });
+      await inv.reply({ content: `😂 Joke\n${randomJoke()}` });
     },
   },
   {
@@ -139,7 +127,7 @@ export const commands: Command[] = [
     async execute(inv, _ctx) {
       const target = inv.options.getUser("user") ?? inv.user;
       await inv.reply({
-        embeds: [selenaEmbed(emoji("fire") + " Friendly Roast", `<@${target.id}> — ${randomRoast()}`)],
+        content: `${emoji("fire")} Friendly Roast\n<@${target.id}> — ${randomRoast()}`,
       });
     },
   },
@@ -151,7 +139,7 @@ export const commands: Command[] = [
     async execute(inv, _ctx) {
       const target = inv.options.getUser("user") ?? inv.user;
       await inv.reply({
-        embeds: [selenaEmbed("💜 Compliment", `<@${target.id}> — ${randomCompliment()}`)],
+        content: `💜 Compliment\n<@${target.id}> — ${randomCompliment()}`,
       });
     },
   },
@@ -162,7 +150,7 @@ export const commands: Command[] = [
     async execute(inv, _ctx) {
       const q = randomWouldYouRather();
       await inv.reply({
-        embeds: [selenaEmbed("🤔 Would You Rather…", `**A:** ${q.a}\n\n**B:** ${q.b}`)],
+        content: `🤔 Would You Rather…\nA: ${q.a}\n\nB: ${q.b}`,
       });
     },
   },
@@ -179,12 +167,7 @@ export const commands: Command[] = [
       }
       const picked = randomTruthOrDare((kind as "truth" | "dare" | "random" | null) ?? "random");
       await inv.reply({
-        embeds: [
-          selenaEmbed(
-            picked.kind === "truth" ? "🤫 Truth" : "😈 Dare",
-            picked.text,
-          ),
-        ],
+        content: `${picked.kind === "truth" ? "🤫 Truth" : "😈 Dare"}\n${picked.text}`,
       });
     },
   },
@@ -199,7 +182,7 @@ export const commands: Command[] = [
         await replyError(inv, "Give me some text to uwu-ify!");
         return;
       }
-      await inv.reply({ embeds: [selenaEmbed("🥺 uwu", uwuify(text))] });
+      await inv.reply({ content: `🥺 uwu\n${uwuify(text)}` });
     },
   },
   {
@@ -210,15 +193,11 @@ export const commands: Command[] = [
     async execute(inv, ctx) {
       const target = inv.options.getUser("user") ?? inv.user;
       const profile = await getProfileData(ctx.db, ctx.guildId, target.id);
-      const embed = selenaEmbed(`👤 ${target.username}'s Profile`)
-        .addFields(
-          { name: "Gold", value: fmt(profile.points), inline: true },
-          { name: "XP", value: fmt(profile.xp), inline: true },
-          { name: "Level", value: String(profile.level), inline: true },
-          { name: "Server Rank", value: `#${profile.rank} of ${profile.totalRanked}`, inline: true },
-        )
-        .setFooter({ text: "Profile cards are text/embeds only in this build — no Canvas image rendering." });
-      await inv.reply({ embeds: [embed] });
+      await inv.reply({
+        content:
+          `👤 ${target.username}'s Profile\n` +
+          `Gold: ${fmt(profile.points)} · XP: ${fmt(profile.xp)} · Level: ${profile.level} · Server Rank: #${profile.rank} of ${profile.totalRanked}`,
+      });
     },
   },
 ];

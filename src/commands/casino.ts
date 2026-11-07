@@ -1,44 +1,54 @@
-import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  type APIEmbed,
-} from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import type { Command, CommandContext, CommandInvocation } from "../lib/command.js";
 import { emoji } from "../lib/emoji.js";
-import { errorEmbed, fmt, pointsEmbed } from "../lib/command.js";
+import { fmt } from "../lib/command.js";
 import { getBalance } from "../lib/economy.js";
-import { CARD_SUITS, prettyCard } from "../lib/cards.js";
+import { CARD_BACK, cardGlyph } from "../lib/cards.js";
 import {
   blackjackGames,
   blackjackValue,
   coinflipOutcome,
   createBlackjackGame,
+  createHighlowGame,
+  createMinesGame,
   creditWin,
   dealerPlay,
-  drawCard,
+  drawHighlowCard,
   endBlackjackGame,
+  endHighlowGame,
+  endMinesGame,
   getBlackjackGame,
-  highlowOutcome,
-  highLowRankName,
+  getHighlowGame,
+  getMinesGame,
+  HIGHLOW_SAME_MIN_MULTIPLIER,
+  highlowCashOut,
+  highlowGames,
+  highlowGuessWin,
+  highlowLadderMultiplier,
   isBlackjack,
   isValidRouletteBet,
+  minesCashOut,
+  minesGames,
+  minesMultiplier,
   placeBet,
-  randomSuit,
   rouletteOutcome,
   rouletteRoll,
   scratchDraw,
   settleBlackjack,
+  SLOT_SYMBOLS,
   slotsSpin,
   type BlackjackGame,
+  type HighlowGame,
+  type HighLowGuess,
+  type MinesGame,
 } from "../lib/casino.js";
 import { secureFloat } from "../lib/rng.js";
-import { VISUAL_SUSPENSE, sleep } from "../lib/visualgames.js";
+import { SLOT_SPIN, VISUAL_SUSPENSE, sleep } from "../lib/visualgames.js";
 
 type Inv = CommandInvocation;
 
 async function replyError(inv: Inv, message: string): Promise<void> {
-  await inv.reply({ embeds: [errorEmbed(message).toJSON()], ephemeral: true });
+  await inv.reply({ content: message });
 }
 
 /** Read and validate the bet option; returns null after replying on bad input. */
@@ -59,86 +69,75 @@ function bjButtons(gameId: string): ActionRowBuilder<ButtonBuilder> {
 }
 
 /**
- * OwO-style embed colours: blue while the game is live, green on a win
- * (including a natural blackjack), red on a loss, gray on a push.
+ * OwO-style plain-text blackjack: no embed box, no attached images —
+ * just short text lines, like OwO's games. The hands are plain text —
+ * "K♠ Q♥ (20)" — with the dealer's hole card hidden as "?" while the
+ * hand is live. The bet/result/balance line is the last line.
  */
-export type BjOutcome = "playing" | "win" | "lose" | "push" | "blackjack";
-
-export const BJ_COLORS: Record<BjOutcome, number> = {
-  playing: 0x5865f2,
-  win: 0x2ecc71,
-  lose: 0xe74c3c,
-  push: 0x95a5a6,
-  blackjack: 0x2ecc71,
-};
-
-/** Settle outcome (lib/casino.ts) -> embed outcome colour. */
-export function bjOutcomeOf(settled: { outcome: string }): BjOutcome {
-  if (settled.outcome === "player_blackjack") return "blackjack";
-  if (settled.outcome === "win") return "win";
-  if (settled.outcome === "push") return "push";
-  return "lose";
-}
-
-/**
- * OwO-style tiny blackjack: NO attached images (Discord stretches
- * every attachment to message width on mobile). The hands are plain
- * text — "K♠ Q♥ (20)" — with the dealer's hole card hidden as "?"
- * while the hand is live. The bet/result line stays in the footer.
- */
-function bjEmbed(
+function bjText(
   game: BlackjackGame,
-  opts: { over: boolean; outcome: BjOutcome; footerLine: string },
+  opts: { over: boolean; footerLine: string; playerName: string },
   balance: number,
-): ReturnType<typeof pointsEmbed> {
+): string {
   const title = opts.over ? "🃏 Blackjack — Finished" : "🃏 Blackjack";
   const player = blackjackValue(game.playerHand);
   const dealer = blackjackValue(game.dealerHand);
-  const dealerShown = opts.over
-    ? `${game.dealerHand.map(prettyCard).join(" ")} (${dealer})`
-    : game.dealerHand.map((c, i) => (i === 0 ? prettyCard(c) : "?")).join(" ");
-  const playerShown = `${game.playerHand.map(prettyCard).join(" ")} (${player})`;
-  return pointsEmbed(title, `Dealer: ${dealerShown}\nYou: ${playerShown}`)
-    .setColor(BJ_COLORS[opts.outcome])
-    .setFooter({
-      text: `Bet ${fmt(game.bet)} · ${opts.footerLine} · Balance ${fmt(balance)} gold`,
-    });
+  const upCard = game.dealerHand[0] ? cardGlyph(game.dealerHand[0]) : "?";
+  const dealerLine = opts.over
+    ? `Dealer [${dealer}]: ${game.dealerHand.map(cardGlyph).join(" ")}`
+    : `Dealer [?+?]: ${upCard} ${CARD_BACK}`;
+  const playerLine = `${opts.playerName} [${player}]: ${game.playerHand.map(cardGlyph).join(" ")}`;
+  return `${title}\n${dealerLine}\n${playerLine}\nBet ${fmt(game.bet)} · ${opts.footerLine} · Balance ${fmt(balance)} gold`;
 }
 
 /**
- * One compact OwO-style embed for a blackjack game state: text hands
- * only, no strip image. The dealer's hole card stays "?" until the
- * hand is over.
+ * One compact OwO-style plain-text message for a blackjack game state:
+ * text hands only, no embed, no strip image. The dealer's hole card
+ * stays "?" until the hand is over.
  */
 async function bjReplyPayload(
   game: BlackjackGame,
-  opts: { over: boolean; outcome: BjOutcome; footerLine: string },
+  opts: { over: boolean; footerLine: string; playerName: string },
   ctx: CommandContext,
 ): Promise<{
-  embeds: APIEmbed[];
+  content: string;
 }> {
   const balance = (await getBalance(ctx.db, game.guildId, game.userId)).points;
-  return { embeds: [bjEmbed(game, opts, balance).toJSON()] };
+  return { content: bjText(game, opts, balance) };
 }
 
 /**
- * OwO-style tiny flow: the caller defers FIRST, then this edits the
- * SAME message twice — a text-only "playing" line, a short suspense
- * beat, then the settled text. No attached images anywhere (Discord
- * stretches every attachment to message width on mobile, so a game
- * picture always looks huge). The settled text always shows the REAL
+ * OwO-style plain-text flow: the caller defers FIRST, then this edits
+ * the SAME message twice — a short plain suspense line, a short
+ * suspense beat, then the settled plain text. No embed box, no
+ * attached images anywhere. The settled text always shows the REAL
  * server-drawn result, never a different one. (The old GIF flows —
  * playSingleGif / playVisual / attachPayload — are gone; the
  * composition helpers and asset files stay on disk unused.)
  */
-async function playTiny(
-  inv: Inv,
-  suspenseEmbed: ReturnType<typeof pointsEmbed>,
-  settledEmbed: ReturnType<typeof pointsEmbed>,
-): Promise<void> {
-  await inv.editReply({ embeds: [suspenseEmbed.toJSON()] });
+async function playTiny(inv: Inv, suspenseText: string, settledText: string): Promise<void> {
+  await inv.editReply({ content: suspenseText });
   await sleep(VISUAL_SUSPENSE.ms);
-  await inv.editReply({ embeds: [settledEmbed.toJSON()] });
+  await inv.editReply({ content: settledText });
+}
+
+function randomSlotSymbol(): string {
+  return SLOT_SYMBOLS[Math.floor(secureFloat() * SLOT_SYMBOLS.length)] as string;
+}
+
+/**
+ * OwO-style slots spin: the same message is edited through a few
+ * spinning frames — random reel symbols changing, like the reels are
+ * turning — then settles on the REAL drawn result. Plain text only,
+ * `___SLOTS___` header on every frame, ~2s of spin in total.
+ */
+async function playSlotsSpinning(inv: Inv, settledText: string): Promise<void> {
+  for (let i = 0; i < SLOT_SPIN.frames; i++) {
+    const frame = [randomSlotSymbol(), randomSlotSymbol(), randomSlotSymbol()].join(" | ");
+    await inv.editReply({ content: `___SLOTS___\n${frame}\nSpinning…` });
+    await sleep(SLOT_SPIN.frameMs);
+  }
+  await inv.editReply({ content: settledText });
 }
 
 /**
@@ -185,21 +184,14 @@ export const commands: Command[] = [
         spin.multiplier > 0
           ? `You won **${fmt(winAmount)} gold** (${spin.multiplier}x)!`
           : "No match — better luck next spin.";
-      const settledEmbed = pointsEmbed(emoji("slots") + " Slots", `${spin.symbols.join(" | ")}\n\n${outcome}`)
-        .addFields(
-          { name: "Bet", value: fmt(bet), inline: true },
-          { name: "Multiplier", value: `${spin.multiplier}x`, inline: true },
-          { name: "Balance", value: fmt(balance), inline: true },
-        )
-        .setFooter({ text: "Odds: jackpot 7️⃣7️⃣7️⃣ 50x · 3-of-a-kind 10x · pair 2x · house edge ~10.9%. Gold only, no real money." })
-        .setColor(spin.multiplier > 0 ? BJ_COLORS.win : BJ_COLORS.lose);
-      const spinEmbed = pointsEmbed(emoji("slots") + " Slots", "Spinning…")
-        .addFields({ name: "Bet", value: fmt(bet), inline: true })
-        .setColor(BJ_COLORS.playing);
-      // Tiny OwO-style flow: text-only "Spinning…", a suspense beat,
-      // then the same message edited to the real drawn symbols.
+      const settledText =
+        `___SLOTS___\n${spin.symbols.join(" | ")}\n${outcome}\n` +
+        `Bet ${fmt(bet)} · Multiplier ${spin.multiplier}x · Balance ${fmt(balance)} gold`;
+      // OwO-style spin: one message, 4 quick edits cycling random
+      // symbols (the reels turning), then the final edit shows the
+      // REAL drawn symbols.
       await inv.deferReply();
-      await playTiny(inv, spinEmbed, settledEmbed);
+      await playSlotsSpinning(inv, settledText);
     },
   },
   {
@@ -230,12 +222,16 @@ export const commands: Command[] = [
             ? `${emoji("party")} Blackjack! You won ${fmt(winAmount)} gold (3:2).`
             : `Both you and the dealer have blackjack — push, your ${fmt(bet)} gold are returned.`;
         await inv.editReply(
-          await bjReplyPayload(game, { over: true, outcome: bjOutcomeOf(settled), footerLine }, ctx),
+          await bjReplyPayload(game, { over: true, footerLine, playerName: inv.user.username }, ctx),
         );
         return;
       }
       const replyMsg = (await inv.editReply({
-        ...(await bjReplyPayload(game, { over: false, outcome: "playing", footerLine: "Hit or Stand?" }, ctx)),
+        ...(await bjReplyPayload(
+          game,
+          { over: false, footerLine: "Hit or Stand?", playerName: inv.user.username },
+          ctx,
+        )),
         components: [bjButtons(game.id)],
       })) as unknown as { id?: string } | undefined;
       if (replyMsg && typeof replyMsg.id === "string") {
@@ -269,24 +265,14 @@ export const commands: Command[] = [
       const outcome = result.win
         ? `${emoji("party")} You won **${fmt(winAmount)} gold** (${result.multiplier}x)!`
         : "You lost this spin.";
-      const settledEmbed = pointsEmbed(emoji("roulette") + " Roulette", `The ball landed on **${result.roll} ${result.color}**.\nYou bet on **${result.betOn}**.\n\n${outcome}`)
-        .addFields(
-          { name: "Bet", value: fmt(bet), inline: true },
-          { name: "Multiplier", value: `${result.multiplier}x`, inline: true },
-          { name: "Balance", value: fmt(balance), inline: true },
-        )
-        .setFooter({ text: "European wheel (single zero) · even-money 2x · single number 36x · house edge 2.70%. Gold only, no real money." })
-        .setColor(result.win ? BJ_COLORS.win : BJ_COLORS.lose);
-      const spinEmbed = pointsEmbed(emoji("roulette") + " Roulette", "Spinning…")
-        .addFields(
-          { name: "Bet", value: fmt(bet), inline: true },
-          { name: "You bet on", value: `**${result.betOn}**`, inline: true },
-        )
-        .setColor(BJ_COLORS.playing);
-      // Tiny OwO-style flow: text-only "Spinning…", a suspense beat,
-      // then the same message edited to the real rolled number.
+      const settledText =
+        `${emoji("roulette")} Roulette\nThe ball landed on **${result.roll} ${result.color}**.\nYou bet on **${result.betOn}**.\n${outcome}\n` +
+        `Bet ${fmt(bet)} · Multiplier ${result.multiplier}x · Balance ${fmt(balance)} gold`;
+      const spinText = `${emoji("roulette")} Roulette\nSpinning…`;
+      // OwO-style flow: plain "Spinning…", a suspense beat, then the
+      // same message edited to the real rolled number.
       await inv.deferReply();
-      await playTiny(inv, spinEmbed, settledEmbed);
+      await playTiny(inv, spinText, settledText);
     },
   },
   {
@@ -315,38 +301,25 @@ export const commands: Command[] = [
         ? `${emoji("party")} You won **${fmt(winAmount)} gold** (1.9x)!`
         : "Wrong call — you lost this flip.";
       const faceEmoji = result.result === "heads" ? "🪙" : "⭐";
-      const settledEmbed = pointsEmbed(emoji("coin") + " Coinflip", `You called **${guess}**. The coin landed **${result.result}** ${faceEmoji}.\n\n${outcome}`)
-        .addFields(
-          { name: "Bet", value: fmt(bet), inline: true },
-          { name: "Balance", value: fmt(balance), inline: true },
-        )
-        .setFooter({ text: "50/50 flip · win pays 1.9x · house edge 5%. Gold only, no real money." })
-        .setColor(result.win ? BJ_COLORS.win : BJ_COLORS.lose);
-      const spinEmbed = pointsEmbed(emoji("coin") + " Coinflip", "Flipping…")
-        .addFields(
-          { name: "Bet", value: fmt(bet), inline: true },
-          { name: "You called", value: `**${guess}**`, inline: true },
-        )
-        .setColor(BJ_COLORS.playing);
-      // Tiny OwO-style flow: text-only "Flipping…", a suspense beat,
-      // then the same message edited to the real landed face.
+      const settledText =
+        `${emoji("coin")} Coinflip\nYou called **${guess}**. The coin landed **${result.result}** ${faceEmoji}.\n${outcome}\n` +
+        `Bet ${fmt(bet)} · Balance ${fmt(balance)} gold`;
+      const spinText = `${emoji("coin")} Coinflip\nYou called **${guess}**.\nFlipping…`;
+      // OwO-style flow: plain "Flipping…", a suspense beat, then the
+      // same message edited to the real landed face.
       await inv.deferReply();
-      await playTiny(inv, spinEmbed, settledEmbed);
+      await playTiny(inv, spinText, settledText);
     },
   },
   {
     name: "highlow",
-    description: "Guess whether the next card is higher or lower — `uwu hl 10 higher`. Win pays 1.9x, a tie pushes your bet back.",
+    description:
+      "High / Low STREAK game — guess the next card to grow your multiplier, cash out any time. Ladder 1.8x → 3.2x → 5x → 7.5x → 11x (then ×1.5/step); a correct Same pays 10x. `uwu hl 10`.",
     aliases: ["hl"],
-    args: [{ name: "bet", type: "integer", required: true }, { name: "guess", type: "string", required: true }],
+    args: [{ name: "bet", type: "integer", required: true }],
     async execute(inv, ctx) {
       const bet = await readBet(inv);
       if (bet === null) return;
-      const guess = inv.options.getString("guess");
-      if (guess !== "higher" && guess !== "lower") {
-        await replyError(inv, "Higher or lower? Try `uwu hl 10 higher`.");
-        return;
-      }
       if (!(await checkBalance(inv, ctx, bet))) return;
       const placed = await placeBet(ctx.db, ctx.guildId, inv.user.id, bet, "highlow");
       if (!placed.ok) {
@@ -355,44 +328,50 @@ export const commands: Command[] = [
       }
       // Acknowledge immediately so the reply never waits on a slow container.
       await inv.deferReply();
-      // Guess is locked in before any card is revealed, so extreme first
-      // cards cannot be exploited (see lib/casino.ts edge notes).
-      const card = drawCard();
-      const next = drawCard();
-      const result = highlowOutcome(card, guess, next);
-      const winAmount = Math.floor(bet * result.multiplier);
-      if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, inv.user.id, winAmount, "highlow win");
-      const balance = (await getBalance(ctx.db, ctx.guildId, inv.user.id)).points;
-      const outcome =
-        result.outcome === "win"
-          ? `You won ${fmt(winAmount)} gold (1.9x)!`
-          : result.outcome === "push"
-            ? `Tie — your ${fmt(bet)} gold are returned.`
-            : "Wrong guess — you lost this round.";
-      // Display suits are random (the draw is rank-only); the two codes
-      // must differ so the same physical card never shows twice.
-      const cardSuit = randomSuit();
-      let nextSuit = randomSuit();
-      if (next === card && nextSuit === cardSuit) {
-        nextSuit = CARD_SUITS[(CARD_SUITS.indexOf(nextSuit) + 1) % CARD_SUITS.length] as (typeof CARD_SUITS)[number];
+      const game = createHighlowGame(ctx.guildId, inv.user.id, bet);
+      const replyMsg = (await inv.editReply({
+        content: hlText(game, `<@${inv.user.id}> started a HighLow game.`, "playing"),
+        components: [hlButtons(game.id)],
+      })) as unknown as { id?: string } | undefined;
+      if (replyMsg && typeof replyMsg.id === "string") {
+        game.messageId = replyMsg.id;
+        highlowGames.set(replyMsg.id, game);
       }
-      const cardCode = `${highLowRankName(card)}${cardSuit}`;
-      const nextCode = `${highLowRankName(next)}${nextSuit}`;
-      // One compact embed, text only: the two real drawn cards as
-      // "Q♥ (12)" lines, the outcome in the description, the
-      // bet/guess/balance line in the footer. Outcome colours match
-      // OwO: green on a win, red on a loss, gray on a push.
-      const hlColor =
-        result.outcome === "win" ? BJ_COLORS.win : result.outcome === "push" ? BJ_COLORS.push : BJ_COLORS.lose;
-      const embed = pointsEmbed(
-        "🔼🔽 High / Low",
-        `FIRST: ${prettyCard(cardCode)} (${card})\nNEXT: ${prettyCard(nextCode)} (${next})\n\n${outcome}`,
-      )
-        .setColor(hlColor)
-        .setFooter({
-          text: `Bet ${fmt(bet)} · You guessed ${guess} · Balance ${fmt(balance)} gold`,
-        });
-      await inv.editReply({ embeds: [embed.toJSON()] });
+    },
+  },
+  {
+    name: "mines",
+    description:
+      "Mines — reveal safe tiles on a 3x3 grid to grow your multiplier. `uwu mines 10` (3 mines) or `uwu mines 10 5`. First safe pick on 3 mines pays 1.40x; cash out any time, hit a mine and lose the bet.",
+    aliases: ["mine"],
+    args: [
+      { name: "bet", type: "integer", required: true },
+      { name: "mines", type: "integer", required: false },
+    ],
+    async execute(inv, ctx) {
+      const bet = await readBet(inv);
+      if (bet === null) return;
+      const mineCount = inv.options.getInteger("mines") ?? 3;
+      if (!Number.isInteger(mineCount) || mineCount < 1 || mineCount > 5) {
+        await replyError(inv, "Mines must be between 1 and 5. Try `uwu mines 10 3`.");
+        return;
+      }
+      if (!(await checkBalance(inv, ctx, bet))) return;
+      const placed = await placeBet(ctx.db, ctx.guildId, inv.user.id, bet, "mines");
+      if (!placed.ok) {
+        await replyError(inv, placed.error ?? "Could not place that bet.");
+        return;
+      }
+      await inv.deferReply();
+      const game = createMinesGame(ctx.guildId, inv.user.id, bet, mineCount);
+      const replyMsg = (await inv.editReply({
+        content: minesText(game, `<@${inv.user.id}> started a mines game.`, "playing"),
+        components: minesButtons(game, false),
+      })) as unknown as { id?: string } | undefined;
+      if (replyMsg && typeof replyMsg.id === "string") {
+        game.messageId = replyMsg.id;
+        minesGames.set(replyMsg.id, game);
+      }
     },
   },
   {
@@ -418,23 +397,14 @@ export const commands: Command[] = [
           : result.multiplier === 1
             ? `Two matching — your **${fmt(bet)} gold** are returned.`
             : "No match — better luck next card.";
-      // Tiny OwO-style flow: text-only "Scratching…", a suspense beat,
-      // then the same message edited to the real drawn symbols.
-      const settledEmbed = pointsEmbed("🎫 Scratch Card", `${result.symbols.join("  ")}\n\n${outcome}`)
-        .addFields(
-          { name: "Bet", value: fmt(bet), inline: true },
-          { name: "Multiplier", value: `${result.multiplier}x`, inline: true },
-          { name: "Balance", value: fmt(balance), inline: true },
-        )
-        .setFooter({ text: "Odds: 3 matching 5x · 2 matching 1x · house edge 12.5%. Gold only, no real money." })
-        .setColor(
-          result.multiplier === 5 ? BJ_COLORS.win : result.multiplier === 1 ? BJ_COLORS.push : BJ_COLORS.lose,
-        );
-      const spinEmbed = pointsEmbed("🎫 Scratch Card", "Scratching…")
-        .addFields({ name: "Bet", value: fmt(bet), inline: true })
-        .setColor(BJ_COLORS.playing);
+      // OwO-style flow: plain "Scratching…", a suspense beat, then the
+      // same message edited to the real drawn symbols.
+      const settledText =
+        `🎫 Scratch Card\n${result.symbols.join("  ")}\n${outcome}\n` +
+        `Bet ${fmt(bet)} · Multiplier ${result.multiplier}x · Balance ${fmt(balance)} gold`;
+      const spinText = "🎫 Scratch Card\nScratching…";
       await inv.deferReply();
-      await playTiny(inv, spinEmbed, settledEmbed);
+      await playTiny(inv, spinText, settledText);
     },
   },
 ];
@@ -485,8 +455,8 @@ async function handleBlackjackButton(inv: any, ctx: CommandContext): Promise<voi
         game,
         {
           over: true,
-          outcome: bjOutcomeOf(settled),
           footerLine: `${note} · ${resultNote}`,
+          playerName: inv.user?.username ?? "Player",
         },
         ctx,
       )),
@@ -507,7 +477,11 @@ async function handleBlackjackButton(inv: any, ctx: CommandContext): Promise<voi
       return;
     }
     await inv.editReply({
-      ...(await bjReplyPayload(game, { over: false, outcome: "playing", footerLine: "Hit or Stand?" }, ctx)),
+      ...(await bjReplyPayload(
+        game,
+        { over: false, footerLine: "Hit or Stand?", playerName: inv.user?.username ?? "Player" },
+        ctx,
+      )),
       components: [bjButtons(game.id)],
     });
     return;
@@ -520,4 +494,241 @@ async function handleBlackjackButton(inv: any, ctx: CommandContext): Promise<voi
 
 export const buttonHandlers: Record<string, (inv: any, ctx: CommandContext) => Promise<void>> = {
   "selena:bj": handleBlackjackButton,
+  "selena:hl": handleHighlowButton,
+  "selena:mines": handleMinesButton,
 };
+
+/**
+ * Mines — OwO-style plain text with a 3x3 grid of "?" buttons plus a
+ * Cash Out button. A safe tile reveals 💎 and grows the multiplier and
+ * the Cash Out value ("Next:" shows what one more safe pick would pay);
+ * a mine ends the game, loses the bet, and reveals the board; Cash Out
+ * banks the current value. Clearing every safe tile banks the max
+ * payout automatically. State lives in the same in-memory per-user map
+ * mechanism blackjack uses (minesGames in lib/casino.ts) — a redeploy
+ * strands an open mines game, same as an open blackjack hand.
+ */
+function minesButtons(game: MinesGame, over: boolean): ActionRowBuilder<ButtonBuilder>[] {
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  for (let r = 0; r < 3; r++) {
+    const row = new ActionRowBuilder<ButtonBuilder>();
+    for (let c = 0; c < 3; c++) {
+      const idx = r * 3 + c;
+      const revealed = game.revealed.includes(idx);
+      const isMine = game.mineTiles.includes(idx);
+      const btn = new ButtonBuilder().setCustomId(`selena:mines:${game.id}:tile:${idx}`);
+      if (revealed) {
+        btn
+          .setLabel(isMine ? "💣" : "💎")
+          .setDisabled(true)
+          .setStyle(isMine ? ButtonStyle.Danger : ButtonStyle.Success);
+      } else if (over) {
+        btn
+          .setLabel(isMine ? "💣" : "?")
+          .setDisabled(true)
+          .setStyle(isMine ? ButtonStyle.Danger : ButtonStyle.Secondary);
+      } else {
+        btn.setLabel("?").setStyle(ButtonStyle.Secondary);
+      }
+      row.addComponents(btn);
+    }
+    rows.push(row);
+  }
+  rows.push(
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`selena:mines:${game.id}:cashout`)
+        .setLabel("Cash Out")
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(over),
+    ),
+  );
+  return rows;
+}
+
+/** OwO-style mines text: header, Bet / Mines / Cash Out (Nx) / Next. */
+function minesText(game: MinesGame, note: string, state: "playing" | "lost" | "cashed" | "cleared"): string {
+  const header = `💣 Mines\n${note}`;
+  if (state === "lost") {
+    return `${header}\nBet: ${fmt(game.bet)} · Mines: ${game.mines} · Cash Out: 0`;
+  }
+  const cashOut = minesCashOut(game);
+  const mult = minesMultiplier(game.mines, game.safePicks).toFixed(2);
+  if (state !== "playing") {
+    return `${header}\nBet: ${fmt(game.bet)} · Mines: ${game.mines} · Cash Out: ${fmt(cashOut)} (${mult}x)`;
+  }
+  const nextMult = minesMultiplier(game.mines, game.safePicks + 1);
+  const nextValue = Math.floor(game.bet * nextMult);
+  return (
+    `${header}\n` +
+    `Bet: ${fmt(game.bet)} · Mines: ${game.mines} · Cash Out: ${fmt(cashOut)} (${mult}x) · Next: ${fmt(nextValue)} (${nextMult.toFixed(2)}x)`
+  );
+}
+
+async function handleMinesButton(inv: any, ctx: CommandContext): Promise<void> {
+  const parts = String(inv.customId ?? "").split(":");
+  const gameId = parts[2] ?? "";
+  const action = parts[3] ?? "";
+  const game = getMinesGame(gameId) ?? getMinesGame(inv.message?.id ?? "");
+  if (!game) {
+    await inv.reply({ content: "This mines game has expired or was already finished.", ephemeral: true });
+    return;
+  }
+  if (inv.user?.id !== game.userId) {
+    await inv.reply({ content: "Only the player who started this game can use these buttons.", ephemeral: true });
+    return;
+  }
+  if (action !== "tile" && action !== "cashout") {
+    await inv.reply({ content: "Unknown mines action.", ephemeral: true });
+    return;
+  }
+  await inv.deferUpdate();
+  if (action === "cashout") {
+    const cashOut = minesCashOut(game);
+    if (cashOut > 0) await creditWin(ctx.db, ctx.guildId, game.userId, cashOut, "mines cashout");
+    const mult = minesMultiplier(game.mines, game.safePicks).toFixed(2);
+    endMinesGame(game.id);
+    await inv.editReply({
+      content: minesText(game, `You cashed out ${fmt(cashOut)} gold (${mult}x)!`, "cashed"),
+      components: minesButtons(game, true),
+    });
+    return;
+  }
+  const tile = Number(parts[4]);
+  if (!Number.isInteger(tile) || tile < 0 || tile > 8 || game.revealed.includes(tile)) {
+    // Already revealed (or bogus): just re-render the current board.
+    await inv.editReply({
+      content: minesText(game, "Pick a tile — each safe tile grows your multiplier. Cash out any time.", "playing"),
+      components: minesButtons(game, false),
+    });
+    return;
+  }
+  game.revealed.push(tile);
+  if (game.mineTiles.includes(tile)) {
+    endMinesGame(game.id);
+    await inv.editReply({
+      content: minesText(game, `💥 You hit a mine! You lost ${fmt(game.bet)} gold.`, "lost"),
+      components: minesButtons(game, true),
+    });
+    return;
+  }
+  game.safePicks += 1;
+  if (game.safePicks >= 9 - game.mines) {
+    // Board cleared — every safe tile revealed. Bank the max payout.
+    const cashOut = minesCashOut(game);
+    if (cashOut > 0) await creditWin(ctx.db, ctx.guildId, game.userId, cashOut, "mines cleared");
+    endMinesGame(game.id);
+    await inv.editReply({
+      content: minesText(game, `🏆 You cleared the board! You won ${fmt(cashOut)} gold!`, "cleared"),
+      components: minesButtons(game, true),
+    });
+    return;
+  }
+  await inv.editReply({
+    content: minesText(
+      game,
+      `💎 Safe! ${game.safePicks} safe tile${game.safePicks === 1 ? "" : "s"} revealed — multiplier grows.`,
+      "playing",
+    ),
+    components: minesButtons(game, false),
+  });
+}
+
+/**
+ * High / Low streak game — OwO-style plain text with buttons.
+ * One bet starts a streak; each round shows the current card (Unicode
+ * glyph) and a face-down next card. Higher / Lower / Same via buttons;
+ * a correct guess grows the streak and the cash-out multiplier, a wrong
+ * guess ends the streak and loses the bet. Cash Out banks the current
+ * value and ends the game. Ladder: 1.8x, 3.2x, 5x, 7.5x, 11x, then
+ * x1.5/step; a correct Same jumps the multiplier to at least 10x.
+ * State lives in the same in-memory per-user map mechanism blackjack
+ * uses (highlowGames in lib/casino.ts) — a redeploy strands an open
+ * streak game, same as an open blackjack hand.
+ */
+function hlButtons(gameId: string): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`selena:hl:${gameId}:higher`).setLabel("Higher").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`selena:hl:${gameId}:lower`).setLabel("Lower").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`selena:hl:${gameId}:same`).setLabel("Same").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`selena:hl:${gameId}:cashout`).setLabel("Cash Out").setStyle(ButtonStyle.Success),
+  );
+}
+
+/** OwO-style High / Low text: header, Bet / Streak / Cash Out (Nx), current + face-down next card. */
+function hlText(game: HighlowGame, note: string, state: "playing" | "lost" | "cashed"): string {
+  const header = `🔼🔽 High / Low\n${note}`;
+  if (state === "lost") {
+    return `${header}\nBet: ${fmt(game.bet)} · Streak: ${game.streak} · Cash Out: 0`;
+  }
+  const cashOut = highlowCashOut(game);
+  const mult = game.multiplier.toFixed(2);
+  const status = `Bet: ${fmt(game.bet)} · Streak: ${game.streak} · Cash Out: ${fmt(cashOut)} (${mult}x)`;
+  if (state === "cashed") return `${header}\n${status}`;
+  return (
+    `${header}\n${status}\n` +
+    `Current: ${cardGlyph(game.currentCode)}   Next: ${CARD_BACK}\n` +
+    "Is the next card higher, lower, or the same value?"
+  );
+}
+
+async function handleHighlowButton(inv: any, ctx: CommandContext): Promise<void> {
+  const parts = String(inv.customId ?? "").split(":");
+  const gameId = parts[2] ?? "";
+  const action = parts[3] ?? "";
+  const game = getHighlowGame(gameId) ?? getHighlowGame(inv.message?.id ?? "");
+  if (!game) {
+    await inv.reply({ content: "This HighLow game has expired or was already finished.", ephemeral: true });
+    return;
+  }
+  if (inv.user?.id !== game.userId) {
+    await inv.reply({ content: "Only the player who started this game can use these buttons.", ephemeral: true });
+    return;
+  }
+  if (action !== "higher" && action !== "lower" && action !== "same" && action !== "cashout") {
+    await inv.reply({ content: "Unknown HighLow action.", ephemeral: true });
+    return;
+  }
+  await inv.deferUpdate();
+  if (action === "cashout") {
+    const cashOut = highlowCashOut(game);
+    if (cashOut > 0) await creditWin(ctx.db, ctx.guildId, game.userId, cashOut, "highlow cashout");
+    const mult = game.multiplier.toFixed(2);
+    endHighlowGame(game.id);
+    await inv.editReply({
+      content: hlText(game, `You cashed out ${fmt(cashOut)} gold (${mult}x)!`, "cashed"),
+      components: [],
+    });
+    return;
+  }
+  // Guess: draw the next card and resolve it against the current card.
+  const next = drawHighlowCard();
+  const guess = action as HighLowGuess;
+  if (!highlowGuessWin(game.currentRank, guess, next.rank)) {
+    endHighlowGame(game.id);
+    await inv.editReply({
+      content: hlText(
+        game,
+        `The next card was ${cardGlyph(next.code)} — wrong! Streak over, you lost ${fmt(game.bet)} gold.`,
+        "lost",
+      ),
+      components: [],
+    });
+    return;
+  }
+  // Correct: advance the streak, grow the multiplier, the drawn card
+  // becomes the new current card.
+  game.streak += 1;
+  game.multiplier = highlowLadderMultiplier(game.streak);
+  if (guess === "same") game.multiplier = Math.max(game.multiplier, HIGHLOW_SAME_MIN_MULTIPLIER);
+  game.currentRank = next.rank;
+  game.currentCode = next.code;
+  const note =
+    guess === "same"
+      ? `The next card was ${cardGlyph(next.code)} — SAME! Huge!`
+      : `The next card was ${cardGlyph(next.code)} — correct!`;
+  await inv.editReply({
+    content: hlText(game, note, "playing"),
+    components: [hlButtons(game.id)],
+  });
+}

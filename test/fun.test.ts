@@ -307,8 +307,8 @@ describe("/joke, /roast, /compliment, /wouldyourather, /truthordare commands", (
   it("/wouldyourather replies with both options", async () => {
     const fake = await run("wouldyourather", {});
     const text = replyText(fake);
-    expect(text).toMatch(/\*\*A:\*\*/);
-    expect(text).toMatch(/\*\*B:\*\*/);
+    expect(text).toMatch(/^A: /m);
+    expect(text).toMatch(/^B: /m);
   });
 
   it("/truthordare replies with a truth or a dare", async () => {

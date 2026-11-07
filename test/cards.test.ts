@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, statSync } from "node:fs";
 import { parseGIF, decompressFrames } from "gifuct-js";
 import {
+  CARD_BACK,
   FLIP_CODES,
+  cardGlyph,
   flipGifExists,
   flipGifPath,
   prettyCard,
@@ -157,5 +159,29 @@ describe("prettyCard", () => {
     expect(prettyCard("KD")).toBe("K♦");
     expect(prettyCard("QC")).toBe("Q♣");
     expect(prettyCard("7")).toBe("7");
+  });
+});
+
+describe("cardGlyph", () => {
+  it("maps every rank+suit code to its Unicode playing-card glyph", () => {
+    expect(cardGlyph("AS")).toBe("🂡");
+    expect(cardGlyph("10H")).toBe("🂺");
+    expect(cardGlyph("KD")).toBe("🃎");
+    expect(cardGlyph("QC")).toBe("🃝");
+    expect(cardGlyph("JH")).toBe("🂻");
+    expect(cardGlyph("2C")).toBe("🃒");
+    // All 52 codes map to distinct single glyphs.
+    const glyphs = new Set<string>();
+    for (const suit of ["S", "H", "D", "C"]) {
+      for (const rank of ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]) {
+        glyphs.add(cardGlyph(`${rank}${suit}`));
+      }
+    }
+    expect(glyphs.size).toBe(52);
+  });
+
+  it("passes unknown codes through and exposes the card back", () => {
+    expect(cardGlyph("XX")).toBe("XX");
+    expect(CARD_BACK).toBe("🂠");
   });
 });

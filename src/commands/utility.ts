@@ -1,5 +1,5 @@
 import type { Command, CommandInvocation } from "../lib/command.js";
-import { errorEmbed, fmt, selenaEmbed } from "../lib/command.js";
+import { errorEmbed, fmt } from "../lib/command.js";
 import { getUserXp, progressBar, rankCard } from "../lib/levels.js";
 
 // ---------------------------------------------------------------------------
@@ -88,13 +88,11 @@ export const commands: Command[] = [
       const target = inv.options.getUser("user") ?? inv.user;
       const { xp, level } = await getUserXp(ctx.db, ctx.guildId, target.id);
       const afk = await getAfk(ctx.db, ctx.guildId, target.id);
-      const embed = selenaEmbed(`User info — ${target.username}`, `ID: \`${target.id}\``)
-        .addFields(
-          { name: "Level", value: String(level), inline: true },
-          { name: "XP", value: fmt(xp), inline: true },
-          { name: "AFK", value: afk.reason ? `${afk.reason}` : "No", inline: true },
-        );
-      await inv.reply({ embeds: [embed.toJSON()] });
+      await inv.reply({
+        content:
+          `User info — ${target.username}\nID: \`${target.id}\`\n` +
+          `Level: ${level} · XP: ${fmt(xp)} · AFK: ${afk.reason ? afk.reason : "No"}`,
+      });
     },
   },
   {
@@ -105,8 +103,9 @@ export const commands: Command[] = [
     async execute(inv, ctx) {
       const target = inv.options.getUser("user") ?? inv.user;
       const url = avatarUrlFor(inv, target.id);
-      const embed = selenaEmbed(`Avatar — ${target.username}`).setImage(url);
-      await inv.reply({ embeds: [embed.toJSON()] });
+      // Plain text with the URL (Discord still shows a preview) — no
+      // embed box, no attached image.
+      await inv.reply({ content: `Avatar — ${target.username}\n${url}` });
     },
   },
   {
@@ -123,22 +122,17 @@ export const commands: Command[] = [
       const topPoints = await ctx.db
         .prepare("SELECT user_id, points FROM users WHERE guild_id = ? ORDER BY points DESC, user_id ASC LIMIT 5")
         .all(ctx.guildId) as { user_id: string; points: number }[];
-      const embed = selenaEmbed("Server stats")
-        .addFields(
-          { name: "Members", value: fmt(memberCount), inline: true },
-          { name: "Channels", value: channelCount !== undefined ? fmt(channelCount) : "Unknown", inline: true },
-          {
-            name: "Top XP",
-            value: topXp.length ? topXp.map((u, i) => `${i + 1}. <@${u.user_id}> — ${fmt(u.xp)} XP`).join("\n") : "No XP yet.",
-            inline: false,
-          },
-          {
-            name: "Top gold",
-            value: topPoints.length ? topPoints.map((u, i) => `${i + 1}. <@${u.user_id}> — ${fmt(u.points)} gold`).join("\n") : "No gold yet.",
-            inline: false,
-          },
-        );
-      await inv.reply({ embeds: [embed.toJSON()] });
+      const topXpText = topXp.length
+        ? topXp.map((u, i) => `${i + 1}. <@${u.user_id}> — ${fmt(u.xp)} XP`).join("\n")
+        : "No XP yet.";
+      const topGoldText = topPoints.length
+        ? topPoints.map((u, i) => `${i + 1}. <@${u.user_id}> — ${fmt(u.points)} gold`).join("\n")
+        : "No gold yet.";
+      await inv.reply({
+        content:
+          `Server stats\nMembers: ${fmt(memberCount)} · Channels: ${channelCount !== undefined ? fmt(channelCount) : "Unknown"}\n` +
+          `Top XP:\n${topXpText}\nTop gold:\n${topGoldText}`,
+      });
     },
   },
   {
@@ -151,12 +145,12 @@ export const commands: Command[] = [
       await setAfk(ctx.db, ctx.guildId, inv.user.id, reason);
       if (reason) {
         await inv.reply({
-          embeds: [selenaEmbed("You're now AFK", `Reason: ${reason}`).toJSON()],
+          content: `You're now AFK\nReason: ${reason}`,
           ephemeral: true,
         });
       } else {
         await inv.reply({
-          embeds: [selenaEmbed("Welcome back", "Your AFK status has been cleared.").toJSON()],
+          content: "Welcome back\nYour AFK status has been cleared.",
           ephemeral: true,
         });
       }
@@ -177,7 +171,7 @@ export const commands: Command[] = [
       const channelId = (inv as unknown as { channelId?: string }).channelId ?? "";
       const { id, dueAt } = await createReminder(ctx.db, ctx.guildId, inv.user.id, channelId, text, minutes);
       await inv.reply({
-        embeds: [selenaEmbed("Reminder set", `I'll remind you in ${minutes} minute(s) (<t:${Math.floor(dueAt / 1000)}:R>): ${text}\nReminder #${id}`).toJSON()],
+        content: `Reminder set\nI'll remind you in ${minutes} minute(s) (<t:${Math.floor(dueAt / 1000)}:R>): ${text}\nReminder #${id}`,
         ephemeral: true,
       });
     },
@@ -191,13 +185,11 @@ export const commands: Command[] = [
       const target = inv.options.getUser("user") ?? inv.user;
       const { xp } = await getUserXp(ctx.db, ctx.guildId, target.id);
       const card = rankCard(xp);
-      const embed = selenaEmbed(`Rank — ${target.username}`)
-        .addFields(
-          { name: "Level", value: String(card.level), inline: true },
-          { name: "XP", value: `${fmt(card.xp)} / ${fmt(card.xpForNext)}`, inline: true },
-          { name: "Progress", value: `${progressBar(card.progress)}\n${fmt(card.xpIntoLevel)} XP into this level — ${fmt(card.xpNeeded)} to go`, inline: false },
-        );
-      await inv.reply({ embeds: [embed.toJSON()] });
+      await inv.reply({
+        content:
+          `Rank — ${target.username}\nLevel: ${card.level} · XP: ${fmt(card.xp)} / ${fmt(card.xpForNext)}\n` +
+          `Progress: ${progressBar(card.progress)}\n${fmt(card.xpIntoLevel)} XP into this level — ${fmt(card.xpNeeded)} to go`,
+      });
     },
   },
   {
@@ -207,11 +199,13 @@ export const commands: Command[] = [
     async execute(inv, ctx) {
       const top = await topByXp(ctx.db, ctx.guildId, 10);
       if (top.length === 0) {
-        await inv.reply({ embeds: [selenaEmbed("XP leaderboard", "No XP earned yet — say something in chat to start earning.").toJSON()] });
+        await inv.reply({
+          content: "XP leaderboard\nNo XP earned yet — say something in chat to start earning.",
+        });
         return;
       }
       const lines = top.map((u, i) => `${i + 1}. <@${u.user_id}> — Level ${rankCard(u.xp).level} · ${fmt(u.xp)} XP`);
-      await inv.reply({ embeds: [selenaEmbed("XP leaderboard (top 10)", lines.join("\n")).toJSON()] });
+      await inv.reply({ content: `XP leaderboard (top 10)\n${lines.join("\n")}` });
     },
   },
 ];

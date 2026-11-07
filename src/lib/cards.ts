@@ -44,6 +44,42 @@ export function prettyCard(code: string): string {
   return `${code.slice(0, -1)}${symbol}`;
 }
 
+/**
+ * Unicode playing-card glyph for a card code ("AS" -> 🂡, "10H" -> 🂺,
+ * "KD" -> 🃎). One glyph per card, tiny in text — no image, no emoji
+ * upload. Layout: spades U+1F0A1.., hearts U+1F0B1.., diamonds
+ * U+1F0C1.., clubs U+1F0D1..; A=1, 2-10=2-10, J=11, Q=13, K=14 (the
+ * Knight at offset 12 is skipped). Unknown codes pass through as text.
+ */
+const GLYPH_BASE: Record<string, number> = { S: 0x1f0a0, H: 0x1f0b0, D: 0x1f0c0, C: 0x1f0d0 };
+const GLYPH_RANK_OFFSET: Record<string, number> = {
+  A: 1,
+  "2": 2,
+  "3": 3,
+  "4": 4,
+  "5": 5,
+  "6": 6,
+  "7": 7,
+  "8": 8,
+  "9": 9,
+  "10": 10,
+  J: 11,
+  Q: 13,
+  K: 14,
+};
+
+export function cardGlyph(code: string): string {
+  const suit = code.slice(-1);
+  const rank = code.slice(0, -1);
+  const base = GLYPH_BASE[suit];
+  const offset = GLYPH_RANK_OFFSET[rank];
+  if (base === undefined || offset === undefined) return code;
+  return String.fromCodePoint(base + offset);
+}
+
+/** The face-down card back glyph (🂠), used for hidden cards. */
+export const CARD_BACK = "🂠";
+
 /** Directory holding the rendered flip GIFs (and the static card faces). */
 export function cardsAssetDir(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), "../../assets/cards");

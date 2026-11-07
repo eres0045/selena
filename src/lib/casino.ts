@@ -17,10 +17,21 @@ import { CARD_RANKS, CARD_SUITS } from "./cards.js";
  *   straight-up bets both return 36/37 = 97.3% -> house edge 2.70%.
  * - Coinflip: nominally 50/50 paying 2x would be a 0% edge, so the payout is
  *   1.9x (stated in the help text) -> house edge 5%.
- * - High/low: the guess is made BEFORE any card is revealed (choice option),
- *   so the player cannot exploit extreme first cards (a revealed 1 would win
- *   12/13 of the time). Blind, P(win) = 6/13, P(push on tie) = 1/13.
- *   RTP = (6/13)*1.9 + (1/13)*1 = 0.9538 -> house edge ~4.6%.
+ * - High/low (streak game): one bet starts a streak. Each round the
+ *   player guesses Higher / Lower / Same on the next card (rank 1-13,
+ *   uniform). P(Higher or Lower correct) = 6/13, P(Same) = 1/13.
+ *   Cash-out multiplier ladder after N correct Higher/Lower guesses:
+ *   1.80x, 3.20x, 5.00x, 7.50x, 11.00x, then x1.5 per step — below the
+ *   fair (13/6)^N at every step, so the house keeps an edge. A correct
+ *   Same jumps the multiplier to at least 10x. Cash out banks
+ *   floor(bet x multiplier); a wrong guess loses the bet.
+ * - Mines (OwO-style): one bet starts a 3x3 grid hiding N mines
+ *   (default 3, 1-5). Each safe pick grows the cash-out multiplier:
+ *   fair multiplier after k safe picks = product of (9-i)/(9-m-i),
+ *   discounted 0.93^k for the house edge, rounded to 2dp. On 3 mines:
+ *   1.40x, 2.08x, 3.38x, 6.28x, 14.61x, 54.35x. Cash out banks
+ *   floor(bet x multiplier); a mine loses the bet. Clearing every
+ *   safe tile banks the max payout automatically.
  * - Scratch: 4 equally-weighted symbols; P(3 match) = 1/16, P(exactly 2
  *   match) = 9/16. RTP = (1/16)*5 + (9/16)*1 = 0.875 -> house edge 12.5%.
  *
@@ -73,6 +84,18 @@ export async function creditWin(
 ): Promise<number> {
   if (amount <= 0) return (await getBalance(db, guildId, userId)).points;
   return await addPoints(db, guildId, userId, Math.floor(amount), reason);
+}
+
+/**
+ * Test hook (same pattern as VISUAL_SUSPENSE in visualgames.ts): when
+ * set, the draw functions below use this rand instead of secureFloat,
+ * so button-handler tests can force the next card / mine layout.
+ * Production code never sets it.
+ */
+export const CASINO_RAND: { fn: (() => number) | null } = { fn: null };
+
+function casinoRand(): () => number {
+  return CASINO_RAND.fn ?? secureFloat;
 }
 
 // ---------------------------------------------------------------------------
@@ -345,33 +368,179 @@ export function coinflipOutcome(guess: "heads" | "tails", roll: number): Coinfli
 }
 
 // ---------------------------------------------------------------------------
-// High / Low
+// High / Low — streak game (OwO-style)
 // ---------------------------------------------------------------------------
 
-export type HighLowGuess = "higher" | "lower";
+export type HighLowGuess = "higher" | "lower" | "same";
 
-export interface HighLowResult {
-  card: number;
-  next: number;
-  guess: HighLowGuess;
-  outcome: "win" | "lose" | "push";
-  win: boolean;
-  push: boolean;
-  /** Total return per 1 bet: 1.9 on a win, 1 on a tie (push), 0 on a loss. */
-  multiplier: number;
+/** Did this guess win? Higher: next > current; Lower: next < current; Same: next === current. */
+export function highlowGuessWin(current: number, guess: HighLowGuess, next: number): boolean {
+  if (guess === "higher") return next > current;
+  if (guess === "lower") return next < current;
+  return next === current;
 }
 
-export function highlowOutcome(card: number, guess: HighLowGuess, next: number): HighLowResult {
-  if (next === card) {
-    return { card, next, guess, outcome: "push", win: false, push: true, multiplier: 1 };
-  }
-  const win = guess === "higher" ? next > card : next < card;
-  return { card, next, guess, outcome: win ? "win" : "lose", win, push: false, multiplier: win ? 1.9 : 0 };
+/**
+ * Cash-out multiplier after N correct Higher/Lower guesses in a row.
+ * 1.80x, 3.20x, 5.00x, 7.50x, 11.00x, then x1.5 per further streak step.
+ * Below the fair (13/6)^N at every step (fair: 2.17x, 4.69x, 10.17x…),
+ * so the house keeps an edge on every cash-out.
+ */
+const HIGHLOW_LADDER = [0, 1.8, 3.2, 5, 7.5, 11];
+
+export function highlowLadderMultiplier(streak: number): number {
+  if (streak <= 0) return 0;
+  if (streak < HIGHLOW_LADDER.length) return HIGHLOW_LADDER[streak] as number;
+  return (HIGHLOW_LADDER[HIGHLOW_LADDER.length - 1] as number) * Math.pow(1.5, streak - HIGHLOW_LADDER.length + 1);
 }
+
+/** A correct "Same" guess pays big: the multiplier jumps to at least 10x. */
+export const HIGHLOW_SAME_MIN_MULTIPLIER = 10;
 
 /** Draw a card rank 1-13 (1 = Ace low, 13 = King). */
-export function drawCard(): number {
-  return secureInt(1, 14);
+export function drawCard(rand: () => number = casinoRand()): number {
+  return 1 + Math.floor(rand() * 13);
+}
+
+/** Draw a High/Low card: a rank plus a random display suit (code for glyphs). */
+export function drawHighlowCard(rand: () => number = casinoRand()): { rank: number; code: string } {
+  const rank = drawCard(rand);
+  return { rank, code: `${highLowRankName(rank)}${randomSuit(rand)}` };
+}
+
+export interface HighlowGame {
+  id: string;
+  guildId: string;
+  userId: string;
+  bet: number;
+  currentRank: number;
+  currentCode: string;
+  streak: number;
+  /** Cash-out multiplier (ladder value; Same corrects raise it to >= 10x). */
+  multiplier: number;
+  createdAt: number;
+  messageId?: string;
+}
+
+/** Live High/Low streak games, keyed by game id (and by message id once known). */
+export const highlowGames = new Map<string, HighlowGame>();
+
+export function createHighlowGame(
+  guildId: string,
+  userId: string,
+  bet: number,
+  rand: () => number = casinoRand(),
+): HighlowGame {
+  const first = drawHighlowCard(rand);
+  const id = `hl_${Date.now().toString(36)}_${Math.floor(secureFloat() * 1e9).toString(36)}`;
+  const game: HighlowGame = {
+    id,
+    guildId,
+    userId,
+    bet,
+    currentRank: first.rank,
+    currentCode: first.code,
+    streak: 0,
+    multiplier: 0,
+    createdAt: Date.now(),
+  };
+  highlowGames.set(id, game);
+  return game;
+}
+
+export function getHighlowGame(id: string): HighlowGame | undefined {
+  return highlowGames.get(id);
+}
+
+export function endHighlowGame(id: string): void {
+  const game = highlowGames.get(id);
+  if (game?.messageId) highlowGames.delete(game.messageId);
+  highlowGames.delete(id);
+}
+
+/** Whole-gold cash-out value for a game right now (0 while streak is 0). */
+export function highlowCashOut(game: HighlowGame): number {
+  return Math.floor(game.bet * game.multiplier);
+}
+
+// ---------------------------------------------------------------------------
+// Mines — 3x3 grid (OwO-style)
+// ---------------------------------------------------------------------------
+
+/**
+ * Cash-out multiplier after k safe picks with m mines on a 9-tile grid.
+ * Fair multiplier = product over picks of (9-i)/(9-m-i); discounted
+ * 0.93^k for the house edge, rounded to 2dp. On 3 mines the ladder is
+ * 1.40x, 2.08x, 3.38x, 6.28x, 14.61x, 54.35x.
+ */
+export function minesMultiplier(mines: number, safePicks: number): number {
+  if (safePicks <= 0) return 0;
+  let fair = 1;
+  for (let i = 0; i < safePicks; i++) {
+    fair *= (9 - i) / (9 - mines - i);
+  }
+  return Math.round(fair * Math.pow(0.93, safePicks) * 100) / 100;
+}
+
+export interface MinesGame {
+  id: string;
+  guildId: string;
+  userId: string;
+  bet: number;
+  mines: number;
+  /** Tile indexes (0-8) hiding mines. */
+  mineTiles: number[];
+  /** Tile indexes the player has revealed. */
+  revealed: number[];
+  safePicks: number;
+  createdAt: number;
+  messageId?: string;
+}
+
+/** Live mines games, keyed by game id (and by message id once known). */
+export const minesGames = new Map<string, MinesGame>();
+
+export function createMinesGame(
+  guildId: string,
+  userId: string,
+  bet: number,
+  mines = 3,
+  rand: () => number = casinoRand(),
+): MinesGame {
+  const positions = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+  for (let i = positions.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [positions[i], positions[j]] = [positions[j] as number, positions[i] as number];
+  }
+  const id = `mn_${Date.now().toString(36)}_${Math.floor(secureFloat() * 1e9).toString(36)}`;
+  const game: MinesGame = {
+    id,
+    guildId,
+    userId,
+    bet,
+    mines,
+    mineTiles: positions.slice(0, mines),
+    revealed: [],
+    safePicks: 0,
+    createdAt: Date.now(),
+  };
+  minesGames.set(id, game);
+  return game;
+}
+
+export function getMinesGame(id: string): MinesGame | undefined {
+  return minesGames.get(id);
+}
+
+export function endMinesGame(id: string): void {
+  const game = minesGames.get(id);
+  if (game?.messageId) minesGames.delete(game.messageId);
+  minesGames.delete(id);
+}
+
+/** Whole-gold cash-out value for a mines game right now. */
+export function minesCashOut(game: MinesGame): number {
+  return Math.floor(game.bet * minesMultiplier(game.mines, game.safePicks));
 }
 
 // ---------------------------------------------------------------------------

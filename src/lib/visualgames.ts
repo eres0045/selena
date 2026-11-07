@@ -57,6 +57,14 @@ import { decodeGifFrames } from "./handstrip.js";
 /** How long the suspense (spin/flip) phase plays before the reveal edit. */
 export const VISUAL_SUSPENSE = { ms: 2400 };
 
+/**
+ * Slots spin animation (plain-text frames, OwO-style): how many
+ * spinning frames cycle before the settle edit, and the ms between
+ * them. 4 frames × 450ms ≈ 1.8s of spin, matching the ~2s suspense of
+ * the other games. Tests set frameMs to 0 for speed.
+ */
+export const SLOT_SPIN = { frames: 4, frameMs: 450 };
+
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
 }

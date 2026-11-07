@@ -1,6 +1,6 @@
 import type { Command, CommandInvocation } from "../lib/command.js";
 import { emoji } from "../lib/emoji.js";
-import { errorEmbed, fmt, pointsEmbed, selenaEmbed } from "../lib/command.js";
+import { errorEmbed, fmt, pointsEmbed } from "../lib/command.js";
 import { claimDaily, getBalance, getLeaderboard, transferPoints } from "../lib/economy.js";
 
 async function replyError(inv: CommandInvocation, message: string): Promise<void> {
@@ -76,13 +76,11 @@ export const commands: Command[] = [
       }
       const senderBal = await getBalance(ctx.db, ctx.guildId, inv.user.id);
       const receiverBal = await getBalance(ctx.db, ctx.guildId, target.id);
+      // OwO-style plain text, no embed box.
       await inv.reply({
-        embeds: [
-          pointsEmbed(
-            "🤝 Gold Sent",
-            `<@${inv.user.id}> gave **${fmt(amount)} gold** to <@${target.id}>.\n\nYour balance: **${fmt(senderBal.points)}** · ${target.username}'s balance: **${fmt(receiverBal.points)}**`,
-          ).toJSON(),
-        ],
+        content:
+          `🤝 Gold Sent\n<@${inv.user.id}> gave ${emoji("gold")} ${fmt(amount)} gold to <@${target.id}>.\n` +
+          `Your balance: ${fmt(senderBal.points)} gold · ${target.username}'s balance: ${fmt(receiverBal.points)} gold`,
       });
     },
   },
@@ -93,17 +91,18 @@ export const commands: Command[] = [
     async execute(inv, ctx) {
       const top = await getLeaderboard(ctx.db, ctx.guildId, 10);
       if (top.length === 0) {
+        // OwO-style plain text, no embed box.
         await inv.reply({
-          embeds: [selenaEmbed(emoji("trophy") + " Leaderboard", "Nobody has any gold yet. Claim your `uwu daily` to get started!").toJSON()],
+          content: `${emoji("trophy")} Leaderboard\nNobody has any gold yet. Claim your \`uwu daily\` to get started!`,
         });
         return;
       }
       const medals = ["🥇", "🥈", "🥉"];
       const lines = top.map(
-        (e, i) => `${medals[i] ?? `${i + 1}.`} <@${e.userId}> — **${fmt(e.points)}** gold (Level ${e.level})`,
+        (e, i) => `${medals[i] ?? `${i + 1}.`} <@${e.userId}> — ${fmt(e.points)} gold (Level ${e.level})`,
       );
       await inv.reply({
-        embeds: [selenaEmbed(emoji("trophy") + " Gold Leaderboard", lines.join("\n")).toJSON()],
+        content: `${emoji("trophy")} Gold Leaderboard\n${lines.join("\n")}`,
       });
     },
   },
