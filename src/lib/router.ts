@@ -27,8 +27,35 @@ export const PREFIX = "uwu";
 /** Reply for a bare `uwu` with no command. */
 export const HELP_POINTER = "Not sure what to do? Type `uwu help` to see all commands.";
 
-/** Reply for `uwu <something-that-isnt-a-command>`. */
-export const UNKNOWN_COMMAND = "Unknown command — try `uwu help`.";
+/** Reply for `uwu <something-that-isnt-a-command>` — a small pool of
+ * casual, human-sounding lines (Ronit: the old "Unknown command" read
+ * like a bot error). One is picked at random per reply so it doesn't
+ * repeat the same line every time. Every line echoes the name the user
+ * typed and points at `uwu help`. */
+export const UNKNOWN_COMMAND_LINES: readonly string[] = [
+  "hmm, `{name}` isn't something I do — `uwu help` has everything I can do",
+  "`{name}`? never heard of that one, try `uwu help`?",
+  "nope, don't know `{name}` — check `uwu help`",
+  "uhh, `{name}` isn't a thing… `uwu help` is the full list",
+  "sorry, `{name}` doesn't ring a bell — `uwu help` shows what I can do",
+];
+
+/** Generic fallback when the attempted name is empty or absurdly long. */
+export const UNKNOWN_COMMAND_FALLBACK =
+  "hmm, never heard of that one — try `uwu help`?";
+
+/** Max length of the attempted name echoed back in an unknown-command reply. */
+export const UNKNOWN_COMMAND_NAME_MAX = 32;
+
+export function unknownCommandReply(name: string): string {
+  const clean = name.trim();
+  if (!clean || clean.length > UNKNOWN_COMMAND_NAME_MAX) {
+    return UNKNOWN_COMMAND_FALLBACK;
+  }
+  const line =
+    UNKNOWN_COMMAND_LINES[Math.floor(Math.random() * UNKNOWN_COMMAND_LINES.length)]!;
+  return line.replace("{name}", clean);
+}
 
 /**
  * The registration payload for slash commands: always empty. There are
@@ -370,7 +397,7 @@ export async function handlePrefixMessage(
   }
   const command = resolveCommand(parsed.name);
   if (!command) {
-    await message.reply({ content: UNKNOWN_COMMAND });
+    await message.reply({ content: unknownCommandReply(parsed.name) });
     return true;
   }
   const inv = new MessageInvocation(message, command, parsed.args);

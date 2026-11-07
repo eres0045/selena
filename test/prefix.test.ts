@@ -7,13 +7,15 @@ import {
   HELP_POINTER,
   MessageInvocation,
   SLASH_COMMAND_REGISTRATION_BODY,
-  UNKNOWN_COMMAND,
+  UNKNOWN_COMMAND_FALLBACK,
+  UNKNOWN_COMMAND_LINES,
   buildOptions,
   clearApplicationCommands,
   handlePrefixMessage,
   parsePrefix,
   resolveCommand,
   tokenizeArgs,
+  unknownCommandReply,
   type PrefixMessageLike,
 } from "../src/lib/router.js";
 import type { Command } from "../src/lib/command.js";
@@ -306,10 +308,41 @@ describe("handlePrefixMessage", () => {
     expect(msg.replies[0]!.content).toBe(HELP_POINTER);
   });
 
-  it("replies briefly for an unknown command and never crashes", async () => {
+  it("replies like a human for an unknown command and never crashes", async () => {
     const msg = new FakePrefixMessage("uwu frobnicate 1 2 3");
     expect(await handlePrefixMessage(msg, { db, guildId: GUILD })).toBe(true);
-    expect(msg.replies[0]!.content).toBe(UNKNOWN_COMMAND);
+    const reply = msg.replies[0]!.content as string;
+    // One of the casual pool lines, not the old robotic "Unknown command".
+    expect(reply).not.toContain("Unknown command");
+    expect(reply).toContain("frobnicate");
+    expect(reply).toContain("`uwu help`");
+    expect(
+      UNKNOWN_COMMAND_LINES.map((line) => line.replace("{name}", "frobnicate")),
+    ).toContain(reply);
+  });
+
+  it("falls back to a generic line for an absurdly long unknown name", async () => {
+    const longName = "a".repeat(40);
+    const msg = new FakePrefixMessage(`uwu ${longName}`);
+    expect(await handlePrefixMessage(msg, { db, guildId: GUILD })).toBe(true);
+    const reply = msg.replies[0]!.content as string;
+    expect(reply).toBe(UNKNOWN_COMMAND_FALLBACK);
+    expect(reply).not.toContain(longName);
+    expect(reply).toContain("`uwu help`");
+  });
+
+  it("unknownCommandReply echoes short names and falls back on empty/over-long ones", () => {
+    // Every pool line echoes the name and points at uwu help.
+    for (const line of UNKNOWN_COMMAND_LINES) {
+      const rendered = line.replace("{name}", "frobnicate");
+      expect(rendered).toContain("frobnicate");
+      expect(rendered).toContain("`uwu help`");
+    }
+    expect(unknownCommandReply("")).toBe(UNKNOWN_COMMAND_FALLBACK);
+    expect(unknownCommandReply("   ")).toBe(UNKNOWN_COMMAND_FALLBACK);
+    expect(unknownCommandReply("a".repeat(32))).toContain("a".repeat(32));
+    expect(unknownCommandReply("a".repeat(33))).toBe(UNKNOWN_COMMAND_FALLBACK);
+    expect(unknownCommandReply("  joke  ")).toContain("joke");
   });
 
   it("runs `uwu bal` and keeps the plain-text balance line", async () => {
