@@ -15,8 +15,45 @@ the table order; the Discord emoji NAME is the file stem.
 | slots.gif | Mini slot machine, reels scroll and settle 7-7-7, lever pulls | PIL original — `scripts/render_animated_emoji.py` (no fitting emoji.gg slot machine exists; the one found was a blurry gem in a frame) | 14 | 128x128 | 37,726 |
 | roulette.gif | Roulette wheel spinning one full turn, ball orbiting the other way | PIL original — `scripts/render_animated_emoji.py` (no animated roulette wheel on emoji.gg) | 12 | 128x128 | 78,946 |
 
-Rebuild: `python3 scripts/render_animated_emoji.py` (downloads are read
-from `/tmp/anim`; re-fetch from the CDN URLs above if that is gone).
+## Background fix (2026-11-07, Ronit: "no bg, make it properly")
+
+Composited every frame of all 8 files on Discord dark (#313338) at 1x
+and 2x, plus connected-component analysis. Two real problems found
+and fixed; the other six were already clean cutouts and are untouched:
+
+- **coin** (live file: `coin-big.gif`): the old file was the 58px
+  emoji.gg coin Lanczos-upscaled 2.2x — the soft transparent edge
+  stretched mid-spin into a wide gold speckled smear. Rebuilt by
+  `scripts/fix_emoji_bg.py` from the cleanest face-on frame of the
+  original: Lanczos RGB + hard-thresholded alpha, then a pure
+  horizontal-squash spin (|cos|, 16 frames, 40 ms, 640 ms/spin, same
+  technique as the card flips). Mid-spin is a clean thin sliver —
+  verified numerically: 0 opaque pixels outside ±8px of centre.
+  126,171 bytes. `coin.gif` now holds the identical rebuild (the old
+  74-frame small original is superseded).
+  Known imperfection, left as-is: the emoji.gg source coin carries a
+  faint stock watermark across the `$`, visible only at 4x zoom —
+  invisible at emoji size (22–48px). Removing it would mean
+  redrawing the `$`.
+- **gift**: a flat (218,218,218) grey ellipse shadow baked in under
+  the box, disconnected from it. Removed by colour in all 4 frames
+  (the grey exists nowhere in the box itself); 0 shadow-grey pixels
+  remain. 90x90, 4,487 bytes.
+- **slots / roulette** (PIL originals): drawn on a transparent canvas
+  — the dark purple machine body and the wheel ARE the art, not a
+  backdrop; corners transparent in every frame. Unchanged.
+- **trophy / party / fire / star** (emoji.gg): single art component(s)
+  only — trophy + sparkles, balloons + gifts, flame (+ one small
+  inner flame tongue), scattered sparkles. No background island, no
+  halo. Unchanged.
+
+Verification: `assets/emoji-animated/verify/contact-sheet.png` — all
+8 files, 4 frames each, on #313338 at 2x, viewed by eye: no box,
+halo, ellipse or smear on any frame.
+
+Rebuild: `python3 scripts/fix_emoji_bg.py` (coin + gift only).
+Re-upload needed: coin + gift ONLY (new IDs) — the other six files
+are byte-identical to the live uploads, so their IDs stay valid.
 
 ## Deliberately NOT animated
 
