@@ -13,6 +13,7 @@ import {
   type Command,
   type CommandContext,
 } from "../lib/command.js";
+import { emoji } from "../lib/emoji.js";
 import {
   LINEUP_ROLES,
   TRYOUT_RANKS,
@@ -457,7 +458,7 @@ export const commands: Command[] = [
       if (r.advancedTo) {
         parts.push(`Advanced to ${r.advancedTo.team_a} vs ${r.advancedTo.team_b} (match #${r.advancedTo.id}).`);
       }
-      if (r.bracketComplete) parts.push("🏆 Bracket complete!");
+      if (r.bracketComplete) parts.push(emoji("trophy") + " Bracket complete!");
       await replyEmbed(interaction, "Match reported", parts.join("\n"));
     },
   },

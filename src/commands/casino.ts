@@ -7,6 +7,7 @@ import {
   type APIEmbed,
 } from "discord.js";
 import type { Command, CommandContext } from "../lib/command.js";
+import { emoji } from "../lib/emoji.js";
 import { errorEmbed, fmt, pointsEmbed } from "../lib/command.js";
 import { getBalance } from "../lib/economy.js";
 import { CARD_SUITS } from "../lib/cards.js";
@@ -208,7 +209,7 @@ export const commands: Command[] = [
           : "No match — better luck next spin.";
       await interaction.reply({
         embeds: [
-          pointsEmbed("🎰 Slots", `${spin.symbols.join(" | ")}\n\n${outcome}`)
+          pointsEmbed(emoji("slots") + " Slots", `${spin.symbols.join(" | ")}\n\n${outcome}`)
             .addFields(
               { name: "Bet", value: fmt(bet), inline: true },
               { name: "Multiplier", value: `${spin.multiplier}x`, inline: true },
@@ -244,7 +245,7 @@ export const commands: Command[] = [
         endBlackjackGame(game.id);
         const footerLine =
           settled.outcome === "player_blackjack"
-            ? `🎉 Blackjack! You won ${fmt(winAmount)} points (3:2).`
+            ? `${emoji("party")} Blackjack! You won ${fmt(winAmount)} points (3:2).`
             : `Both you and the dealer have blackjack — push, your ${fmt(bet)} points are returned.`;
         await interaction.editReply(
           await bjReplyPayload(game, { over: true, outcome: bjOutcomeOf(settled), footerLine }, ctx),
@@ -290,11 +291,11 @@ export const commands: Command[] = [
       if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "roulette win");
       const balance = (await getBalance(ctx.db, ctx.guildId, interaction.user.id)).points;
       const outcome = result.win
-        ? `🎉 You won **${fmt(winAmount)} points** (${result.multiplier}x)!`
+        ? `${emoji("party")} You won **${fmt(winAmount)} points** (${result.multiplier}x)!`
         : "You lost this spin.";
       await interaction.reply({
         embeds: [
-          pointsEmbed("🎡 Roulette", `The ball landed on **${result.roll} ${result.color}**.\nYou bet on **${result.betOn}**.\n\n${outcome}`)
+          pointsEmbed(emoji("roulette") + " Roulette", `The ball landed on **${result.roll} ${result.color}**.\nYou bet on **${result.betOn}**.\n\n${outcome}`)
             .addFields(
               { name: "Bet", value: fmt(bet), inline: true },
               { name: "Multiplier", value: `${result.multiplier}x`, inline: true },
@@ -335,11 +336,11 @@ export const commands: Command[] = [
       if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "coinflip win");
       const balance = (await getBalance(ctx.db, ctx.guildId, interaction.user.id)).points;
       const outcome = result.win
-        ? `🎉 You won **${fmt(winAmount)} points** (1.9x)!`
+        ? `${emoji("party")} You won **${fmt(winAmount)} points** (1.9x)!`
         : "Wrong call — you lost this flip.";
       await interaction.reply({
         embeds: [
-          pointsEmbed("🪙 Coinflip", `You called **${guess}**. The coin landed **${result.result}**.\n\n${outcome}`)
+          pointsEmbed(emoji("coin") + " Coinflip", `You called **${guess}**. The coin landed **${result.result}**.\n\n${outcome}`)
             .addFields(
               { name: "Bet", value: fmt(bet), inline: true },
               { name: "Balance", value: fmt(balance), inline: true },
@@ -454,7 +455,7 @@ export const commands: Command[] = [
       const balance = (await getBalance(ctx.db, ctx.guildId, interaction.user.id)).points;
       const outcome =
         result.multiplier === 5
-          ? `🎉 Three of a kind! You won **${fmt(winAmount)} points** (5x)!`
+          ? `${emoji("party")} Three of a kind! You won **${fmt(winAmount)} points** (5x)!`
           : result.multiplier === 1
             ? `Two matching — your **${fmt(bet)} points** are returned.`
             : "No match — better luck next card.";
@@ -510,7 +511,7 @@ async function handleBlackjackButton(interaction: any, ctx: CommandContext): Pro
     endBlackjackGame(game.id);
     const resultNote =
       settled.outcome === "player_blackjack"
-        ? `🎉 Blackjack! You won ${fmt(winAmount)} points (3:2).`
+        ? `${emoji("party")} Blackjack! You won ${fmt(winAmount)} points (3:2).`
         : settled.outcome === "win"
           ? `You won ${fmt(winAmount)} points!`
           : settled.outcome === "push"

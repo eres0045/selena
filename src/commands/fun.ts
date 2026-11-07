@@ -5,6 +5,7 @@ import {
   selenaEmbed,
   type Command,
 } from "../lib/command.js";
+import { emoji } from "../lib/emoji.js";
 import {
   MEME_EFFECTS,
   eightBall,
@@ -140,7 +141,7 @@ export const commands: Command[] = [
       await interaction.reply({
         embeds: [
           selenaEmbed(
-            "⭐ Rating",
+            emoji("star") + " Rating",
             `**${thing.trim()}** scores **${percent}/100**.\n${rateVerdict(percent)}`,
           ),
         ],
@@ -160,7 +161,7 @@ export const commands: Command[] = [
     async execute(interaction, _ctx) {
       const target = interaction.options.getUser("user") ?? interaction.user;
       await interaction.reply({
-        embeds: [selenaEmbed("🔥 Friendly Roast", `<@${target.id}> — ${randomRoast()}`)],
+        embeds: [selenaEmbed(emoji("fire") + " Friendly Roast", `<@${target.id}> — ${randomRoast()}`)],
       });
     },
   },

@@ -9,6 +9,7 @@ import {
   Routes,
 } from "discord.js";
 import { getDb, type SelenaDb } from "./lib/db.js";
+import { emoji } from "./lib/emoji.js";
 import { secureInt } from "./lib/rng.js";
 import { errorEmbed, selenaEmbed } from "./lib/command.js";
 import { awardXp } from "./lib/levels.js";
@@ -129,7 +130,7 @@ export async function runDueTasks(db: SelenaDb, client: Client | null): Promise<
         const channel = await client.channels.fetch(g.channel_id);
         if (channel && "send" in channel && typeof (channel as { send: unknown }).send === "function") {
           await (channel as { send: (msg: unknown) => Promise<unknown> }).send({
-            content: `🎉 Giveaway ended! **${g.prize}** — winners: ${winners.map((w) => `<@${w}>`).join(", ")}`,
+            content: `${emoji("party")} Giveaway ended! **${g.prize}** — winners: ${winners.map((w) => `<@${w}>`).join(", ")}`,
           });
         }
       } catch (e) {
@@ -257,7 +258,7 @@ export async function start(): Promise<void> {
         const result = await awardXp(db, guildId, message.author.id, secureInt(5, 16), now);
         if (result.leveledUp) {
           try {
-            await message.channel.send(`🎉 <@${message.author.id}> leveled up to **level ${result.newLevel}**!`);
+            await message.channel.send(`${emoji("party")} <@${message.author.id}> leveled up to **level ${result.newLevel}**!`);
           } catch {
             /* ignore */
           }
@@ -306,7 +307,7 @@ export async function start(): Promise<void> {
             try {
               const channel = await client.channels.fetch(settings.starboard_channel_id);
               const msg = reaction.message;
-              const embed = selenaEmbed(`⭐ ${stars} — starboard`)
+              const embed = selenaEmbed(`${emoji("star")} ${stars} — starboard`)
                 .setDescription(msg.content?.slice(0, 2000) || "(no text)")
                 .setFooter({ text: `by ${msg.author?.username ?? "unknown"} in #${(msg.channel as { name?: string }).name ?? "?"}` });
               if (channel && "send" in channel && typeof (channel as { send: unknown }).send === "function") {

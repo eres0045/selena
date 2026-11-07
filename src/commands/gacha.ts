@@ -10,6 +10,7 @@ import {
   type Command,
   type CommandContext,
 } from "../lib/command.js";
+import { emoji } from "../lib/emoji.js";
 import {
   RARITY_WEIGHTS,
   collectionSummary,
@@ -196,7 +197,7 @@ export const commands: Command[] = [
       await interaction.reply({
         embeds: [
           selenaEmbed(
-            "🏆 Gacha leaderboard",
+            emoji("trophy") + " Gacha leaderboard",
             board
               .map((e, i) => `${i + 1}. <@${e.userId}> — ${e.distinctCards} distinct • ${e.totalCards} total`)
               .join("\n"),

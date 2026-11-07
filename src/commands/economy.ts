@@ -1,5 +1,6 @@
 import { SlashCommandBuilder } from "discord.js";
 import type { Command } from "../lib/command.js";
+import { emoji } from "../lib/emoji.js";
 import { errorEmbed, fmt, pointsEmbed, selenaEmbed } from "../lib/command.js";
 import { claimDaily, getBalance, getLeaderboard, transferPoints } from "../lib/economy.js";
 
@@ -30,7 +31,7 @@ export const commands: Command[] = [
       await interaction.reply({
         embeds: [
           pointsEmbed(
-            `💰 ${target.username}'s Balance`,
+            `${emoji("coin")} ${target.username}'s Balance`,
             `**${fmt(bal.points)}** points\n${fmt(bal.xp)} XP · Level ${bal.level}`,
           ).toJSON(),
         ],
@@ -53,8 +54,8 @@ export const commands: Command[] = [
       await interaction.reply({
         embeds: [
           pointsEmbed(
-            "🎁 Daily Reward",
-            `You claimed **${fmt(result.amount ?? 100)} points**!\nYour balance is now **${fmt(bal.points)} points**. Come back tomorrow for more.`,
+            emoji("gift") + " Daily Reward",
+            `${emoji("coin")} You claimed **${fmt(result.amount ?? 100)} points**!\nYour balance is now **${fmt(bal.points)} points**. Come back tomorrow for more.`,
           ).toJSON(),
         ],
       });
@@ -105,7 +106,7 @@ export const commands: Command[] = [
       const top = await getLeaderboard(ctx.db, ctx.guildId, 10);
       if (top.length === 0) {
         await interaction.reply({
-          embeds: [selenaEmbed("🏆 Leaderboard", "Nobody has any points yet. Claim your `/daily` to get started!").toJSON()],
+          embeds: [selenaEmbed(emoji("trophy") + " Leaderboard", "Nobody has any points yet. Claim your `/daily` to get started!").toJSON()],
         });
         return;
       }
@@ -114,7 +115,7 @@ export const commands: Command[] = [
         (e, i) => `${medals[i] ?? `${i + 1}.`} <@${e.userId}> — **${fmt(e.points)}** points (Level ${e.level})`,
       );
       await interaction.reply({
-        embeds: [selenaEmbed("🏆 Points Leaderboard", lines.join("\n")).toJSON()],
+        embeds: [selenaEmbed(emoji("trophy") + " Points Leaderboard", lines.join("\n")).toJSON()],
       });
     },
   },

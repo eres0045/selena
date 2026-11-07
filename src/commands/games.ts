@@ -12,6 +12,7 @@ import {
   type Command,
   type CommandContext,
 } from "../lib/command.js";
+import { emoji } from "../lib/emoji.js";
 import {
   GUESS_HERO_POINTS,
   TRIVIA_POINTS,
@@ -90,8 +91,8 @@ function tttEmbed(game: TttGame): EmbedBuilder {
       game.winner === "draw"
         ? "It's a draw! 🤝"
         : game.winner === "X"
-          ? `🏆 <@${game.playerX}> (❌) wins!`
-          : `🏆 <@${game.playerO}> (⭕) wins!`;
+          ? `${emoji("trophy")} <@${game.playerX}> (❌) wins!`
+          : `${emoji("trophy")} <@${game.playerO}> (⭕) wins!`;
   } else {
     status = game.turn === "X" ? `❌ <@${game.playerX}>'s turn` : `⭕ <@${game.playerO}>'s turn`;
   }
@@ -173,8 +174,8 @@ function c4Embed(game: C4Game): EmbedBuilder {
       game.winner === "draw"
         ? "It's a draw! 🤝"
         : game.winner === "R"
-          ? `🏆 <@${game.playerR}> (🔴) wins!`
-          : `🏆 <@${game.playerY}> (🟡) wins!`;
+          ? `${emoji("trophy")} <@${game.playerR}> (🔴) wins!`
+          : `${emoji("trophy")} <@${game.playerY}> (🟡) wins!`;
   } else {
     status = game.turn === "R" ? `🔴 <@${game.playerR}>'s turn` : `🟡 <@${game.playerY}>'s turn`;
   }
@@ -252,8 +253,8 @@ function rpsEmbed(game: RpsGame): EmbedBuilder {
       game.winnerId === null
         ? "It's a draw! 🤝"
         : game.winnerId === game.challengerId
-          ? `🏆 <@${game.challengerId}> wins!`
-          : `🏆 <@${game.opponentId}> wins!`;
+          ? `${emoji("trophy")} <@${game.challengerId}> wins!`
+          : `${emoji("trophy")} <@${game.opponentId}> wins!`;
     return selenaEmbed(
       `Rock Paper Scissors — ${game.challengerName} vs ${game.opponentName}`,
       `<@${game.challengerId}> played ${rpsEmoji(a)} **${a}**\n<@${game.opponentId}> played ${rpsEmoji(b)} **${b}**\n\n${result}`,
@@ -394,7 +395,7 @@ async function handleTrivia(interaction: any, ctx: CommandContext): Promise<void
       })
       .join("\n")}\n\n${
       correct
-        ? `🎉 <@${interaction.user.id}> got it right and earned **${TRIVIA_POINTS} points**!`
+        ? `${emoji("party")} <@${interaction.user.id}> got it right and earned **${TRIVIA_POINTS} points**!`
         : `❌ <@${interaction.user.id}> got it wrong. The correct answer was **${String.fromCharCode(65 + game.question.answerIndex)}**.`
     }`,
   );
@@ -427,10 +428,10 @@ async function handleGiveaway(interaction: any, ctx: CommandContext): Promise<vo
     .prepare("INSERT OR IGNORE INTO giveaway_entries (giveaway_id, user_id) VALUES (?, ?)")
     .run(giveawayId, interaction.user.id);
   if (res.changes === 0) {
-    await interaction.reply({ content: "You're already entered in this giveaway. 🎉", ephemeral: true });
+    await interaction.reply({ content: "You're already entered in this giveaway. " + emoji("party"), ephemeral: true });
     return;
   }
-  await interaction.reply({ content: "You're in! Good luck. 🎉", ephemeral: true });
+  await interaction.reply({ content: "You're in! Good luck. " + emoji("party"), ephemeral: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -732,7 +733,7 @@ export const commands: Command[] = [
         await interaction.reply({
           embeds: [
             selenaEmbed(
-              "🎉 Correct!",
+              emoji("party") + " Correct!",
               `It was **${round.hero.hero}**! <@${interaction.user.id}> earned **${GUESS_HERO_POINTS} points**.`,
             ),
           ],
@@ -808,7 +809,7 @@ export const commands: Command[] = [
       await interaction.reply({
         embeds: [
           selenaEmbed(
-            "🎉 Giveaway!",
+            emoji("party") + " Giveaway!",
             `**Prize:** ${prize.trim()}\n**Winners:** ${fmt(winners)}\n**Ends in:** ${endsIn}\n\nClick the button below to enter! Winners are drawn automatically when the giveaway ends.`,
           ).setFooter({ text: `Giveaway #${giveawayId}` }),
         ],
