@@ -1,28 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { EMOJI_IDS, emoji, type EmojiName } from "../src/lib/emoji.js";
 
-const NAMES: EmojiName[] = [
-  "coin",
-  "heads",
-  "tails",
-  "slots",
-  "roulette",
-  "trophy",
-  "gift",
-  "party",
-  "fire",
-  "star",
-];
-
-// Uploaded so far — all ten names now have real IDs. heads/tails are
-// STATIC emoji (<:name:id>), the other eight are animated (<a:name:id>).
-const UPLOADED: EmojiName[] = ["coin", "slots", "roulette", "trophy", "gift", "party", "fire", "star"];
-const STATIC_UPLOADED: EmojiName[] = ["heads", "tails"];
+const NAMES: EmojiName[] = ["coin", "slots", "roulette", "trophy", "gift", "party", "fire", "star"];
 
 const FALLBACK: Record<EmojiName, string> = {
   coin: "🪙",
-  heads: "🪙",
-  tails: "⭐",
   slots: "🎰",
   roulette: "🎡",
   trophy: "🏆",
@@ -48,17 +30,11 @@ describe("emoji()", () => {
   });
 
   it("returns animated custom-emoji markup for the real uploaded IDs", () => {
-    // Every uploaded ID is a non-empty digit string, and emoji() renders
+    // Every committed ID is a non-empty digit string, and emoji() renders
     // it as <a:name:id> — the markup Discord animates.
-    for (const name of UPLOADED) {
+    for (const name of NAMES) {
       expect(EMOJI_IDS[name]).toMatch(/^[0-9]{10,}$/);
       expect(emoji(name)).toBe(`<a:${name}:${EMOJI_IDS[name]}>`);
-    }
-    // Static emoji (heads/tails) render as <:name:id> — the `a:`
-    // prefix is for animated emoji only.
-    for (const name of STATIC_UPLOADED) {
-      expect(EMOJI_IDS[name]).toMatch(/^[0-9]{10,}$/);
-      expect(emoji(name)).toBe(`<:${name}:${EMOJI_IDS[name]}>`);
     }
     // A real snowflake as a STRING: as a JS number it would round
     // (...678 -> ...680), which is why EMOJI_IDS stores strings.

@@ -8,15 +8,16 @@ touched. This script builds the assets for the other four games:
     coin goes UP, gets BIG as it comes toward the viewer, comes DOWN
     spinning fast, and the view zooms in close as it lands edge-on
     (neutral — the face is revealed by the edit to heads/tails.png).
-    heads.png / tails.png: TIGHT CLOSE-UPS of the landed face, the
-    coin nearly filling the frame. Both faces are PIL-drawn (the
-    emoji.gg $ face carries a faint stock watermark that shows at
-    320px, so heads is a clean redrawn $ disc in the same style;
-    tails is a star-emboss disc).
+    heads.png / tails.png: the landed face on a WIDE canvas, the coin
+    ~330px so it displays ~160px on a phone (NOT a tight close-up
+    that fills the frame — that was the old too-big version). Both
+    faces are PIL-drawn (the emoji.gg $ face carries a faint stock
+    watermark that shows at 320px, so heads is a clean redrawn $
+    disc in the same style; tails is a star-emboss disc).
   * slots — spin.gif: the machine with all three reels scrolling
     (seamless loop, never settles on a combination); machine.gif: the
     machine frame with TRANSPARENT reel windows; tiles/<key>.gif: one
-    69x78 reel tile per symbol (Twemoji art, CC-BY, + a PIL "7").
+    75x85 reel tile per symbol (Twemoji art, CC-BY, + a PIL "7").
     The settled strip is composed at reply time by src/lib/visualgames.ts
     from the real spin result — never a canned 7-7-7.
   * roulette — spin.gif: the 37-pocket European wheel spinning with the
@@ -39,17 +40,24 @@ nothing is shipped without compositing it on Discord dark (#313338)
 first — see verify_contact_sheet() at the end, which the author must
 VIEW before committing.
 
-SMALL BUT SHARP (Ronit 2026-11-07): the shipped files are SMALL
-(~240-320px wide) but rendered at 2x+ and Lanczos-downscaled with an
-unsharp pass — the same trick as the card strips. Slots/roulette/
-scratch are drawn at their original ~700px size (≈2.2x the ship
-size) and downscaled at save time; the coin is drawn at exactly 2x
-its ship size. If a visual can't stay readable small, prefer a
-tighter crop/zoom on the important part over a bigger image.
+SMALL ON SCREEN (Ronit 2026-11-07, twice): Discord on a phone
+stretches EVERY attached image to the full message width (~340px)
+no matter how small the file is — so shrinking the FILE 700px ->
+240px did NOT shrink the display, it just made it blurrier. The
+fix is to shrink the ART inside a WIDE transparent canvas: every
+visual ships on a ~700px-wide canvas with the art drawn small and
+centred in it, so when Discord stretches the canvas to message
+width the art itself displays at only ~150-220px. (Same mechanism
+as the v7 card strips: 100px cards inside a 700px strip.) All art
+is still rendered at 2x+ and Lanczos-downscaled with an unsharp
+pass, so it stays crisp. If a visual can't stay readable small,
+prefer a tighter crop/zoom on the important part over bigger art.
 
-Ship sizes (what Discord displays, what src/lib/visualgames.ts
-expects): coin 240x140, slots 320x210, roulette 300x240,
-scratch 320x120; slots tiles 69x78, scratch tiles 87x100.
+Ship sizes (canvas size = what src/lib/visualgames.ts expects):
+coin 700x280 (coin art <= 340px -> ~165px on screen), slots
+700x280 (machine art 350x230 -> ~170px), roulette 700x500
+(wheel art 606x485, wheel 450px -> ~219px), scratch 700x150
+(tiles 110x127 -> ~53px); slots tiles 75x85, scratch tiles 110x127.
 
 Usage: python3 scripts/render_visual_games.py
 Writes: assets/games/** (+ assets/games/verify/contact-sheet.png)
@@ -128,13 +136,29 @@ def ship_frames(frames: list[Image.Image], size: tuple[int, int]) -> list[Image.
     return [ship(f, size) for f in frames]
 
 
-# Ship sizes: coin 240x140, slots 320x210, roulette 300x240, scratch 320x120.
-COIN_SHIP = (240, 140)
-SLOTS_SHIP = (320, 210)
-SLOTS_TILE_SHIP = (69, 78)
-ROULETTE_SHIP = (300, 240)
-SCRATCH_SHIP = (320, 120)
-SCRATCH_TILE_SHIP = (87, 100)
+def ship_padded(img: Image.Image, art_size: tuple[int, int],
+                canvas_size: tuple[int, int]) -> Image.Image:
+    """Downscale a render to its ART size, then centre it on a WIDE
+    transparent canvas. Discord stretches the whole canvas to message
+    width, so the art displays at art/canvas of that width — this is
+    what actually makes a visual look small on a phone."""
+    small = ship(img, art_size)
+    canvas = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
+    canvas.alpha_composite(small, ((canvas_size[0] - art_size[0]) // 2,
+                                   (canvas_size[1] - art_size[1]) // 2))
+    return canvas
+
+
+# Ship sizes: wide canvases, small centred art (see docstring).
+# Displayed art on a ~340px phone bubble ≈ art_px / canvas_px * 340.
+COIN_SHIP = (700, 280)          # coin art <= 340px -> ~165px on screen
+SLOTS_SHIP = (700, 280)         # machine art 350x230 -> ~170px on screen
+SLOTS_ART = (350, 230)
+SLOTS_TILE_SHIP = (75, 85)
+ROULETTE_SHIP = (700, 500)      # wheel art 450px -> ~219px on screen
+ROULETTE_ART = (606, 485)
+SCRATCH_SHIP = (700, 150)       # tiles 110x127 -> ~53px on screen
+SCRATCH_TILE_SHIP = (110, 127)
 
 
 def fetch_twemoji() -> dict[str, Path]:
@@ -182,9 +206,9 @@ def draw_twemoji_symbol(draw: ImageDraw.ImageDraw, img: Image.Image,
 # Coinflip — big spin + landed faces
 # ---------------------------------------------------------------------------
 
-COIN_W, COIN_H = 480, 280  # render canvas = exactly 2x the 240x140 ship size
+COIN_W, COIN_H = 1400, 560  # render canvas = exactly 2x the 700x280 ship size
 COIN_CX, COIN_CY = COIN_W // 2, COIN_H // 2
-COIN_CLOSE_D = 264  # landed close-up coin diameter (render px -> 132 shipped)
+COIN_CLOSE_D = 660  # landed coin diameter (render px -> 330 shipped, ~160px on screen)
 
 
 def draw_heads_disc(d: int = COIN_CLOSE_D) -> Image.Image:
@@ -248,7 +272,8 @@ def build_coinflip(face: Image.Image) -> tuple[Path, Path, Path]:
     """
     out = GAMES / "coinflip"
     out.mkdir(parents=True, exist_ok=True)
-    # Landed faces: TIGHT CLOSE-UPS — the coin nearly fills the frame.
+    # Landed faces: the coin ~330px on the 700x280 canvas — small on
+    # screen (~160px on a phone), but the $ / star still read clearly.
     heads = Image.new("RGBA", (COIN_W, COIN_H), (0, 0, 0, 0))
     heads.alpha_composite(face, ((COIN_W - COIN_CLOSE_D) // 2,
                                  (COIN_H - COIN_CLOSE_D) // 2))
@@ -260,11 +285,16 @@ def build_coinflip(face: Image.Image) -> tuple[Path, Path, Path]:
                                       (COIN_H - COIN_CLOSE_D) // 2))
     tails_path = out / "tails.png"
     ship(tails, COIN_SHIP).save(tails_path)
-    # Toss keyframes (render px, canvas 480x280): (centre-y, diameter).
+    # Toss keyframes (render px, canvas 1400x560): (centre-y, diameter).
+    # Ship px are half these: the coin rises from the bottom (410,300),
+    # gets BIG toward the viewer (peak 288 ship px at the top, ~140px on
+    # screen, looming past the top edge), falls spinning fast, and lands
+    # edge-on at the centre. The y values keep the coin inside the
+    # frame except for the deliberate top-clip at the peak.
     keys = [
-        (210, 120), (180, 150), (145, 180), (110, 205), (80, 225), (60, 230),
-        (75, 215), (105, 195), (140, 175), (170, 160), (195, 150), (205, 150),
-        (195, 175), (175, 210), (155, 245), (140, 264),
+        (410, 300), (360, 374), (288, 450), (220, 512), (160, 562), (120, 576),
+        (148, 538), (208, 488), (280, 438), (340, 400), (370, 374), (370, 374),
+        (370, 438), (348, 524), (308, 612), (280, 660),
     ]
     frames: list[Image.Image] = []
     for i, (cy, d) in enumerate(keys):
@@ -349,6 +379,7 @@ def build_slots(twemoji: dict[str, Path]) -> list[Path]:
         save_transparent_gif([ship(tile, SLOTS_TILE_SHIP)], p, 100)
         made.append(p)
     # Machine frame: body + borders + payline, windows left transparent.
+    # The whole machine is art 350x230 centred on the 700x280 canvas.
     frame = Image.new("RGBA", (SLOTS_W, SLOTS_H), (0, 0, 0, 0))
     d = ImageDraw.Draw(frame)
     draw_slots_body(d)
@@ -356,7 +387,7 @@ def build_slots(twemoji: dict[str, Path]) -> list[Path]:
         frame.paste((0, 0, 0, 0), (x, y, x + SLOT_WIN_W, y + SLOT_WIN_H))
     draw_reel_window_borders(d)
     p = out / "machine.gif"
-    save_transparent_gif([ship(frame, SLOTS_SHIP)], p, 100)
+    save_transparent_gif([ship_padded(frame, SLOTS_ART, SLOTS_SHIP)], p, 100)
     made.append(p)
     # Spin: reels scrolling, seamless loop (16 frames x 85px = 1360 = 1 cycle).
     strip = reel_strip(twemoji)
@@ -374,7 +405,7 @@ def build_slots(twemoji: dict[str, Path]) -> list[Path]:
         draw_reel_window_borders(d)
         frames.append(img)
     p = out / "spin.gif"
-    save_looping_gif(ship_frames(frames, SLOTS_SHIP), p, 80)
+    save_looping_gif([ship_padded(f, SLOTS_ART, SLOTS_SHIP) for f in frames], p, 80)
     made.append(p)
     return made
 
@@ -383,13 +414,13 @@ def build_slots(twemoji: dict[str, Path]) -> list[Path]:
 # Roulette — 37-pocket European wheel, spin + one settled wheel per number
 # ---------------------------------------------------------------------------
 
-ROULETTE_W, ROULETTE_H = 700, 560
-ROULETTE_CX, ROULETTE_CY = 350, 280
-WHEEL_R = 260          # outer rim radius
-POCKET_OUT, POCKET_IN = 250, 150  # pocket ring radii
-NUMBER_R = 195         # numbers sit here
-BALL_R = 232           # the ball rests here, on the pocket
-BALL_D = 32            # ball diameter
+ROULETTE_W, ROULETTE_H = 1400, 1120  # render canvas = 2x the art size
+ROULETTE_CX, ROULETTE_CY = 700, 560
+WHEEL_R = 520          # outer rim radius
+POCKET_OUT, POCKET_IN = 500, 300  # pocket ring radii
+NUMBER_R = 390         # numbers sit here
+BALL_R = 464           # the ball rests here, on the pocket
+BALL_D = 64            # ball diameter
 STEP = 360 / 37
 
 
@@ -413,7 +444,7 @@ def draw_wheel_base() -> Image.Image:
     cx, cy = ROULETTE_CX, ROULETTE_CY
     # Outer rim
     d.ellipse([cx - WHEEL_R, cy - WHEEL_R, cx + WHEEL_R, cy + WHEEL_R],
-              fill=(32, 36, 46), outline=GOLD, width=8)
+              fill=(32, 36, 46), outline=GOLD, width=16)
     # Pockets
     for i, n in enumerate(WHEEL_ORDER):
         a0 = -90 + i * STEP
@@ -426,9 +457,9 @@ def draw_wheel_base() -> Image.Image:
         y0 = cy + POCKET_IN * math.sin(a)
         x1 = cx + POCKET_OUT * math.cos(a)
         y1 = cy + POCKET_OUT * math.sin(a)
-        d.line([(x0, y0), (x1, y1)], fill=GOLD, width=2)
+        d.line([(x0, y0), (x1, y1)], fill=GOLD, width=4)
     # Numbers (upright, readable from outside the wheel)
-    font = ImageFont.truetype(FONT_BOLD, 20)
+    font = ImageFont.truetype(FONT_BOLD, 40)
     for i, n in enumerate(WHEEL_ORDER):
         a = math.radians(pocket_center_angle(n))
         x = cx + NUMBER_R * math.cos(a)
@@ -436,9 +467,9 @@ def draw_wheel_base() -> Image.Image:
         d.text((x, y), str(n), font=font, fill=(255, 255, 255), anchor="mm")
     # Inner cone + hub
     d.ellipse([cx - POCKET_IN, cy - POCKET_IN, cx + POCKET_IN, cy + POCKET_IN],
-              fill=(60, 50, 20), outline=GOLD, width=4)
-    d.ellipse([cx - 45, cy - 45, cx + 45, cy + 45], fill=GOLD, outline=(180, 130, 0), width=3)
-    d.ellipse([cx - 12, cy - 12, cx + 12, cy + 12], fill=(255, 255, 255))
+              fill=(60, 50, 20), outline=GOLD, width=8)
+    d.ellipse([cx - 90, cy - 90, cx + 90, cy + 90], fill=GOLD, outline=(180, 130, 0), width=6)
+    d.ellipse([cx - 24, cy - 24, cx + 24, cy + 24], fill=(255, 255, 255))
     return img
 
 
@@ -450,7 +481,7 @@ def draw_ball(img: Image.Image, roll: int) -> None:
     by = ROULETTE_CY + BALL_R * math.sin(a)
     r = BALL_D // 2
     d.ellipse([bx - r, by - r, bx + r, by + r], fill=(255, 255, 255),
-              outline=(120, 120, 120), width=2)
+              outline=(120, 120, 120), width=4)
 
 
 def build_roulette() -> list[Path]:
@@ -458,12 +489,13 @@ def build_roulette() -> list[Path]:
     out.mkdir(parents=True, exist_ok=True)
     made: list[Path] = []
     base = draw_wheel_base()
-    # Settled wheels, one per number (drawn big, shipped 300x240).
+    # Settled wheels, one per number: the wheel is art 606x485 (wheel
+    # 450px) centred on the 700x500 canvas.
     for n in range(37):
         img = base.copy()
         draw_ball(img, n)
         p = out / f"wheel-{n:02d}.png"
-        ship(img, ROULETTE_SHIP).save(p)
+        ship_padded(img, ROULETTE_ART, ROULETTE_SHIP).save(p)
         made.append(p)
     # Spin: wheel turning clockwise, ball orbiting the other way.
     frames: list[Image.Image] = []
@@ -478,10 +510,10 @@ def build_roulette() -> list[Path]:
         by = ROULETTE_CY + r * math.sin(ball_angle)
         br = BALL_D // 2
         d.ellipse([bx - br, by - br, bx + br, by + br], fill=(255, 255, 255),
-                  outline=(120, 120, 120), width=2)
+                  outline=(120, 120, 120), width=4)
         frames.append(img)
     p = out / "spin.gif"
-    save_looping_gif(ship_frames(frames, ROULETTE_SHIP), p, 100)
+    save_looping_gif([ship_padded(f, ROULETTE_ART, ROULETTE_SHIP) for f in frames], p, 100)
     made.append(p)
     return made
 
@@ -489,10 +521,10 @@ def build_roulette() -> list[Path]:
 def verify_wheels() -> None:
     """Every settled wheel must have its (white) ball on the right pocket:
     the pocket index at the ball's angle must be the wheel's number.
-    Samples the SHIPPED 300x240 PNGs, so the centres use ship-scale
-    geometry (centre 150,120; ball radius 99)."""
+    Samples the SHIPPED 700x500 PNGs, so the centres use ship-scale
+    geometry (centre 350,250; ball radius 201)."""
     out = GAMES / "roulette"
-    scx, scy, sball_r = 150, 120, 99
+    scx, scy, sball_r = 350, 250, 201
     for n in range(37):
         img = Image.open(out / f"wheel-{n:02d}.png").convert("RGBA")
         a = math.radians(pocket_center_angle(n))
@@ -511,9 +543,9 @@ def verify_wheels() -> None:
 # Scratch — revealed + covered tiles
 # ---------------------------------------------------------------------------
 
-SCRATCH_W, SCRATCH_H = 700, 260
-SCRATCH_TILES = [(40, 20), (255, 20), (470, 20)]  # (x, y) of each tile
-SCRATCH_TW, SCRATCH_TH = 190, 220
+SCRATCH_W, SCRATCH_H = 700, 150  # (unused: strips are composed at runtime)
+SCRATCH_TILES = [(160, 11), (295, 11), (430, 11)]  # (x, y) of each tile, ship px
+SCRATCH_TW, SCRATCH_TH = 220, 254  # render tile = 2x the 110x127 ship tile
 
 
 def draw_scratch_card(draw: ImageDraw.ImageDraw, x: int, y: int) -> None:
@@ -529,7 +561,7 @@ def build_scratch(twemoji: dict[str, Path]) -> list[Path]:
         tile = Image.new("RGBA", (SCRATCH_TW, SCRATCH_TH), (0, 0, 0, 0))
         d = ImageDraw.Draw(tile)
         draw_scratch_card(d, 0, 0)
-        draw_twemoji_symbol(d, tile, twemoji, sym, SCRATCH_TW // 2, SCRATCH_TH // 2, 130)
+        draw_twemoji_symbol(d, tile, twemoji, sym, SCRATCH_TW // 2, SCRATCH_TH // 2, 150)
         p = out / "tiles" / f"{SLOT_KEYS[sym]}.gif"
         save_transparent_gif([ship(tile, SCRATCH_TILE_SHIP)], p, 100)
         made.append(p)
@@ -541,7 +573,7 @@ def build_scratch(twemoji: dict[str, Path]) -> list[Path]:
     # Diagonal shine stripes.
     for x0 in range(-40, SCRATCH_TW + 40, 36):
         d.line([(x0, SCRATCH_TH), (x0 + 60, 0)], fill=(225, 225, 232), width=10)
-    font = ImageFont.truetype(FONT_BOLD, 110)
+    font = ImageFont.truetype(FONT_BOLD, 130)
     d.text((SCRATCH_TW // 2, SCRATCH_TH // 2), "?", font=font,
            fill=(70, 70, 80), anchor="mm")
     p = out / "tiles" / "cover.gif"
@@ -555,9 +587,10 @@ def build_scratch(twemoji: dict[str, Path]) -> list[Path]:
 # ---------------------------------------------------------------------------
 
 def verify_contact_sheet() -> Path:
-    """Contact sheet at NATIVE ship sizes on Discord dark — the author
-    must VIEW this before committing. A visual that is unreadable here
-    at its real size is unreadable in Discord; judge the landed coin
+    """Contact sheet at PHONE-DISPLAY scale (every visual scaled to
+    340px wide, the width Discord shows on his phone) on Discord dark
+    — the author must VIEW this before committing. A visual that is
+    unreadable here is unreadable in Discord; judge the landed coin
     ($ vs star), the slots/scratch symbols, and the roulette ball."""
     VERIFY.mkdir(parents=True, exist_ok=True)
     tiles: list[tuple[str, Image.Image]] = []
@@ -590,7 +623,7 @@ def verify_contact_sheet() -> Path:
     # (machine frame + real tiles), at ship size.
     strip = Image.new("RGBA", SLOTS_SHIP, (0, 0, 0, 0))
     frame = Image.open(GAMES / "slots" / "machine.gif").convert("RGBA")
-    for (x, y), key in zip([(39, 55), (126, 55), (213, 55)],
+    for (x, y), key in zip([(218, 85), (313, 85), (408, 85)],
                            ["cherry", "lemon", "seven"]):
         strip.alpha_composite(Image.open(GAMES / "slots" / "tiles" / f"{key}.gif").convert("RGBA"), (x, y))
     strip.alpha_composite(frame)
@@ -600,29 +633,38 @@ def verify_contact_sheet() -> Path:
     add("wheel 32", GAMES / "roulette" / "wheel-32.png", [0])
     add("wheel 36", GAMES / "roulette" / "wheel-36.png", [0])
     add("roulette spin", GAMES / "roulette" / "spin.gif", [0, 4, 8])
-    # 3x zoom on the ball of wheel-17 (is it findable at 300px?).
+    # 3x zoom on the ball of wheel-17 (is it findable at 700px?).
     w17 = Image.open(GAMES / "roulette" / "wheel-17.png").convert("RGBA")
     a = math.radians(pocket_center_angle(17))
-    bx = int(round(150 + 99 * math.cos(a)))
-    by = int(round(120 + 99 * math.sin(a)))
-    zoom = w17.crop((bx - 25, by - 25, bx + 25, by + 25)).resize((150, 150), Image.LANCZOS)
+    bx = int(round(350 + 201 * math.cos(a)))
+    by = int(round(250 + 201 * math.sin(a)))
+    zoom = w17.crop((bx - 30, by - 30, bx + 30, by + 30)).resize((150, 150), Image.LANCZOS)
     add_img("wheel-17 ball 3x", zoom)
     add("scratch cover", GAMES / "scratch" / "tiles" / "cover.gif", [0])
     add("scratch diamond", GAMES / "scratch" / "tiles" / "diamond.gif", [0])
     add("scratch seven", GAMES / "scratch" / "tiles" / "seven.gif", [0])
     # Settled scratch strip at ship size (diamond / star / cherry).
     sstrip = Image.new("RGBA", SCRATCH_SHIP, (0, 0, 0, 0))
-    for (x, y), key in zip([(18, 9), (117, 9), (216, 9)],
+    for (x, y), key in zip([(160, 11), (295, 11), (430, 11)],
                            ["diamond", "star", "cherry"]):
         sstrip.alpha_composite(
             Image.open(GAMES / "scratch" / "tiles" / f"{key}.gif").convert("RGBA"), (x, y))
     add_img("scratch settled 💎⭐🍒", sstrip)
 
+    # PHONE-DISPLAY SCALE: every tile is scaled to 340px wide — the
+    # width Discord shows on his phone — before it goes on the sheet.
+    # A visual unreadable here is unreadable in Discord.
+    scaled: list[tuple[str, Image.Image]] = []
+    for name, t in tiles:
+        if t.width > 340:
+            t = t.resize((340, round(t.height * 340 / t.width)), Image.LANCZOS)
+        scaled.append((name, t))
+
     cols = 2
     cw = 340
     rows = []
     row: list[tuple[str, Image.Image]] = []
-    for t in tiles:
+    for t in scaled:
         row.append(t)
         if len(row) == cols:
             rows.append(row)
