@@ -6,14 +6,16 @@ import { dirname, resolve } from "node:path";
  * Animated playing cards for the casino games.
  *
  * Discord cannot render PNGs as animations, so the cards are
- * pre-rendered: the faces in assets/cards/real-pack/ (Ronit's own card
- * pack — classic realistic design, 4K PNGs) are turned into flip GIFs
- * by scripts/render_pack_flips.py — each card's 3D flip (back -> flip
- * -> face) as an animated GIF in assets/cards/flips/<CODE>.gif. The
- * bot attaches those GIFs to its replies; the pack stays in the repo
- * as the source of the GIFs. (The older playing-cards.html
- * web-component art is kept as a reference only; it no longer supplies
- * the faces.)
+ * pre-rendered: the faces in assets/cards/emoji-gg-black-pack/ and
+ * assets/cards/emoji-gg-red-pack/ (emoji.gg cartoon card packs —
+ * spades+clubs black pack, diamonds+hearts red pack, 200x200 PNGs)
+ * are turned into flip GIFs by scripts/render_emoji_flips.py — each
+ * card's 3D flip (back -> flip -> face) as an animated GIF in
+ * assets/cards/flips/<CODE>.gif. The bot attaches those GIFs to its
+ * replies; the packs stay in the repo as the source of the GIFs. (The
+ * 4K realistic pack in assets/cards/real-pack/ and the older
+ * playing-cards.html web-component art are kept as references only;
+ * they no longer supply the faces.)
  * The GIFs are ~100px-wide cards, then composed into one (~700px)
  * transparent strip per game
  * by src/lib/handstrip.ts — bigger than the 28px version so the cards
