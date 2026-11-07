@@ -100,7 +100,7 @@ Tables: `user_profiles` (about + equipped bg, global per user),
 - `uwu bg <name>` (alias `background`) — equips a background you own, by
   name or id (prefix match works); `uwu profile bg <name>` does the same.
   Equipping one you don't own refuses with the price and the buy command.
-- `uwu profile` (alias `p`) — your profile card as an **800×500 animated
+- `uwu profile` (alias `p`) — your profile card as an **400×250 animated
   GIF image attachment** (`profile.gif`): level + XP bar (existing curve in
   `src/lib/levels.ts`), **global rank** (total XP summed across all guilds),
   gold, gems, About Me, monsters caught, guild name. On any render failure

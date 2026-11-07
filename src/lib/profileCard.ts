@@ -4,14 +4,14 @@ import { parseGIF, decompressFrames } from "gifuct-js";
 import GIFEncoder from "gif-encoder-2";
 
 /**
- * OwO-style profile card renderer (800x500 animated GIF).
+ * OwO-style profile card renderer (400x250 animated GIF).
  *
  * Pipeline (no native `canvas` — the VM cannot build it):
  *   1. Read the background file (fail-closed when missing).
  *   2. Decode it with gifuct-js: animated GIF -> composited RGBA frames
  *      (disposal honoured, same approach as src/lib/handstrip.ts);
  *      static PNG/JPG -> one frame via sharp.
- *   3. Per frame: sharp resizes the frame to 800x500 (cover), then
+ *   3. Per frame: sharp resizes the frame to 400x250 (cover), then
  *      composites a pre-rendered overlay PNG (dark scrim + all text/XP
  *      bar drawn as SVG, rendered once by sharp/librsvg) and the
  *      rounded avatar PNG.
@@ -20,10 +20,17 @@ import GIFEncoder from "gif-encoder-2";
  *
  * Text uses DejaVu Sans — present on this VM and on Render's Ubuntu
  * base image — via fontconfig, no custom font file shipped.
+ *
+ * Size note (2026-11-08): the card used to render at 800x500 and Ronit
+ * asked for it smaller. The file is now 400x250 — a straight 0.5x scale
+ * of the old layout, with the smallest fonts bumped a touch (extras 10
+ * instead of 9.5) so text stays readable. Background assets stay
+ * 800x500 on disk and are downscaled at render time (sharp resize,
+ * fit "cover"), so nothing in assets/ changes.
  */
 
-export const PROFILE_CARD_WIDTH = 800;
-export const PROFILE_CARD_HEIGHT = 500;
+export const PROFILE_CARD_WIDTH = 400;
+export const PROFILE_CARD_HEIGHT = 250;
 /** Max background frames kept in the output (keeps the GIF < 5 MB). */
 export const PROFILE_CARD_MAX_FRAMES = 10;
 export const PROFILE_CARD_MAX_BYTES = 5 * 1024 * 1024;
@@ -43,16 +50,16 @@ export interface ProfileCardInput {
   guildName: string | null;
 }
 
-// Layout constants (800x500).
-const AVATAR_X = 40;
-const AVATAR_Y = 40;
-const AVATAR_SIZE = 150;
-const AVATAR_RADIUS = 36;
-const TEXT_X = 215;
-const CONTENT_RIGHT = 760;
-const XP_BAR_Y = 208;
-const XP_BAR_W = CONTENT_RIGHT - TEXT_X; // 545
-const XP_BAR_H = 22;
+// Layout constants (400x250 — 0.5x of the old 800x500 layout).
+const AVATAR_X = 20;
+const AVATAR_Y = 20;
+const AVATAR_SIZE = 75;
+const AVATAR_RADIUS = 18;
+const TEXT_X = 108;
+const CONTENT_RIGHT = 380;
+const XP_BAR_Y = 104;
+const XP_BAR_W = CONTENT_RIGHT - TEXT_X; // 272
+const XP_BAR_H = 11;
 
 /** XP progress as a 0..1 fraction. Exported so tests can pin the math. */
 export function xpProgressFraction(input: Pick<ProfileCardInput, "xpIntoLevel" | "xpForNextLevel">): number {
@@ -174,7 +181,7 @@ function sampleIndices(count: number, max: number): number[] {
   return out;
 }
 
-/** Crop the avatar to a 150px rounded square (dest-in mask). */
+/** Crop the avatar to a 75px rounded square (dest-in mask). */
 async function roundedAvatar(avatarBuffer: Buffer): Promise<Buffer> {
   const mask = Buffer.from(
     `<svg width="${AVATAR_SIZE}" height="${AVATAR_SIZE}">` +
@@ -190,13 +197,13 @@ async function roundedAvatar(avatarBuffer: Buffer): Promise<Buffer> {
 
 /** Build the overlay SVG: dark scrim + every text element + XP bar. */
 function buildOverlaySvg(input: ProfileCardInput): string {
-  const name = truncateToWidth(input.displayName || "Unknown User", CONTENT_RIGHT - TEXT_X, 40, true);
+  const name = truncateToWidth(input.displayName || "Unknown User", CONTENT_RIGHT - TEXT_X, 20, true);
   const progress = xpProgressFraction(input);
   const fillW = Math.round(XP_BAR_W * progress);
-  const aboutLines = wrapText(input.about ?? "", CONTENT_RIGHT - AVATAR_X, 20, 2);
+  const aboutLines = wrapText(input.about ?? "", CONTENT_RIGHT - AVATAR_X, 10, 2);
   const extras: string[] = [`Monsters caught: ${fmt(input.monstersCaught)}`];
   if (input.guildName && input.guildName.trim()) {
-    extras.push(`Guild: ${truncateToWidth(input.guildName, 300, 19, false)}`);
+    extras.push(`Guild: ${truncateToWidth(input.guildName, 150, 10, false)}`);
   }
   const goldStr = `● ${fmt(input.gold)} gold`;
   const gemsStr = `◆ ${fmt(input.gems)} gems`;
@@ -207,17 +214,17 @@ function buildOverlaySvg(input: ProfileCardInput): string {
       ? aboutLines
           .map(
             (line, i) =>
-              `<text x="${AVATAR_X}" y="${368 + i * 28}" font-family="DejaVu Sans" font-size="20" fill="#e8ecf1">${escapeXml(line)}</text>`,
+              `<text x="${AVATAR_X}" y="${184 + i * 14}" font-family="DejaVu Sans" font-size="10" fill="#e8ecf1">${escapeXml(line)}</text>`,
           )
           .join("\n")
-      : `<text x="${AVATAR_X}" y="368" font-family="DejaVu Sans" font-size="20" font-style="italic" fill="#9aa7b5">No about me yet — set one with uwu about!</text>`;
+      : `<text x="${AVATAR_X}" y="184" font-family="DejaVu Sans" font-size="10" font-style="italic" fill="#9aa7b5">No about me yet — set one with uwu about!</text>`;
 
   // Placeholder avatar circle (drawn in the overlay when no avatar bytes).
   const avatarPlaceholder =
     input.avatarBuffer === null
-      ? `<rect x="${AVATAR_X}" y="${AVATAR_Y}" width="${AVATAR_SIZE}" height="${AVATAR_SIZE}" rx="${AVATAR_RADIUS}" fill="#3a4756" stroke="#ffffff" stroke-opacity="0.85" stroke-width="4"/>` +
-        `<text x="${AVATAR_X + AVATAR_SIZE / 2}" y="${AVATAR_Y + 98}" text-anchor="middle" font-family="DejaVu Sans" font-size="64" font-weight="bold" fill="#c7d0db">?</text>`
-      : `<rect x="${AVATAR_X}" y="${AVATAR_Y}" width="${AVATAR_SIZE}" height="${AVATAR_SIZE}" rx="${AVATAR_RADIUS}" fill="none" stroke="#ffffff" stroke-opacity="0.85" stroke-width="4"/>`;
+      ? `<rect x="${AVATAR_X}" y="${AVATAR_Y}" width="${AVATAR_SIZE}" height="${AVATAR_SIZE}" rx="${AVATAR_RADIUS}" fill="#3a4756" stroke="#ffffff" stroke-opacity="0.85" stroke-width="2"/>` +
+        `<text x="${AVATAR_X + AVATAR_SIZE / 2}" y="${AVATAR_Y + 49}" text-anchor="middle" font-family="DejaVu Sans" font-size="32" font-weight="bold" fill="#c7d0db">?</text>`
+      : `<rect x="${AVATAR_X}" y="${AVATAR_Y}" width="${AVATAR_SIZE}" height="${AVATAR_SIZE}" rx="${AVATAR_RADIUS}" fill="none" stroke="#ffffff" stroke-opacity="0.85" stroke-width="2"/>`;
 
   return `<svg width="${PROFILE_CARD_WIDTH}" height="${PROFILE_CARD_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -233,19 +240,19 @@ function buildOverlaySvg(input: ProfileCardInput): string {
   </defs>
   <rect x="0" y="0" width="${PROFILE_CARD_WIDTH}" height="${PROFILE_CARD_HEIGHT}" fill="url(#scrim)"/>
   ${avatarPlaceholder}
-  <text x="${TEXT_X}" y="92" font-family="DejaVu Sans" font-size="40" font-weight="bold" fill="#ffffff">${escapeXml(name)}</text>
-  <text x="${TEXT_X}" y="126" font-family="DejaVu Sans" font-size="20" fill="#cfd8e3">An uwu Bot User</text>
-  <text x="${TEXT_X}" y="172" font-family="DejaVu Sans" font-size="26" font-weight="bold" fill="#ffd54a">Lv ${fmt(input.level)}</text>
-  <text x="${TEXT_X + 150}" y="172" font-family="DejaVu Sans" font-size="26" font-weight="bold" fill="#ffffff">Rank #${fmt(input.rank)}</text>
-  <rect x="${TEXT_X}" y="${XP_BAR_Y}" width="${XP_BAR_W}" height="${XP_BAR_H}" rx="11" fill="#ffffff" fill-opacity="0.28"/>
-  ${fillW > 0 ? `<rect x="${TEXT_X}" y="${XP_BAR_Y}" width="${fillW}" height="${XP_BAR_H}" rx="11" fill="url(#xpfill)"/>` : ""}
-  <text x="${TEXT_X}" y="${XP_BAR_Y + XP_BAR_H + 24}" font-family="DejaVu Sans" font-size="18" fill="#e8ecf1">${fmt(input.xpIntoLevel)} / ${fmt(input.xpForNextLevel)} XP</text>
-  <text x="${TEXT_X}" y="292" font-family="DejaVu Sans" font-size="24" font-weight="bold" fill="#ffd54a">${escapeXml(goldStr)}</text>
-  ${gemsText ? `<text x="${CONTENT_RIGHT}" y="292" text-anchor="end" font-family="DejaVu Sans" font-size="24" font-weight="bold" fill="#7dd3fc">${escapeXml(gemsText)}</text>` : ""}
-  <line x1="${AVATAR_X}" y1="316" x2="${CONTENT_RIGHT}" y2="316" stroke="#ffffff" stroke-opacity="0.25" stroke-width="1"/>
-  <text x="${AVATAR_X}" y="344" font-family="DejaVu Sans" font-size="18" font-weight="bold" letter-spacing="2" fill="#9aa7b5">ABOUT ME</text>
+  <text x="${TEXT_X}" y="46" font-family="DejaVu Sans" font-size="20" font-weight="bold" fill="#ffffff">${escapeXml(name)}</text>
+  <text x="${TEXT_X}" y="63" font-family="DejaVu Sans" font-size="10" fill="#cfd8e3">An uwu Bot User</text>
+  <text x="${TEXT_X}" y="86" font-family="DejaVu Sans" font-size="13" font-weight="bold" fill="#ffd54a">Lv ${fmt(input.level)}</text>
+  <text x="${TEXT_X + 75}" y="86" font-family="DejaVu Sans" font-size="13" font-weight="bold" fill="#ffffff">Rank #${fmt(input.rank)}</text>
+  <rect x="${TEXT_X}" y="${XP_BAR_Y}" width="${XP_BAR_W}" height="${XP_BAR_H}" rx="6" fill="#ffffff" fill-opacity="0.28"/>
+  ${fillW > 0 ? `<rect x="${TEXT_X}" y="${XP_BAR_Y}" width="${fillW}" height="${XP_BAR_H}" rx="6" fill="url(#xpfill)"/>` : ""}
+  <text x="${TEXT_X}" y="${XP_BAR_Y + XP_BAR_H + 12}" font-family="DejaVu Sans" font-size="9" fill="#e8ecf1">${fmt(input.xpIntoLevel)} / ${fmt(input.xpForNextLevel)} XP</text>
+  <text x="${TEXT_X}" y="146" font-family="DejaVu Sans" font-size="12" font-weight="bold" fill="#ffd54a">${escapeXml(goldStr)}</text>
+  ${gemsText ? `<text x="${CONTENT_RIGHT}" y="146" text-anchor="end" font-family="DejaVu Sans" font-size="12" font-weight="bold" fill="#7dd3fc">${escapeXml(gemsText)}</text>` : ""}
+  <line x1="${AVATAR_X}" y1="158" x2="${CONTENT_RIGHT}" y2="158" stroke="#ffffff" stroke-opacity="0.25" stroke-width="1"/>
+  <text x="${AVATAR_X}" y="172" font-family="DejaVu Sans" font-size="9" font-weight="bold" letter-spacing="1" fill="#9aa7b5">ABOUT ME</text>
   ${aboutSvg}
-  <text x="${AVATAR_X}" y="452" font-family="DejaVu Sans" font-size="19" fill="#cfd8e3">${escapeXml(extras.join("   •   "))}</text>
+  <text x="${AVATAR_X}" y="226" font-family="DejaVu Sans" font-size="10" fill="#cfd8e3">${escapeXml(extras.join("   •   "))}</text>
 </svg>`;
 }
 
@@ -271,7 +278,7 @@ function encodeGif(width: number, height: number, frames: Buffer[], delays: numb
 }
 
 /**
- * Render an 800x500 animated GIF profile card.
+ * Render a 400x250 animated GIF profile card.
  * Throws a clear error when the background file is missing or unreadable
  * (fail-closed: never ship a blank card).
  */

@@ -79,7 +79,7 @@ registry (`src/commands/index.ts`), and deployed. Counted from the registry:
 
 | Command | Aliases | Args | Notes |
 |---|---|---|---|
-| `profile` | `p` | `[bg <name>]` | Your profile card — an 800×500 animated GIF image attachment (level, global rank, XP bar, gold, gems, About Me, monsters caught, guild); `uwu profile bg <name>` equips a background you own |
+| `profile` | `p` | `[bg <name>]` | Your profile card — an 400×250 animated GIF image attachment (level, global rank, XP bar, gold, gems, About Me, monsters caught, guild); `uwu profile bg <name>` equips a background you own |
 | `bg` | `background` | `<name>` | Equip a profile background you own, by name or id (prefix match works); the free Default always equips |
 | `about` | `aboutme` | `[text...]` | Set your About Me line (max 100 chars; @everyone/@here and Discord invite links are stripped); empty shows the current line |
 

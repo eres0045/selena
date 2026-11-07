@@ -14,8 +14,12 @@ import {
   type ProfileCardInput,
 } from "../src/lib/profileCard.js";
 
-const W = 800;
-const H = 500;
+const W = 400;
+const H = 250;
+// Fixture backgrounds are still built at the real asset size (800x500)
+// so the tests prove the renderer downscales them to the 400x250 card.
+const BG_W = 800;
+const BG_H = 500;
 
 let bgGifPath = "";
 let bgPngPath = "";
@@ -36,12 +40,12 @@ async function makeAnimatedBg(file: string, frames = 4): Promise<void> {
   for (let i = 0; i < frames; i++) {
     const c1 = ["#1a2a6c", "#134e5e", "#41295a", "#0f2027"][i % 4] as string;
     const c2 = ["#b21f1f", "#71b280", "#2f0743", "#2c5364"][i % 4] as string;
-    const svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs><rect width="${W}" height="${H}" fill="url(#g)"/></svg>`;
+    const svg = `<svg width="${BG_W}" height="${BG_H}" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs><rect width="${BG_W}" height="${BG_H}" fill="url(#g)"/></svg>`;
     const { data } = await sharp(Buffer.from(svg)).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     raws.push(data);
   }
   const gif = await new Promise<Buffer>((resolve, reject) => {
-    const enc = new GIFEncoder(W, H);
+    const enc = new GIFEncoder(BG_W, BG_H);
     const chunks: Buffer[] = [];
     const stream = enc.createReadStream();
     stream.on("data", (c: Buffer) => chunks.push(c));
@@ -66,7 +70,7 @@ beforeAll(async () => {
   bgPngPath = path.join(dir, "bg.png");
   await makeAnimatedBg(bgGifPath, 4);
   await sharp({
-    create: { width: W, height: H, channels: 3, background: { r: 30, g: 60, b: 120 } },
+    create: { width: BG_W, height: BG_H, channels: 3, background: { r: 30, g: 60, b: 120 } },
   })
     .png()
     .toFile(bgPngPath);
@@ -127,10 +131,18 @@ function meanRgb(
 }
 
 describe("renderProfileCard", () => {
-  it("renders an 800x500 animated GIF under 5MB from an animated bg", async () => {
+  it("renders exactly 400x250 (the smaller card size, 2026-11-08)", async () => {
+    const { PROFILE_CARD_WIDTH, PROFILE_CARD_HEIGHT } = await import("../src/lib/profileCard.js");
+    expect(PROFILE_CARD_WIDTH).toBe(400);
+    expect(PROFILE_CARD_HEIGHT).toBe(250);
+    const buf = await renderProfileCard(baseInput());
+    expect(gifSize(buf)).toEqual({ width: 400, height: 250 });
+  });
+
+  it("renders a 400x250 animated GIF under 5MB from an 800x500 animated bg", async () => {
     const buf = await renderProfileCard(baseInput());
     expect(buf.subarray(0, 6).toString("ascii")).toMatch(/^GIF8[79]a$/);
-    expect(gifSize(buf)).toEqual({ width: 800, height: 500 });
+    expect(gifSize(buf)).toEqual({ width: 400, height: 250 });
     expect(gifFrameCount(buf)).toBeGreaterThan(1);
     expect(buf.length).toBeLessThan(5 * 1024 * 1024);
   });
@@ -138,7 +150,7 @@ describe("renderProfileCard", () => {
   it("renders a single-frame GIF from a static PNG background", async () => {
     const buf = await renderProfileCard(baseInput({ backgroundPath: bgPngPath }));
     expect(buf.subarray(0, 6).toString("ascii")).toMatch(/^GIF8[79]a$/);
-    expect(gifSize(buf)).toEqual({ width: 800, height: 500 });
+    expect(gifSize(buf)).toEqual({ width: 400, height: 250 });
     expect(gifFrameCount(buf)).toBe(1);
   });
 
@@ -150,7 +162,7 @@ describe("renderProfileCard", () => {
 
   it("composites the avatar pixels into the card (red avatar = red avatar region)", async () => {
     // Solid red avatar on the static BLUE background: the avatar box
-    // (x 40..190, y 40..190) must come out red-dominant in the centre
+    // (x 20..95, y 20..95) must come out red-dominant in the centre
     // (the white border + scrim are avoided by sampling the middle).
     const redAvatar = await sharp({
       create: { width: 256, height: 256, channels: 3, background: { r: 255, g: 0, b: 0 } },
@@ -158,14 +170,14 @@ describe("renderProfileCard", () => {
       .png()
       .toBuffer();
     const withAvatar = await renderProfileCard(baseInput({ backgroundPath: bgPngPath, avatarBuffer: redAvatar }));
-    const rgb = meanRgb(firstFramePixels(withAvatar), 100, 100, 140, 140);
+    const rgb = meanRgb(firstFramePixels(withAvatar), 45, 45, 70, 70);
     expect(rgb.r).toBeGreaterThan(80);
     expect(rgb.r).toBeGreaterThan(rgb.g + 40);
     expect(rgb.r).toBeGreaterThan(rgb.b + 40);
     // Control: the same card with a null avatar is NOT red there
     // (blue background under the dark scrim).
     const noAvatar = await renderProfileCard(baseInput({ backgroundPath: bgPngPath, avatarBuffer: null }));
-    const rgbNull = meanRgb(firstFramePixels(noAvatar), 100, 100, 140, 140);
+    const rgbNull = meanRgb(firstFramePixels(noAvatar), 45, 45, 70, 70);
     expect(rgbNull.r).toBeLessThan(rgbNull.b);
   });
 
@@ -182,7 +194,7 @@ describe("renderProfileCard", () => {
       }),
     );
     expect(buf.subarray(0, 6).toString("ascii")).toMatch(/^GIF8[79]a$/);
-    expect(gifSize(buf)).toEqual({ width: 800, height: 500 });
+    expect(gifSize(buf)).toEqual({ width: 400, height: 250 });
   });
 
   it("throws a clear error for a missing background file (fail-closed)", async () => {

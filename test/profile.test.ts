@@ -570,7 +570,7 @@ describe("profile commands", () => {
     expect(inv.text()).toContain("profile card");
   });
 
-  it("renders a real 800x500 GIF from the exact input the command assembles", async () => {
+  it("renders a real 400x250 GIF from the exact input the command assembles", async () => {
     // Proves the command's input shape against the REAL renderer:
     // same values handleProfileShow passes, with a temp PNG standing
     // in for the not-yet-landed background file.
@@ -611,15 +611,15 @@ describe("profile commands", () => {
     });
     expect(buf.subarray(0, 6).toString("ascii")).toBe("GIF89a");
     const gif = parseGIF(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
-    expect(gif.lsd.width).toBe(800);
-    expect(gif.lsd.height).toBe(500);
+    expect(gif.lsd.width).toBe(400);
+    expect(gif.lsd.height).toBe(250);
     expect(buf.length).toBeGreaterThan(1000);
     await writeFile(path.join(dir, "card.gif"), buf);
   });
 
   it("uwu profile composites the fetched avatar into the card", async () => {
     // End-to-end: fetch -> render -> attachment, with a solid RED avatar.
-    // The avatar box centre (x 100..140, y 100..140) must come out
+    // The avatar box centre (x 45..70, y 45..70) must come out
     // red-dominant — that only happens when the fetched bytes land in
     // the card (the "?" fallback would show the dark background there).
     const sharp = (await import("sharp")).default;
@@ -655,8 +655,8 @@ describe("profile commands", () => {
       let g = 0;
       let b = 0;
       let n = 0;
-      for (let y = 100; y < 140; y++) {
-        for (let x = 100; x < 140; x++) {
+      for (let y = 45; y < 70; y++) {
+        for (let x = 45; x < 70; x++) {
           const i = (y * frame.dims.width + x) * 4;
           r += frame.patch[i] as number;
           g += frame.patch[i + 1] as number;

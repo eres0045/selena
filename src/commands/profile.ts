@@ -19,7 +19,7 @@ import { renderProfileCard } from "../lib/profileCard.js";
 /**
  * Profile commands (Worker C):
  *
- *   uwu profile            your profile card (800x500 animated GIF)
+ *   uwu profile            your profile card (400x250 animated GIF)
  *   uwu profile bg <name>  equip an owned background (same as `uwu bg`)
  *   uwu bg <name>          equip an owned background by name or id
  *   uwu about <text>       set your About Me line (max 100 chars;

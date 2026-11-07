@@ -11,8 +11,8 @@ import sharp from "sharp";
 import GIFEncoder from "gif-encoder-2";
 import { renderProfileCard } from "../src/lib/profileCard.js";
 
-const W = 800;
-const H = 500;
+const W = 400;
+const H = 250;
 
 async function makeAnimatedBg(): Promise<string> {
   const hues: Array<[string, string]> = [
