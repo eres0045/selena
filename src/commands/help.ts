@@ -1,5 +1,6 @@
+import { EmbedBuilder } from "discord.js";
 import type { Command, CommandInvocation } from "../lib/command.js";
-import { errorEmbed } from "../lib/command.js";
+import { errorEmbed, selenaEmbed } from "../lib/command.js";
 
 // HELP_GROUPS lives in the registry (./index.js), which imports this file —
 // so it is loaded lazily inside execute() instead of at module top level.
@@ -9,35 +10,64 @@ import { errorEmbed } from "../lib/command.js";
 export const buttonHandlers: Record<string, (...args: never[]) => Promise<void>> = {};
 export const modalHandlers: Record<string, (...args: never[]) => Promise<void>> = {};
 
-/** Discord caps plain-text message content at 2000 chars. The full
- * grouped help list renders at ~3.8k chars, so a single reply throws
- * inside discord.js and surfaces as the generic "Couldn't run that"
- * error — keep every chunk under the limit with margin. */
-export const HELP_MESSAGE_LIMIT = 1900;
+/** Discord caps an embed's total length (title + description + fields +
+ * footer) at 6000 chars. The compact name-only list is ~1.3k chars, well
+ * under — but the guard below keeps it honest if the registry grows. */
+export const HELP_EMBED_LIMIT = 6000;
 
-/** Split rendered help text into messages that each fit Discord's
- * 2000-char content limit, breaking only on line boundaries (a single
- * over-long line is hard-sliced as a last resort). */
-export function splitHelpMessage(text: string, limit: number = HELP_MESSAGE_LIMIT): string[] {
-  const messages: string[] = [];
-  let current = "";
-  const flush = () => {
-    if (current) {
-      messages.push(current);
-      current = "";
-    }
-  };
-  for (const line of text.split("\n")) {
-    if (line.length > limit) {
-      flush();
-      for (let i = 0; i < line.length; i += limit) messages.push(line.slice(i, i + limit));
-      continue;
-    }
-    if (current && current.length + 1 + line.length > limit) flush();
-    current = current ? `${current}\n${line}` : line;
+/** One emoji per help category, OwO-style headers. */
+export const CATEGORY_EMOJI: Record<string, string> = {
+  Economy: "💰",
+  Casino: "🎰",
+  Fun: "🎉",
+  Games: "🎮",
+  Moderation: "🛡️",
+  Utility: "🔧",
+  Help: "❓",
+};
+
+export interface HelpGroupLike {
+  category: string;
+  commands: Array<{ name: string; description: string; aliases: string[] }>;
+}
+
+/** Build the one-box command list: title + short intro, then one field
+ * per category holding ONLY the command names as inline `code` chips —
+ * no descriptions, no aliases in the list. That is what keeps it short:
+ * all 47 commands fit in a single embed. */
+export function buildHelpEmbed(groups: HelpGroupLike[]): EmbedBuilder {
+  const embed = selenaEmbed(
+    "Command List",
+    "Here is the list of commands!\nFor more info on a specific command, use `uwu help {command}`",
+  );
+  for (const group of groups) {
+    const emoji = CATEGORY_EMOJI[group.category] ?? "📌";
+    const chips = group.commands.map((c) => `\`${c.name}\``).join(" ");
+    embed.addFields({ name: `${emoji} ${group.category}`, value: chips || "—", inline: false });
   }
-  flush();
-  return messages;
+  return embed;
+}
+
+/** Discord's embed total-length accounting (title + description + every
+ * field name + value + footer), used by the guard and the tests. */
+export function helpEmbedLength(embed: EmbedBuilder): number {
+  const json = embed.toJSON();
+  let total = (json.title ?? "").length + (json.description ?? "").length;
+  total += (json.footer?.text ?? "").length;
+  for (const field of json.fields ?? []) {
+    total += field.name.length + field.value.length;
+  }
+  return total;
+}
+
+/** Plain-text detail for one command: usage line, description, aliases. */
+export function commandDetail(cmd: { name: string; description: string; aliases: string[]; args?: Array<{ name: string; required?: boolean; rest?: boolean }> }): string {
+  const usage = (cmd.args ?? [])
+    .map((a) => (a.rest ? `<${a.name}...>` : a.required ? `<${a.name}>` : `[${a.name}]`))
+    .join(" ");
+  const lines = [`\`uwu ${cmd.name}${usage ? ` ${usage}` : ""}\``, "", cmd.description];
+  if (cmd.aliases.length > 0) lines.push("", `Aliases: ${cmd.aliases.map((a) => `\`${a}\``).join(", ")}`);
+  return lines.join("\n");
 }
 
 export const commands: Command[] = [
@@ -47,35 +77,53 @@ export const commands: Command[] = [
     aliases: ["h", "commands"],
     args: [{ name: "category", type: "string" }],
     async execute(inv) {
-      const { HELP_GROUPS } = await import("./index.js");
-      const category = inv.options.getString("category");
-      const groups = category
-        ? HELP_GROUPS.filter((g) => g.category.toLowerCase() === category.toLowerCase())
-        : HELP_GROUPS;
-      if (category && groups.length === 0) {
+      const { HELP_GROUPS, allCommands } = await import("./index.js");
+      const topic = inv.options.getString("category");
+
+      // Category first: the "Help" category collides with the `help`
+      // command name, so a category match must win over a command match.
+      if (topic) {
+        const wanted = topic.toLowerCase();
+        const groups = HELP_GROUPS.filter((g) => g.category.toLowerCase() === wanted);
+        if (groups.length > 0) {
+          await inv.reply({ embeds: [buildHelpEmbed(groups).toJSON()], ephemeral: true });
+          return;
+        }
+        // `uwu help <command>` (or an alias): plain-text detail for that
+        // one command — usage, description, aliases.
+        const cmd = allCommands.find(
+          (c) => c.name === wanted || c.aliases.some((a) => a === wanted),
+        );
+        if (cmd) {
+          await inv.reply({ content: commandDetail(cmd), ephemeral: true });
+          return;
+        }
         const known = HELP_GROUPS.map((g) => g.category).join(", ");
         await inv.reply({
-          embeds: [errorEmbed(`Unknown category "${category}". Categories: ${known}`).toJSON()],
+          embeds: [
+            errorEmbed(
+              `Unknown command or category "${topic}". Categories: ${known}. Try \`uwu help\` for the full list.`,
+            ).toJSON(),
+          ],
           ephemeral: true,
         });
         return;
       }
-      // OwO-style plain text, no embed box: one grouped list, same
-      // commands + aliases as before, just as text lines — split across
-      // messages so no single reply exceeds Discord's 2000-char cap.
-      const lines: string[] = [category ? `Help — ${groups[0]!.category}` : "uwu — all commands", ""];
-      for (const group of groups) {
-        lines.push(group.category);
-        for (const c of group.commands) {
-          const aliasText = c.aliases.length > 0 ? ` (${c.aliases.join(", ")})` : "";
-          lines.push(`\`uwu ${c.name}\`${aliasText} — ${c.description}`);
-        }
-        lines.push("");
+
+      // `uwu help`: ONE compact embed box with every command name, no
+      // descriptions, no aliases — OwO-style, short, not three messages.
+      // (The old 3-message split is gone: the name-only list is ~1.3k
+      // chars, far under Discord's 6000-char embed cap.)
+      const embed = buildHelpEmbed(HELP_GROUPS);
+      if (helpEmbedLength(embed) <= HELP_EMBED_LIMIT) {
+        await inv.reply({ embeds: [embed.toJSON()], ephemeral: true });
+        return;
       }
-      const messages = splitHelpMessage(lines.join("\n").trimEnd());
-      await inv.reply({ content: messages[0], ephemeral: true });
-      for (const rest of messages.slice(1)) {
-        await inv.followUp({ content: rest, ephemeral: true });
+      // Guard, only if the registry ever grows past the embed cap: one
+      // embed per category instead of one giant one.
+      await inv.reply({ embeds: [buildHelpEmbed([HELP_GROUPS[0]!]).toJSON()], ephemeral: true });
+      for (const group of HELP_GROUPS.slice(1)) {
+        await inv.followUp({ embeds: [buildHelpEmbed([group]).toJSON()], ephemeral: true });
       }
     },
   },

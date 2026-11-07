@@ -318,27 +318,41 @@ describe("handlePrefixMessage", () => {
     expect(msg.allText()).toContain("Amount must be a positive whole number.");
   });
 
-  it("runs `uwu help` listing every command with aliases, grouped like before", async () => {
+  it("runs `uwu help` as ONE compact embed box listing every command name, grouped", async () => {
     const msg = new FakePrefixMessage("uwu help");
     await handlePrefixMessage(msg, { db, guildId: GUILD });
+    // OwO-style box, not the old 3-message plain-text list: exactly one
+    // reply carrying one embed, title "Command List", one field per
+    // category holding ONLY the command names as `code` chips — no
+    // descriptions, no aliases in the list.
+    const replies = [...msg.replies, ...msg.channelSends];
+    expect(replies.length).toBe(1);
+    // FakePrefixMessage stores the payload itself (no { kind, payload }
+    // wrapper like FakeChatInput's replies).
+    const payload = replies[0]! as Record<string, unknown>;
+    expect(payload.content).toBeUndefined();
+    const embeds = payload.embeds as Array<Record<string, unknown>>;
+    expect(embeds.length).toBe(1);
+    expect(embeds[0]!.title).toBe("Command List");
     const text = msg.allText();
+    expect(text).toContain("Here is the list of commands!");
     for (const cmd of allCommands) {
-      expect(text).toContain(`uwu ${cmd.name}`);
+      expect(text).toContain(`\`${cmd.name}\``);
     }
-    expect(text).toContain("uwu balance` (bal, money, wallet)");
+    expect(text).not.toContain("(bal, money, wallet)");
     for (const group of HELP_GROUPS) {
       expect(text).toContain(group.category);
     }
-    // Regression 2026-11-07: the full list (~3.8k chars) was sent as one
-    // message, over Discord's 2000-char cap, so `uwu help` failed every
-    // time. It must now arrive as several sub-limit chunks.
-    const chunks = [...msg.replies, ...msg.channelSends]
-      .map((p) => p.content)
-      .filter((c): c is string => typeof c === "string");
-    expect(chunks.length).toBeGreaterThan(1);
-    for (const chunk of chunks) {
-      expect(chunk.length).toBeLessThanOrEqual(2000);
-    }
+    // Regression 2026-11-07: the full list must stay under Discord's
+    // 6000-char embed cap in a single embed (the plain-text version was
+    // 3,837 chars, over the 2000-char message cap, and `uwu help` failed
+    // every time until it was split).
+    const fields = embeds[0]!.fields as Array<{ name: string; value: string }>;
+    const total =
+      String(embeds[0]!.title ?? "").length +
+      String(embeds[0]!.description ?? "").length +
+      fields.reduce((n, f) => n + f.name.length + f.value.length, 0);
+    expect(total).toBeLessThanOrEqual(6000);
   });
 });
 

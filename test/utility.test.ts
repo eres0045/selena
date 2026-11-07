@@ -4,7 +4,7 @@ import { FakeChatInput } from "../src/lib/testkit.js";
 import { awardXp, levelFromXp, rankCard, resetXpCooldowns, xpForLevel } from "../src/lib/levels.js";
 import { checkStarboard, containsBannedWord, containsLink, isSpam } from "../src/lib/automod.js";
 import { commands as utilityCommands, createReminder, getAfk, setAfk, topByXp } from "../src/commands/utility.js";
-import { commands as helpCommands, splitHelpMessage } from "../src/commands/help.js";
+import { commands as helpCommands, buildHelpEmbed, commandDetail, helpEmbedLength, HELP_EMBED_LIMIT } from "../src/commands/help.js";
 import { allCommands, HELP_GROUPS } from "../src/commands/index.js";
 import type { Command } from "../src/lib/command.js";
 
@@ -210,28 +210,53 @@ describe("/help", () => {
     const cmd = helpCommands.find((c) => c.name === "help")!;
     const db = getTestDb();
     await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(fake, { db, guildId: GUILD });
+    // One compact embed box: every command appears as a `name` chip.
     for (const c of allCommands) {
-      expect(fake.allText()).toContain(`uwu ${c.name}`);
+      expect(fake.allText()).toContain(`\`${c.name}\``);
     }
   });
 
-  it("errors on an unknown category, filters on a known one", async () => {
+  it("errors on an unknown topic, filters on a known category, details a known command", async () => {
     const db = getTestDb();
     const bad = new FakeChatInput({ commandName: "help", options: { category: "Nope" } });
     const cmd = helpCommands.find((c) => c.name === "help")!;
     await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(bad, { db, guildId: GUILD });
-    expect(bad.allText()).toContain("Unknown category");
+    expect(bad.allText()).toContain("Unknown command or category");
 
     const good = new FakeChatInput({ commandName: "help", options: { category: "Utility" } });
     await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(good, { db, guildId: GUILD });
-    expect(good.allText()).toContain("uwu rank");
-    expect(good.allText()).not.toContain("uwu warn");
+    expect(good.allText()).toContain("`rank`");
+    expect(good.allText()).not.toContain("`warn`");
+
+    const detail = new FakeChatInput({ commandName: "help", options: { category: "mines" } });
+    await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(detail, { db, guildId: GUILD });
+    const payload = detail.firstReplyPayload() as Record<string, unknown>;
+    expect(payload.embeds).toBeUndefined();
+    expect(payload.content as string).toContain("`uwu mines <bet> [mines]`");
+    expect(payload.content as string).toContain("`mine`");
+
+    const byAlias = new FakeChatInput({ commandName: "help", options: { category: "cf" } });
+    await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(byAlias, { db, guildId: GUILD });
+    expect(byAlias.allText()).toContain("`uwu coinflip");
+
+    // Regression: the "Help" category collides with the `help` command
+    // name — `uwu help help` must show the Help category box, not the
+    // command detail (category match wins over command match).
+    const helpCat = new FakeChatInput({ commandName: "help", options: { category: "help" } });
+    await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(helpCat, { db, guildId: GUILD });
+    const helpPayload = helpCat.firstReplyPayload() as Record<string, unknown>;
+    const helpEmbeds = helpPayload.embeds as Array<Record<string, unknown>>;
+    expect(helpEmbeds?.length).toBe(1);
+    expect(helpEmbeds[0]!.title).toBe("Command List");
+    expect(helpCat.allText()).toContain("`help`");
   });
 
-  it("regression: every help reply fits Discord's 2000-char message limit", async () => {
-    // 2026-11-07: the full grouped list renders at ~3.8k chars; sending
-    // it as one message threw inside discord.js and `uwu help` failed
-    // every time with the generic "Couldn't run that" error.
+  it("regression: the full list is ONE embed under Discord's 6000-char embed cap", async () => {
+    // 2026-11-07: the plain-text full list renders at ~3.8k chars, over
+    // Discord's 2000-char message cap, so `uwu help` failed every time
+    // until it was split across 3 messages — then Ronit asked for the
+    // OwO one-box list instead. Names only, no descriptions/aliases, so
+    // all 47 commands fit in a single embed.
     const cmd = helpCommands.find((c) => c.name === "help")!;
     const run = async (options: Record<string, unknown>) => {
       const db = getTestDb();
@@ -244,30 +269,37 @@ describe("/help", () => {
     for (const options of variants) {
       const fake = await run(options);
       expect(fake.allText()).not.toContain("Couldn't run that");
-      const contents = fake.replies
-        .map((r) => (r.payload as Record<string, unknown>).content)
-        .filter((c): c is string => typeof c === "string");
-      expect(contents.length).toBeGreaterThan(0);
-      for (const content of contents) {
-        expect(content.length).toBeLessThanOrEqual(2000);
-      }
+      const payload = fake.firstReplyPayload() as Record<string, unknown>;
+      const embeds = payload.embeds as Array<Record<string, unknown>>;
+      expect(embeds?.length).toBe(1);
+      expect(embeds[0]!.title).toBe("Command List");
+      expect(fake.replies.length).toBe(1);
     }
-    // Full (unfiltered) help must split into several messages, each under
-    // the limit, and the joined text must still list every command.
+    // Full (unfiltered) help: one embed, under the cap, listing every
+    // command name as a chip.
     const full = await run({});
-    expect(full.replies.length).toBeGreaterThan(1);
+    const embed = buildHelpEmbed(HELP_GROUPS);
+    expect(helpEmbedLength(embed)).toBeLessThanOrEqual(HELP_EMBED_LIMIT);
     for (const c of allCommands) {
-      expect(full.allText()).toContain(`uwu ${c.name}`);
+      expect(full.allText()).toContain(`\`${c.name}\``);
     }
   });
 
-  it("splitHelpMessage keeps chunks under the limit and loses no text", () => {
-    const text = Array.from({ length: 200 }, (_, i) => `line ${i} with some filler text here`).join("\n");
-    const chunks = splitHelpMessage(text);
-    expect(chunks.every((c) => c.length <= 2000)).toBe(true);
-    expect(chunks.join("\n")).toBe(text);
-    expect(splitHelpMessage("short")).toEqual(["short"]);
-    expect(splitHelpMessage("")).toEqual([]);
-    expect(splitHelpMessage("x".repeat(4500)).every((c) => c.length <= 2000)).toBe(true);
+  it("buildHelpEmbed is names-only and commandDetail shows usage + aliases", () => {
+    const embed = buildHelpEmbed(HELP_GROUPS).toJSON();
+    expect(embed.title).toBe("Command List");
+    expect(embed.description).toContain("Here is the list of commands!");
+    expect(embed.description).toContain("`uwu help {command}`");
+    const values = (embed.fields ?? []).map((f) => f.value).join(" ");
+    expect(values).toContain("`mines`");
+    expect(values).not.toContain("reveal safe tiles");
+    expect(values).not.toContain("(mine)");
+    expect(helpEmbedLength(buildHelpEmbed(HELP_GROUPS))).toBeLessThanOrEqual(HELP_EMBED_LIMIT);
+
+    const mines = allCommands.find((c) => c.name === "mines")!;
+    const detail = commandDetail(mines);
+    expect(detail).toContain("`uwu mines <bet> [mines]`");
+    expect(detail).toContain(mines.description);
+    expect(detail).toContain("`mine`");
   });
 });
