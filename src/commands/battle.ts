@@ -1,6 +1,7 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
+import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import type { Command, CommandContext, CommandInvocation } from "../lib/command.js";
-import { errorEmbed, fmt } from "../lib/command.js";
+import { errorEmbed, fmt, resolveDisplayNames } from "../lib/command.js";
+import { renderBattleCard, type BattleCardInput } from "../lib/battleCard.js";
 import { addPoints } from "../lib/economy.js";
 import { monsterEmoji } from "../lib/hunt.js";
 import { awardGuildXpBestEffort } from "../lib/guilds.js";
@@ -35,8 +36,11 @@ import {
  * accept and paid to the winner. 1-minute cooldown per user between
  * battles, stored in user_battle so it survives redeploys.
  *
- * Plain-text OwO-style replies everywhere, like the rest of the bot.
- * All persistent state in Supabase — never in-memory.
+ * Plain-text OwO-style replies everywhere, except the battle replay
+ * itself: each round edits ONE message with a battle card image
+ * (HP bars, fainted state) via src/lib/battleCard.ts, with the old
+ * plain-text edits as the fallback whenever a render fails. All
+ * persistent state in Supabase — never in-memory.
  *
  * The 60s due-task sweep in src/index.ts is expected to call the
  * re-exported expireBattleChallenges(db, nowMs) — this module does NOT
@@ -47,6 +51,41 @@ export { expireBattleChallenges };
 
 /** Delay between round edits in the battle replay (tests set it to 0). */
 export const battleReplay = { delayMs: 750 };
+
+/**
+ * Test seam for the battle card renderer (same pattern as battleReplay):
+ * the replay calls `battleCardRenderer.render(...)`, never the imported
+ * function directly, so tests can stub it (e.g. make it throw) without
+ * touching the module import.
+ */
+export const battleCardRenderer = { render: renderBattleCard };
+
+/**
+ * Plain display names for the battle card — mentions (`<@id>`) would
+ * render literally in the image. Challenger: guild member display name
+ * when fetchable, else the raw id (no username is available for the
+ * challenger on the accept interaction). Opponent (the acceptor):
+ * guild display name when the fetch worked, else `inv.user.username`
+ * (always present), else the raw id. Never throws — a name lookup can
+ * never crash a battle.
+ */
+async function resolveBattleNames(
+  inv: any,
+  challengerId: string,
+  opponentId: string,
+): Promise<{ aName: string; bName: string }> {
+  let aName = challengerId;
+  let bName = inv.user?.username ?? opponentId;
+  try {
+    const names = await resolveDisplayNames(inv, [challengerId, opponentId]);
+    aName = names[0] ?? challengerId;
+    const oppDisplay = names[1];
+    if (oppDisplay && oppDisplay !== opponentId) bName = oppDisplay;
+  } catch {
+    // Fallbacks above already stand.
+  }
+  return { aName, bName };
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -261,6 +300,47 @@ async function runAcceptedBattle(
   await setBattleTimestamp(db, challenge.challengerId, endNow);
   await setBattleTimestamp(db, challenge.opponentId, endNow);
 
+  // Display names for the card (resolved once, after settlement —
+  // settlement must complete regardless of display).
+  const { aName, bName } = await resolveBattleNames(inv, challenge.challengerId, challenge.opponentId);
+
+  // Shared card fields. The wager is omitted when 0 so the card never
+  // shows a "0 gold wager" line.
+  const cardBase = {
+    aName,
+    bName,
+    roundsTotal: result.roundsFought,
+    ...(challenge.wager > 0 ? { wager: challenge.wager } : {}),
+  };
+
+  /** Render one battle card; null on failure (caller falls back to text). */
+  const renderCard = async (
+    input: Omit<BattleCardInput, "aName" | "bName" | "roundsTotal" | "wager">,
+  ): Promise<Buffer | null> => {
+    try {
+      return await battleCardRenderer.render({ ...cardBase, ...input });
+    } catch (e) {
+      console.error("uwu: battle card render failed:", e instanceof Error ? e.message : e);
+      return null;
+    }
+  };
+
+  // Opening card (round 0, full-HP snapshot). If it fails to render or
+  // edit, the plain-text round edits below are the fallback.
+  const openingPng = await renderCard({
+    aFighters: result.opening.aFighters,
+    bFighters: result.opening.bFighters,
+    round: 0,
+    actionLine: "The battle begins!",
+  });
+  if (openingPng) {
+    try {
+      await inv.editReply({ files: [new AttachmentBuilder(openingPng, { name: "battle.png" })], components: [] });
+    } catch (e) {
+      console.error("uwu: battle opening edit failed:", e instanceof Error ? e.message : e);
+    }
+  }
+
   const header =
     `⚔️ Battle — <@${challenge.challengerId}> vs <@${challenge.opponentId}>` +
     (challenge.wager > 0 ? ` · 💰 ${fmt(challenge.wager)} gold wager` : "");
@@ -268,11 +348,23 @@ async function runAcceptedBattle(
   for (const round of result.rounds) {
     shown.push(...round.lines);
     const window = shown.slice(-8);
+    const textContent =
+      `${header}\n\nRound ${round.n} — ${result.roundsFought} rounds total\n${window.join("\n")}\n\n${round.aLine}\n${round.bLine}`;
+    // The round's last line is the action line — simple and honest.
+    const png = await renderCard({
+      aFighters: round.aFighters,
+      bFighters: round.bFighters,
+      round: round.n,
+      actionLine: round.lines[round.lines.length - 1] ?? "",
+    });
     try {
-      await inv.editReply({
-        content: `${header}\n\nRound ${round.n} — ${result.roundsFought} rounds total\n${window.join("\n")}\n\n${round.aLine}\n${round.bLine}`,
-        components: [],
-      });
+      if (png) {
+        // editReply with files REPLACES the previous attachment — the
+        // message never accumulates one card per round.
+        await inv.editReply({ files: [new AttachmentBuilder(png, { name: "battle.png" })], components: [] });
+      } else {
+        await inv.editReply({ content: textContent, components: [] });
+      }
     } catch {
       break; // Message gone — the result edit below still tries once.
     }
@@ -307,8 +399,37 @@ async function runAcceptedBattle(
   if (settled.monsterLevelUps.length > 0) {
     finalText += `\n${settled.monsterLevelUps.join("\n")}`;
   }
+  // Final card (winner only — a draw keeps the plain-text final edit
+  // entirely). The text result rides along as the message content so
+  // the outcome stays readable/searchable. On render failure the
+  // plain-text final edit is the fallback, level-up lines included.
+  let finalPng: Buffer | null = null;
+  if (result.winner !== "draw") {
+    const winnerName = result.winner === "A" ? aName : bName;
+    const winnerXp = result.winner === "A" ? settled.aXp : settled.bXp;
+    const winnerStreak = result.winner === "A" ? settled.aStreak : settled.bStreak;
+    const lastRound = result.rounds[result.rounds.length - 1];
+    const blow = result.finalBlow;
+    finalPng = await renderCard({
+      aFighters: lastRound?.aFighters ?? result.opening.aFighters,
+      bFighters: lastRound?.bFighters ?? result.opening.bFighters,
+      round: result.roundsFought,
+      actionLine: blow
+        ? `${blow.attackerName} landed the final blow on ${blow.targetName} with ${blow.move}!`
+        : `${winnerName} wins the battle!`,
+      footer: { winnerName, roundsFought: result.roundsFought, winnerXp, winnerStreak },
+    });
+  }
   try {
-    await inv.editReply({ content: finalText, components: [] });
+    if (finalPng) {
+      await inv.editReply({
+        content: finalText,
+        files: [new AttachmentBuilder(finalPng, { name: "battle.png" })],
+        components: [],
+      });
+    } else {
+      await inv.editReply({ content: finalText, components: [] });
+    }
   } catch (e) {
     console.error("uwu: battle final edit failed:", e instanceof Error ? e.message : e);
   }

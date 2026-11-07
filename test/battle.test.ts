@@ -16,6 +16,7 @@ import {
   createChallenge,
   expireBattleChallenges,
   getBattleCooldownRemainingMs,
+  getBattleStreak,
   getBattleTeam,
   getChallenge,
   grantMonsterXp,
@@ -636,5 +637,48 @@ describe("getBattleTeam (DB)", () => {
 
   it("returns an empty team for a user with no monsters", async () => {
     expect(await getBattleTeam(db, GUILD, ALICE)).toEqual([]);
+  });
+});
+
+describe("battle streaks end-to-end (button-driven battle)", () => {
+  let db: SelenaDb;
+  const ctx = () => ({ db, guildId: GUILD });
+
+  beforeEach(() => {
+    db = getTestDb();
+    battleReplay.delayMs = 0;
+  });
+
+  it("a full accepted battle leaves the winner at streak 1 and the loser at 0", async () => {
+    for (const id of [91, 92, 93]) await addMonster(db, GUILD, ALICE, id, "hunt", Date.now());
+    for (const id of [1, 2, 3]) await addMonster(db, GUILD, BOB, id, "hunt", Date.now());
+    const cmd = commands.find((c) => c.name === "battle")!;
+    const inv = new FakeChatInput({
+      commandName: "battle",
+      userId: ALICE,
+      username: "Alice",
+      guildId: GUILD,
+      options: { opponent: { id: BOB, username: "Bob" } },
+    });
+    await cmd.execute(inv as never, ctx());
+    const row = (await db
+      .prepare("SELECT id FROM battle_challenges WHERE challenger_id = ? AND opponent_id = ? ORDER BY id DESC LIMIT 1")
+      .get(ALICE, BOB)) as { id: number } | undefined;
+    expect(row, "challenge row created").toBeDefined();
+    const btn = new FakeButton({ customId: `selena:battle:accept:${Number(row!.id)}`, userId: BOB, username: "Bob" });
+    await buttonHandlers["selena:battle"]!(btn as never, ctx());
+    const edits = btn.replies.filter((r) => r.kind === "editReply");
+    const final = String(
+      (edits[edits.length - 1]?.payload as { content?: string } | undefined)?.content ?? "",
+    );
+    // 3 Legendaries vs 3 Commons never draws — one side wins.
+    expect(final).toMatch(/wins!/);
+    if (final.includes(`<@${ALICE}> wins!`)) {
+      expect(await getBattleStreak(db, ALICE)).toBe(1);
+      expect(await getBattleStreak(db, BOB)).toBe(0);
+    } else {
+      expect(await getBattleStreak(db, ALICE)).toBe(0);
+      expect(await getBattleStreak(db, BOB)).toBe(1);
+    }
   });
 });

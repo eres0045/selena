@@ -681,6 +681,14 @@ CREATE TABLE IF NOT EXISTS user_battle (
   last_battle_at BIGINT
 );
 
+-- Battle win streaks (2026-11-07). Streaks are GLOBAL (keyed by
+-- user_id alone, like user_location): a win is +1, a loss resets to 0,
+-- a draw leaves both streaks unchanged.
+CREATE TABLE IF NOT EXISTS user_battle_streaks (
+  user_id TEXT PRIMARY KEY,
+  streak INTEGER NOT NULL DEFAULT 0
+);
+
 -- Tower mystery discovery (2026-11-07). Discovery is per-user, no
 -- guild_id — the world is shared across Discord, like user_location.
 CREATE TABLE IF NOT EXISTS user_tower_discoveries (

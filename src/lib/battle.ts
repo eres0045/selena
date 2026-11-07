@@ -894,6 +894,17 @@ export interface BattleSettlement {
   monsterLevelUps: string[];
   aLeveledUp: boolean;
   bLeveledUp: boolean;
+  /** Post-battle win streaks (global per user, user_battle_streaks). */
+  aStreak: number;
+  bStreak: number;
+}
+
+/** A user's current battle win streak (0 when no row yet). */
+export async function getBattleStreak(db: SelenaDb, userId: string): Promise<number> {
+  const row = (await db
+    .prepare("SELECT streak FROM user_battle_streaks WHERE user_id = ?")
+    .get(userId)) as { streak: number } | undefined;
+  return Number(row?.streak ?? 0);
 }
 
 /**
@@ -962,9 +973,39 @@ export async function settleBattle(
     await grantTeamXp(tx, input.bId, input.bTeam, bXp);
     await addPoints(tx, input.guildId, input.aId, aGold, "battle");
     await addPoints(tx, input.guildId, input.bId, bGold, "battle");
-    return { aLeveledUp: a.leveledUp, bLeveledUp: b.leveledUp };
+    // Win streaks (global per user): winner +1, loser reset to 0,
+    // draw leaves both unchanged (no write at all on a draw). Inside
+    // the same transaction, so a streak-write failure fails the whole
+    // settle — never silently skipped.
+    let aStreak = await getBattleStreak(tx, input.aId);
+    let bStreak = await getBattleStreak(tx, input.bId);
+    if (input.winner === "A") {
+      aStreak += 1;
+      bStreak = 0;
+    } else if (input.winner === "B") {
+      aStreak = 0;
+      bStreak += 1;
+    }
+    if (input.winner !== "draw") {
+      const upsert =
+        "INSERT INTO user_battle_streaks (user_id, streak) VALUES (?, ?) " +
+        "ON CONFLICT (user_id) DO UPDATE SET streak = EXCLUDED.streak";
+      await tx.prepare(upsert).run(input.aId, aStreak);
+      await tx.prepare(upsert).run(input.bId, bStreak);
+    }
+    return { aLeveledUp: a.leveledUp, bLeveledUp: b.leveledUp, aStreak, bStreak };
   });
-  return { aGold, bGold, aXp, bXp, monsterLevelUps, aLeveledUp: out.aLeveledUp, bLeveledUp: out.bLeveledUp };
+  return {
+    aGold,
+    bGold,
+    aXp,
+    bXp,
+    monsterLevelUps,
+    aLeveledUp: out.aLeveledUp,
+    bLeveledUp: out.bLeveledUp,
+    aStreak: out.aStreak,
+    bStreak: out.bStreak,
+  };
 }
 
 /** Read a user's gold balance (fail closed: a read error propagates). */

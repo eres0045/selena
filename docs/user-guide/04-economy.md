@@ -236,10 +236,21 @@ Source: `docs/hunt-world-phase2-design.md` §3 and §5.
   **60 seconds** to answer. **Cooldown: 1 minute** between battles per
   player. Auto-battle, **top-3 monsters** each side (manual team pick
   unconfirmed — auto top-3 is the working default). One message edited
-  through the rounds (750 ms between edits), then a plain-text result line.
+  through the rounds (750 ms between edits): an **opening card** (round 0,
+  both teams at full HP), then **one battle card image per round** — each
+  side's fighters with HP bars, level, and active status effects; a
+  fainted monster shows as fainted, the currently fighting monster is
+  marked active — with the round's last action as the caption. The final
+  card carries a **footer: winner name, rounds fought, winner XP, and
+  the winner's win streak**. If a card ever fails to render, that round
+  (or the final result) falls back to the old plain-text edit — the
+  battle always settles first, display never blocks rewards.
   Winner **100 gold + XP** (40 + avg enemy team level × 2), loser **25
   gold** + half the winner's XP, **loser never loses gold**. Draw: both get
-  25 gold + half-XP, wagers refunded. Optional wager, cap **1,000 gold**
+  25 gold + half-XP, wagers refunded. **Win streaks (global per user):**
+  a win is **+1**, a loss **resets to 0**, a draw leaves both streaks
+  unchanged. Streaks live in `user_battle_streaks`, so they survive
+  redeploys. Optional wager, cap **1,000 gold**
   per player per battle, escrowed at accept; winner takes the pot (2×).
 - Open questions: guild create cost / XP / thresholds / perks (all working
   defaults); battle team pick (auto vs manual `uwu team`); whether the 1-min
