@@ -20,7 +20,7 @@ export const commands: Command[] = [
       // coin right before the amount like a currency symbol, gold with
       // XP/level inline, so nothing is lost.
       await inv.reply({
-        content: `Hey <@${target.id}>, you currently have ${emoji("coin")} ${fmt(bal.points)} gold! (${fmt(bal.xp)} XP · Level ${bal.level})`,
+        content: `Hey <@${target.id}>, you currently have ${emoji("gold")} ${fmt(bal.points)} gold! (${fmt(bal.xp)} XP · Level ${bal.level})`,
       });
     },
   },
@@ -43,7 +43,7 @@ export const commands: Command[] = [
         embeds: [
           pointsEmbed(
             emoji("gift") + " Daily Reward",
-            `${emoji("coin")} You claimed **${fmt(result.amount ?? 100)} gold**!\nYour balance is now **${fmt(bal.points)} gold**. Come back tomorrow for more.`,
+            `${emoji("gold")} You claimed **${fmt(result.amount ?? 100)} gold**!\nYour balance is now **${fmt(bal.points)} gold**. Come back tomorrow for more.`,
           ).toJSON(),
         ],
       });

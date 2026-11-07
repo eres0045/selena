@@ -175,7 +175,7 @@ describe("/balance command", () => {
     expect(payload.files).toBeUndefined();
     // Coin sits immediately before the amount (like a currency symbol),
     // never at the start of the line; currency is "gold", not "points".
-    expect(payload.content).toMatch(/Hey <@user-1>, you currently have <a:coin:\d+> 250 gold!/);
+    expect(payload.content).toMatch(/Hey <@user-1>, you currently have <:gold:\d+> 250 gold!/);
     expect(payload.content).not.toMatch(/points/);
     expect(payload.content).toMatch(/0 XP · Level 0/);
   });
@@ -184,7 +184,7 @@ describe("/balance command", () => {
     await seed("user-2", 42);
     const fake = await run("balance", { user: { id: "user-2", username: "friend" } });
     const payload = fake.firstReplyPayload() as Record<string, unknown>;
-    expect(payload.content).toMatch(/Hey <@user-2>, you currently have <a:coin:\d+> 42 gold!/);
+    expect(payload.content).toMatch(/Hey <@user-2>, you currently have <:gold:\d+> 42 gold!/);
     expect(payload.content).toMatch(/0 XP · Level 0/);
   });
 

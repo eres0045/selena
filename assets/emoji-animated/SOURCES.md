@@ -14,6 +14,8 @@ the table order; the Discord emoji NAME is the file stem.
 | star.gif | White sparkles twinkling | emoji.gg — https://cdn3.emoji.gg/emojis/156016-sparkle.gif | 20 | 128x128 | 50,161 |
 | slots.gif | Mini slot machine, reels scroll and settle 7-7-7, lever pulls | PIL original — `scripts/render_animated_emoji.py` (no fitting emoji.gg slot machine exists; the one found was a blurry gem in a frame) | 14 | 128x128 | 37,726 |
 | roulette.gif | Roulette wheel spinning one full turn, ball orbiting the other way | PIL original — `scripts/render_animated_emoji.py` (no animated roulette wheel on emoji.gg) | 12 | 128x128 | 78,946 |
+| gold (gag-sheckles-128.png) | Stacks of gold coins — the MAIN currency icon (replaces the spinning coin in balance/daily) | emoji.gg `gag_sheckles` (ID 1114) — https://cdn3.emoji.gg/emojis/1114-gag-sheckles.png, resized 591→128 | static PNG | 128x128 | 13,927 |
+| gem (diamondanimated-gg.gif) | White glowing angular gem — the GEM (premium) currency icon | emoji.gg `DiamondAnimated` (see currency-candidates section) | 41 | 106x106 | 256,634 |
 
 ## Coin faces — heads / tails (2026-11-07, Ronit: tiny-emoji games)
 
