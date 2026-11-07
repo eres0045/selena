@@ -38,7 +38,7 @@ export const commands: Command[] = [
         });
         return;
       }
-      const embed = selenaEmbed(category ? `Help — ${groups[0]!.category}` : "Selena — all commands");
+      const embed = selenaEmbed(category ? `Help — ${groups[0]!.category}` : "uwu — all commands");
       for (const group of groups) {
         embed.addFields({
           name: group.category,

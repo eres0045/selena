@@ -22,16 +22,16 @@ function buildCmd(name: string, description: string, configure: (b: SlashCommand
 
 export const commands: Command[] = [
   {
-    data: buildCmd("balance", "Show your Selena points balance (or another member's).", (b) => {
+    data: buildCmd("balance", "Show your uwu points balance (or another member's).", (b) => {
       b.addUserOption((o) => o.setName("user").setDescription("Whose balance to show").setRequired(false));
     }),
     async execute(interaction, ctx) {
       const target = interaction.options.getUser("user") ?? interaction.user;
       const bal = await getBalance(ctx.db, ctx.guildId, target.id);
-      // OwO-style: one plain line, no embed box — the animated coin +
-      // the mention + points with XP/level inline, so nothing is lost.
+      // OwO-style: one plain line, no embed box, no emoji — the mention +
+      // points with XP/level inline, so nothing is lost.
       await interaction.reply({
-        content: `${emoji("coin")} Hey <@${target.id}>, you currently have ${fmt(bal.points)} points! (${fmt(bal.xp)} XP · Level ${bal.level})`,
+        content: `Hey <@${target.id}>, you currently have ${fmt(bal.points)} points! (${fmt(bal.xp)} XP · Level ${bal.level})`,
       });
     },
   },

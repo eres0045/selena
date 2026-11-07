@@ -26,7 +26,7 @@ describe("startHealthServer", () => {
     expect(startHealthServer({ PORT: String(port) })).toBe(true);
     const res = await fetch(`http://127.0.0.1:${port}/`);
     expect(res.status).toBe(200);
-    expect(await res.text()).toContain("Selena is running");
+    expect(await res.text()).toContain("uwu is running");
   });
 });
 

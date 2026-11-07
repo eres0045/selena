@@ -59,7 +59,7 @@ export function startHealthServer(env: NodeJS.ProcessEnv = process.env): boolean
   if (!port || Number.isNaN(port)) return false;
   const server = createServer((_req, res) => {
     res.writeHead(200, { "content-type": "text/plain" });
-    res.end("Selena is running.\n");
+    res.end("uwu is running.\n");
   });
   server.listen(port, () => console.log(`Selena: health endpoint on :${port}`));
   server.unref?.();

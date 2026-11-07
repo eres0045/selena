@@ -24,10 +24,6 @@ import * as games from "./games.js";
 import * as mod from "./mod.js";
 import * as utility from "./utility.js";
 import * as help from "./help.js";
-// TEMPORARY (2026-11-07): owner-only test-points grant — remove with
-// src/commands/grantpoints.ts and test/grantpoints.test.ts after the
-// casino visual test.
-import * as grantpoints from "./grantpoints.js";
 
 /** Command modules that do not exist yet (empty when the registry is complete). */
 export const PENDING_MODULES: readonly string[] = [];
@@ -45,7 +41,6 @@ const CATEGORY_LABELS: Record<string, string> = {
   casino: "Casino",
   fun: "Fun",
   games: "Games",
-  grantpoints: "Owner",
 };
 
 interface CommandModule {
@@ -62,8 +57,6 @@ const MODULES: { key: string; module: CommandModule }[] = [
   { key: "mod", module: mod },
   { key: "utility", module: utility },
   { key: "help", module: help },
-  // TEMPORARY — remove after the casino visual test.
-  { key: "grantpoints", module: grantpoints },
 ];
 
 function toHelpGroup(key: string, cmds: Command[]): HelpGroup {

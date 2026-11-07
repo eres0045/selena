@@ -173,6 +173,8 @@ describe("/balance command", () => {
     expect(typeof payload.content).toBe("string");
     expect(payload.embeds).toBeUndefined();
     expect(payload.files).toBeUndefined();
+    // No emoji markup (the animated coin was removed from /balance).
+    expect(payload.content).not.toMatch(/<a?:\w+:\d+>/);
     expect(payload.content).toMatch(/Hey <@user-1>, you currently have 250 points!/);
     expect(payload.content).toMatch(/0 XP · Level 0/);
   });

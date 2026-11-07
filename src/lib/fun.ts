@@ -171,7 +171,7 @@ export const DARES: readonly string[] = [
   "Play your next match with a hero you have never played before.",
   "Compliment the next three people who speak in chat.",
   "Draw your main hero using only text characters and post it.",
-  "Say 'I love Selena' in chat in your best dramatic voice (text or voice).",
+  "Say 'I love uwu' in chat in your best dramatic voice (text or voice).",
   "Play a full game with your screen brightness at minimum. (Only if you dare — and can still see!)",
   "Let the server pick your hero for your next match.",
   "Post your most recent match result screenshot — wins and losses both count.",
@@ -289,7 +289,7 @@ export function memeDescription(meme: GeneratedMeme): string {
     `🔝 **Top:** ${meme.topText}\n` +
     `🔻 **Bottom:** ${meme.bottomText}\n` +
     `✨ **Effect:** ${effectText}\n\n` +
-    `⚠️ *Image rendering is unavailable in this build — Selena has no Canvas here, ` +
+    `⚠️ *Image rendering is unavailable in this build — uwu has no Canvas here, ` +
     `so this meme is text-only. No image was generated.*`
   );
 }
