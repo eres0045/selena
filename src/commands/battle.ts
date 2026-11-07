@@ -3,6 +3,7 @@ import type { Command, CommandContext, CommandInvocation } from "../lib/command.
 import { errorEmbed, fmt } from "../lib/command.js";
 import { addPoints } from "../lib/economy.js";
 import { monsterEmoji } from "../lib/hunt.js";
+import { awardGuildXpBestEffort } from "../lib/guilds.js";
 import { secureFloat } from "../lib/rng.js";
 import {
   BATTLE_CHALLENGE_TTL_MS,
@@ -287,6 +288,8 @@ async function runAcceptedBattle(
   } else {
     const winnerId = result.winner === "A" ? challenge.challengerId : challenge.opponentId;
     const loserId = result.winner === "A" ? challenge.opponentId : challenge.challengerId;
+    // Guild XP (Phase 2 §3.2): 50 per battle win, best-effort.
+    await awardGuildXpBestEffort(db, winnerId, 50);
     const winnerGold = result.winner === "A" ? settled.aGold : settled.bGold;
     const winnerXp = result.winner === "A" ? settled.aXp : settled.bXp;
     const loserGold = result.winner === "A" ? settled.bGold : settled.aGold;

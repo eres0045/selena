@@ -1,11 +1,8 @@
-# 06 — Command reference (all 42) + misc live systems
+# 06 — Command reference (all 57) + misc live systems
 
 **Status: LIVE.** Every command below is implemented in `src/`, in the live
 registry (`src/commands/index.ts`), and deployed. Counted from the registry:
-**42 commands** across 7 modules.
-
-> Note: an old comment in `src/commands/help.ts:60` still says "all 36
-> commands fit" — stale; the live registry is 42.
+**57 commands** across 13 modules.
 
 ## 6.1 Full command table
 
@@ -13,7 +10,7 @@ registry (`src/commands/index.ts`), and deployed. Counted from the registry:
 
 | Command | Aliases | Args | Notes |
 |---|---|---|---|
-| `balance` | `bal`, `money`, `wallet` | `[user]` | One-line balance; starts at 0 |
+| `balance` | `bal`, `money`, `wallet` | `[user]` | One-line balance, now with gems: `🪙 N gold! (💎 M gems · XP · Level)`; starts at 0 |
 | `daily` | `claim` | — | +100 gold, rolling 24h cooldown |
 | `give` | `pay`, `send`, `transfer` | `<user> <amount>` | Min 1, no max, no fee, no self-give |
 | `leaderboard` | `lb`, `top`, `rich` | — | Top 10 gold holders, per server |
@@ -34,12 +31,57 @@ registry (`src/commands/index.ts`), and deployed. Counted from the registry:
 
 | Command | Aliases | Args | Notes |
 |---|---|---|---|
-| `hunt` | `catch` | `[area]` | 30s cooldown; Catch/Run buttons; level-gated areas |
-| `roll` | `gacha`, `summon` | `[count]` | 500 gold; `roll 10` = 4,500; pity 50; cap 20/day (UTC) |
-| `map` | `areas` | — | 4 areas, unlock levels 0/5/10/15 |
-| `zoo` | `monsters` | `[name]` | Grouped by tier, 40-line cap; detail per monster |
-| `inv` | `inventory`, `bag` | — | Weapons + pets; **empty for everyone in Phase 1** |
+| `hunt` | `catch` | `[area]` | 30s cooldown; Catch/Run buttons; level-gated areas; wild levels by area |
+| `roll` | `gacha`, `summon` | `[count]` | 500 gold; `roll 10` = 4,500; pity 50 → **Epic exactly**; cap 20/day (UTC) |
+| `zoo` | `monsters` | `[name]` | Grouped by tier, 40-line cap; detail per monster incl. level, fusion, XP |
+| `inv` | `inventory`, `bag` | — | Weapons + pets |
 | `sell` | `selldup` | `<monster>` | Tier prices 25–25,000; last-copy confirm |
+| `fuse` | `combine` | `<monster>` | 2 same-fuse-level copies → 1 stronger, max +6 (64 copies); gold cost by tier |
+
+### World (3) — Phase 2, details in [05-phase2-design-index.md](05-phase2-design-index.md)
+
+| Command | Aliases | Args | Notes |
+|---|---|---|---|
+| `map` | `areas` | — | World map: 5 regions, 16 areas; current location 🔴; Zoom In/Out/Mark/Last Location buttons |
+| `travel` | `go` | `[area]` | Travel in real time, 5 min/km; bare `uwu travel` = trip status |
+| `autohunt` | `auto-hunt` | `on\|off` | Auto-hunt while travelling, 200 gold/hour pro-rata; needs an active trip |
+
+### Guilds (1) — Phase 2
+
+| Command | Aliases | Args | Notes |
+|---|---|---|---|
+| `guild` | `g` | `<action> [target] [name...]` | `create <name>` (5,000 gold), `join`, `leave`, `invite @user`, `kick @user`, `promote @user`, `disband`, `info`, `rank`; max 20 members, levels to 10 |
+
+### Battles (1) — Phase 2
+
+| Command | Aliases | Args | Notes |
+|---|---|---|---|
+| `battle` | `fight`, `duel` | `<@user> [wager]` | Accept/Decline buttons, 60 s expiry; auto top-3; winner 100 gold + XP, loser 25; wager cap 1,000 escrowed; 1-min cooldown |
+
+### Towers (1) — Phase 2
+
+| Command | Aliases | Args | Notes |
+|---|---|---|---|
+| `tower` | `towers` | `[action] [target]` | Bare = list (Main tower never listed); `enter <name>`, `climb`, `leave`; checkpoints every floor; clear cooldowns 6h/12h/7d |
+
+### Market (5) — Phase 2
+
+| Command | Aliases | Args | Notes |
+|---|---|---|---|
+| `auction` | `auctions` | `<action> [args]` | `sell <item> <price>` (min 100), `bid <id> <amount>` (min +10%), `list`, `info <id>`, `cancel <id>`, `mine`; 24h, 5% fee, escrowed bids |
+| `shop` | `store` | `[buy <item> [qty]]` | Daily stock, same for everyone, midnight UTC; max 3 per item per player per day; gold + gems |
+| `crates` | `crate` | — | List owned crates |
+| `open` | `opencrate` | `<crate>` | Open one crate, reveal loot |
+| `gems` | `gem` | — | Gem balance + how to earn gems |
+
+### Announcements (4) — Phase 2
+
+| Command | Aliases | Args | Notes |
+|---|---|---|---|
+| `announcements` | `news` | — | Global update feed, latest 10 |
+| `announce` | `broadcast` | `<title> \| <text>` | Admin only; posts to the global feed |
+| `logs` | `rarelogs` | `[global]` | Epic+ rare-catch feed, per-server default; `uwu logs global` for all-Discord |
+| `setlogchannel` | `setlogs` | `<#channel>` | Admin only; Epic+ catches auto-posted there |
 
 ### Games (7)
 
@@ -48,7 +90,7 @@ registry (`src/commands/index.ts`), and deployed. Counted from the registry:
 | `tictactoe` | `ttt`, `tic` | `<opponent>` | Challenger ❌ first; no timeout, no gold reward |
 | `connect4` | `c4`, `connectfour` | `<opponent>` | 6×7 board, 🔴 first; no timeout, no gold reward |
 | `rps` | `rockpaperscissors`, `rock` | `<opponent>` | Best of 1; picks hidden until both in; no timeout, no reward |
-| `trivia` | `quiz` | — | **+25 gold**, 30 s limit, first correct answer wins; anyone can answer; 22-question hardcoded bank |
+| `trivia` | `quiz` | — | **+25 gold**, 30 s limit, first correct answer wins; anyone can answer; 22-question hardcoded bank; **answers are shuffled since Phase 2 (correct option is random, was always A)** |
 | `wordchain` | `wc`, `word` | `[word]` | ≥3 letters, a–z only, start with last letter, no repeats; one chain per guild; no timeout, no end command, no reward |
 | `giveaway` | `gaway`, `gw` | `<prize> <duration> <winners>` | Prize ≤200 chars; duration 1–10,080 min (7 days); winners 1–10; one entry per user; auto-draw on a 60 s sweep |
 | `poll` | `vote` | `<question> <option1> <option2> [option3] [option4]` | 2–4 options, all different; one vote per person, click again to change; 10-char bars; no expiry, no close command |
@@ -69,7 +111,7 @@ call still leaves a DB record.
 | `ban` | `hammer` | BanMembers | `<user> [delete-days] <reason...>` — delete-days default 0; **no max validation** |
 | `unban` | `pardon` | BanMembers | `<user-id> [reason]` — takes a **string user ID, not a mention**; reason defaults to `"No reason given"` |
 | `warnings` | `warns`, `infractions` | ModerateMembers | `<user>` — lists all warnings, newest first, no limit |
-| `modlog` | `mlog`, `logs` | ModerateMembers | `[limit]` — recent mod actions, newest first; **default limit 10**, no max validation |
+| `modlog` | `mlog`, `modlogs` | ModerateMembers | `[limit]` — recent mod actions, newest first; **default limit 10**, no max validation |
 | `ticket` | `support` | **None — no permission check** | `<open\|close> [reason]` — one open ticket per user; `open` creates a channel named `ticket-<id>`; `close` closes the caller's latest open ticket; **no channel deletion/archiving** |
 | `reactionrole` | `rr`, `reactrole` | ManageRoles | `<message-id> <emoji> <role>` — upserts by (guild, message, emoji); reacting grants the role, un-reacting removes it |
 
@@ -91,14 +133,13 @@ call still leaves a DB record.
 |---|---|---|---|
 | `help` | `h`, `commands` | `[category or command]` | Full list embed, category boxes, per-command detail; see [01-core.md §1.3](01-core.md#13-help--uwu-help) |
 
-## 6.2 Trivia — question bank quirk
+## 6.2 Trivia — question bank quirk (FIXED in Phase 2)
 
 The bank (`src/lib/trivia.ts`, `GENERAL_QUESTIONS`) holds **22 general-knowledge
-questions, each with exactly 4 options**. Notable: **every question has
-`answerIndex: 0`** — the correct answer is always option A in the bank as
-written (no shuffling in code). The buttons presumably shuffle display order
-— this is not verified in the code read; if they don't, the answer is always
-the first button. (Flagged as a finding, §6.7.)
+questions, each with exactly 4 options**. It used to have `answerIndex: 0` on
+every question (correct answer always option A); Phase 2 shuffles the answers
+(Fisher–Yates in `pickTriviaQuestion`, answerIndex remapped) so the correct
+option is random. Tests prove the distribution covers all 4 slots.
 
 ## 6.3 Starboard — the repost embed
 
@@ -137,8 +178,9 @@ command exists — everything below is hardcoded.
 
 ## 6.5 Timers & background work
 
-- One **60-second interval** runs `runDueTasks`: due reminders + due
-  giveaways.
+- One **60-second interval** runs `runDueTasks`: due reminders, due
+  giveaways, **plus the Phase 2 sweeps** — travel arrivals, auto-hunt ticks,
+  rare-log posts, battle challenge expiry, auction close.
 - **Giveaway draw:** when `ends_at` passes, the row is marked ended and
   winners are picked by Fisher–Yates partial shuffle, capped at the number
   of entries (0 entries → log only, no announcement). Winners are announced
@@ -169,12 +211,10 @@ command exists — everything below is hardcoded.
 ## 6.7 Findings / gaps
 
 Things the code read turned up that differ from what a user or the design
-docs might expect. None of these were fixed (docs-only job); they are
-recorded here for Ronit.
+docs might expect.
 
-1. **Trivia answers are always option A in the bank** (`answerIndex: 0` on
-   all 22 questions; no shuffling in the bank code). Whether the buttons
-   shuffle at display time was not verified.
+1. ~~**Trivia answers are always option A in the bank**~~ — **FIXED in
+   Phase 2** (answers shuffled, correct option random; tests prove it).
 2. **Giveaway and poll creation store `channel_id = ""`**, so their
    channel-based announcements/sweeps cannot fetch a channel as written.
 3. **AFK does nothing on mention** — no auto-reply, no auto-clear; visible
@@ -186,28 +226,40 @@ recorded here for Ronit.
    TTT/C4/RPS/wordchain/polls.
 6. **No min/max validation** for mute/timeout minutes, ban `delete-days`,
    modlog `limit`, or remind minutes.
-7. **Help comment is stale** ("all 36 commands fit") — the registry is 42.
+7. ~~**Help comment is stale** ("all 36 commands fit")~~ — **FIXED in
+   Phase 2** (comment now says 57; registry is 57).
 8. **Starboard triggers on ANY reaction**, not just ⭐.
 9. **Automod's warn branch is unreachable** with current settings (all
    violations delete).
 10. **Mod DB records are written before the Discord action** — a failed
     Discord call still leaves a DB record.
 11. **Ticket command has no permission check** (anyone can open a ticket).
+12. **No `uwu use` command** (Phase 2 gap): shop consumables (potions,
+    Lure Bait, Tower Key, Roll Ticket, Skill Book, Pet Egg) can be bought
+    but not used; the evolution-stone mechanic is likewise unbuilt.
+13. **No `sacrifice` command** — gems cannot be earned that way; gem
+    yields in the tier table are dead data.
+14. **Hunts drop no crates** — the design's "~5% of hunts" was not built;
+    crates come from tower floors and the shop only.
+15. **Pity is Epic EXACTLY** (Phase 2 fix) — the old code leaked ~20% of
+    pity rolls into Legendary+; the design doc always said Epic-only.
 
 ## Verified
 
-- **Tests:** `npm test` 2026-11-07 — 357/357 passed (15 files), including
+- **Tests:** `npm test` 2026-11-07 — 593/593 passed (21 files), including
   `test/games.test.ts`, `test/mod.test.ts`, `test/utility.test.ts`,
-  `test/boot.test.ts`.
+  `test/boot.test.ts`, plus the Phase 2 test files.
 - **Code read:** `src/commands/games.ts`, `src/commands/mod.ts`,
   `src/commands/utility.ts`, `src/lib/games.ts`, `src/lib/trivia.ts`,
   `src/lib/automod.ts`, `src/index.ts`, plus `src/lib/db.ts`,
   `src/lib/levels.ts`, `src/lib/command.ts`, `src/commands/index.ts` for
-  inventory verification. The 42-command inventory was counted from the
+  inventory verification. The 57-command inventory was counted from the
   live registry.
 - **Live Discord check: NOT DONE** (no browser access in this session).
   To verify live in `#🤖-miya-bot`: `uwu ttt @user`, `uwu trivia`,
   `uwu poll "Q?" "A" "B"`, `uwu userinfo`, `uwu serverstats`,
   `uwu rank`, `uwu remind 1 test`, `uwu afk testing`, and a ⭐ reaction
   (×3) on a message to check the starboard. Mod commands need a staff
-  member to test; do not test kick/ban on real users.
+  member to test; do not test kick/ban on real users. Phase 2 commands:
+  `uwu map`, `uwu guild`, `uwu battle @user`, `uwu tower`, `uwu shop`,
+  `uwu auction list`, `uwu logs`.

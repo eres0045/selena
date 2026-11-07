@@ -314,6 +314,24 @@ export async function addGuildXp(
   return { leveledUp: newLevel > levelOf(guild), newLevel };
 }
 
+/**
+ * Best-effort guild XP for activity (10 per hunt catch, 10 per roll pull,
+ * 50 per battle win, 100 per tower floor — doc §3.2). Never throws: a user
+ * with no guild, or any DB error, is silently a no-op — the activity that
+ * earned the XP already succeeded, and it must never break the reply.
+ */
+export async function awardGuildXpBestEffort(
+  db: SelenaDb,
+  userId: string,
+  amount: number,
+): Promise<void> {
+  try {
+    await addGuildXp(db, userId, amount);
+  } catch (e) {
+    console.error("uwu: guild XP award failed:", e instanceof Error ? e.message : e);
+  }
+}
+
 /** Catch-chance bonus in percent points from the member's guild level. */
 export async function getGuildCatchBonus(db: SelenaDb, userId: string): Promise<number> {
   const guild = await getUserGuild(db, userId);

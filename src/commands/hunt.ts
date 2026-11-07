@@ -59,6 +59,7 @@ import {
   type AwardResult,
 } from "../lib/huntDb.js";
 import { findWorldArea, wildLevelForArea } from "../lib/world.js";
+import { awardGuildXpBestEffort } from "../lib/guilds.js";
 import { secureFloat } from "../lib/rng.js";
 
 /**
@@ -298,6 +299,9 @@ async function handleHuntButton(inv: any, ctx: CommandContext): Promise<void> {
     });
     return;
   }
+  // Guild XP (Phase 2 §3.2): 10 per hunt catch, best-effort — the catch
+  // already succeeded, so this never throws into the reply.
+  await awardGuildXpBestEffort(ctx.db, enc.userId, 10);
   const capNote =
     awarded.downgradedFrom !== null && awarded.downgradedReason === "cap"
       ? ` (the ${awarded.downgradedFrom} you found is maxed out in this server, so you got this one instead)`
@@ -497,6 +501,8 @@ export const commands: Command[] = [
         throw e;
       }
       const newBal = await getBalance(ctx.db, ctx.guildId, inv.user.id);
+      // Guild XP (Phase 2 §3.2): 10 per roll pull, best-effort.
+      await awardGuildXpBestEffort(ctx.db, inv.user.id, 10 * count);
       const lines = pulls.map((p, i) => {
         const mark = TIER_INDEX[p.monster.tier] >= TIER_INDEX.Epic ? "✨ " : "";
         const pityNote = p.pity ? " (pity!)" : "";

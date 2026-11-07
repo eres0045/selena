@@ -444,35 +444,43 @@ Added 2026-11-07 (Ron's words: "Add announcment as uwu announcement to see what 
 
 ## 12. Open questions (Ronit's call — everything unconfirmed)
 
-| # | Item | Working default in this doc | Needs |
-|---|---|---|---|
-| 1 | "Last Location" map button meaning | Return to previous location/view | Confirm what the 4th button does ("last somthing") |
-| 2 | ~~Tower counts: "2 small + 2 big"~~ — RESOLVED 2026-11-07: towers placed randomly across the world map | Resolved | — |
-| 3 | Region names, area lists, unlock levels (Regions 2–5) | Working defaults in §2.1 | Names, areas, levels |
-| 4 | 5th endgame area ("Void Rift", level 20) | Listed as a Region 5 area | Confirm whether it exists, and at what level |
-| 5 | ~~Travel time~~ — RESOLVED 2026-11-07: 5 minutes per kilometre (2 km = 10 min) | Resolved | — |
-| 6 | Auto-hunt abuse cap | None — travel time is the cap; auto-hunt costs 200 gold/hour (decided 2026-11-07) | Decide if a separate cap is needed after live play |
-| 7 | ~~Monster level cap~~ — RESOLVED 2026-11-07: 100 | Resolved | — |
-| 8 | Monster level stat scaling (+2%/level) + XP/coin reward formulas (§6.2–6.3) | Working defaults | Confirm or tune |
-| 9 | Battle team pick | Auto top-3 | Confirm auto vs manual `uwu team` pick |
-| 10 | Fusion numbers: +10% stats, effect unlocks at +1..+6, gold costs by tier (§6.4) | Working defaults | Confirm or tune |
-| 11 | Evolution stones (evolve a +6 monster up one tier) | Working default mechanic | Confirm the mechanic exists at all |
-| 12 | Armor / accessories slot | New slot, working default | Confirm or drop |
-| 13 | Mini-bosses catchable? | No — bosses are never catchable | Confirm |
-| 14 | Main tower discovery (how players find a hidden tower) | Unspecified | Hint system / rare map drop / pure exploration? |
-| 15 | Tower entry level requirements | Small = area level, Big = +5, Main = 60 | Confirm numbers |
-| 16 | Guild create cost (5,000 gold), guild XP awards, level thresholds, max level 10 | Working defaults | Confirm or change |
-| 17 | ~~Crate name: "Cache" or "Hoard"~~ — RESOLVED 2026-11-07: just **"Crate"** | Resolved | — |
-| 18 | Crate drop rates (tower floors ~10%, hunts ~5%, final boss 100%) | Working defaults | Confirm or tune |
-| 19 | Shop details: Tower Key effect, roll ticket vs the 20/day cap, `uwu use` command | Working defaults | Confirm mechanics |
-| 20 | Drop rates per source (§9.3) | Unspecified — tune after live data | Set after Phase 2 has been live |
-| 21 | Battle-farming lever (1-min cooldown) | 1 min between battles | Confirm, or tighten if farming appears |
-| 22 | Auction shill protection | None in Phase 2 | Decide if/when to add |
-| 23 | Guild perks exact numbers (§3.2) | Working defaults | Confirm or tune |
-| 24 | Tower Key: unlocks one tower floor entry without the level requirement | Working default | Confirm the item exists and what it does |
-| 25 | Announcements: who can post (`uwu announce`) | Bot owner + server admins | Confirm permission set |
-| 26 | Logs: default scope server vs global; opt-out? | Default server, `uwu logs global` for all-Discord; no opt-out | Confirm scope + whether players can hide their catches |
-| 27 | Server log channel (`uwu setlogchannel`) | Optional, off by default | Confirm it exists at all |
+**Build status 2026-11-07:** Phase 2 is BUILT (commits `c640afe` / `7f43a63` /
+`654bb73`, tests 593/593, deployed live). "BUILT" below means implemented
+with the working default — **not** confirmed by Ronit. Anything marked
+BUILT still needs his confirm/tune; anything marked OPEN was not built and
+is still purely his call. `uwu use` (consumables) and the evolution-stone
+mechanic are the two biggest built-but-unusable gaps: the shop sells the
+items, but there is no command to use them yet.
+
+| # | Item | Working default in this doc | Built 2026-11-07? | Needs |
+|---|---|---|---|---|
+| 1 | "Last Location" map button meaning | Return to previous location/view | BUILT (returns to previous location/view) | Confirm what the 4th button does ("last somthing") |
+| 2 | ~~Tower counts: "2 small + 2 big"~~ — RESOLVED 2026-11-07: towers placed randomly across the world map | Resolved | BUILT (30 towers, 18 small / 11 big / 1 main, seeded placement) | — |
+| 3 | Region names, area lists, unlock levels (Regions 2–5) | Working defaults in §2.1 | BUILT (5 regions, 16 areas, Lv 0–70) | Names, areas, levels |
+| 4 | 5th endgame area ("Void Rift", level 20) | Listed as a Region 5 area | BUILT as Region 5 "The Void Rift" at **level 70** (Mythic/UwU), not 20 | Confirm whether it exists, and at what level |
+| 5 | ~~Travel time~~ — RESOLVED 2026-11-07: 5 minutes per kilometre (2 km = 10 min) | Resolved | BUILT | — |
+| 6 | Auto-hunt abuse cap | None — travel time is the cap; auto-hunt costs 200 gold/hour (decided 2026-11-07) | BUILT (no separate cap) | Decide if a separate cap is needed after live play |
+| 7 | ~~Monster level cap~~ — RESOLVED 2026-11-07: 100 | Resolved | BUILT | — |
+| 8 | Monster level stat scaling (+2%/level) + XP/coin reward formulas (§6.2–6.3) | Working defaults | BUILT | Confirm or tune |
+| 9 | Battle team pick | Auto top-3 | BUILT (auto top-3) | Confirm auto vs manual `uwu team` pick |
+| 10 | Fusion numbers: +10% stats, effect unlocks at +1..+6, gold costs by tier (§6.4) | Working defaults | BUILT | Confirm or tune |
+| 11 | Evolution stones (evolve a +6 monster up one tier) | Working default mechanic | NOT BUILT as a mechanic — the stone exists as a shop item (30 gems) and tower/crate drop, but no evolve command exists | Confirm the mechanic exists at all |
+| 12 | Armor / accessories slot | New slot, working default | NOT BUILT — no slot, no accessories in code | Confirm or drop |
+| 13 | Mini-bosses catchable? | No — bosses are never catchable | BUILT (never catchable) | Confirm |
+| 14 | Main tower discovery (how players find a hidden tower) | Unspecified | NOT BUILT — no hint system; exact tower id/name only, area never shown | Hint system / rare map drop / pure exploration? |
+| 15 | Tower entry level requirements | Small = area level, Big = +5, Main = 60 | BUILT | Confirm numbers |
+| 16 | Guild create cost (5,000 gold), guild XP awards, level thresholds, max level 10 | Working defaults | BUILT (create 5,000; XP 10 per hunt catch / 10 per roll pull / 50 per battle win / 100 per tower floor) | Confirm or change |
+| 17 | ~~Crate name: "Cache" or "Hoard"~~ — RESOLVED 2026-11-07: just **"Crate"** | Resolved | BUILT | — |
+| 18 | Crate drop rates (tower floors ~10%, hunts ~5%, final boss 100%) | Working defaults | BUILT for towers (normal floors 10% Wooden/Iron/Silver; mini-boss + final-boss crates fixed); **hunt ~5% NOT built** — hunts drop no crates | Confirm or tune |
+| 19 | Shop details: Tower Key effect, roll ticket vs the 20/day cap, `uwu use` command | Working defaults | PARTLY BUILT — Tower Key + roll ticket are sold (roll ticket: free roll, doesn't count toward the cap); **`uwu use` NOT built** — bought consumables cannot be used yet | Confirm mechanics; build `uwu use` |
+| 20 | Drop rates per source (§9.3) | Unspecified — tune after live data | NOT BUILT | Set after Phase 2 has been live |
+| 21 | Battle-farming lever (1-min cooldown) | 1 min between battles | BUILT | Confirm, or tighten if farming appears |
+| 22 | Auction shill protection | None in Phase 2 | NOT BUILT (none) | Decide if/when to add |
+| 23 | Guild perks exact numbers (§3.2) | Working defaults | BUILT (catch 0/2/7/17pp, sell 0/5/15%, XP 0/5% by level) | Confirm or tune |
+| 24 | Tower Key: unlocks one tower floor entry without the level requirement | Working default | PARTLY BUILT — the item is sold in the shop; the use effect needs `uwu use` | Confirm the item exists and what it does |
+| 25 | Announcements: who can post (`uwu announce`) | Bot owner + server admins | BUILT (Administrator permission) | Confirm permission set |
+| 26 | Logs: default scope server vs global; opt-out? | Default server, `uwu logs global` for all-Discord; no opt-out | BUILT | Confirm scope + whether players can hide their catches |
+| 27 | Server log channel (`uwu setlogchannel`) | Optional, off by default | BUILT | Confirm it exists at all |
 
 ---
 

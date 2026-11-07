@@ -78,12 +78,10 @@ command, no gem shop** — see §3.8.
   one; the code has only `roll 10`).
 - **Pity:** the counter `rollsSinceEpic` is per user, resets to 0 on any
   awarded monster of tier Epic or higher, otherwise +1 per pull. At 50, the
-  next pull draws from Epic/Legendary/Mythic/UwU **weighted by their roll
-  rates** (4 / 0.9 / 0.09 / 0.01) — i.e. a pity pull is ~80% Epic, ~18%
-  Legendary, ~1.8% Mythic, ~0.2% UwU.
-  **⚠️ Code vs design doc:** the design doc (§3.3 rule 9) says pity is
-  Epic-only and can never produce Legendary+. The code can. Code wins until
-  Ronit rules otherwise — see §12.
+  next pull is **Epic exactly** — fixed in Phase 2 (the old code drew from
+  Epic/Legendary/Mythic/UwU weighted by roll rates, ~80% Epic / ~18%
+  Legendary / ~1.8% Mythic / ~0.2% UwU, against the design doc §3.3 rule 9).
+  Proven by a 500-seed test.
 - **Daily cap:** 20 rolls per user per **UTC calendar day**. Pre-checked
   before the transaction and re-checked atomically inside it. A 10-roll
   counts as 10. Exceeding it:
@@ -103,13 +101,25 @@ command, no gem shop** — see §3.8.
   Epic+ pulls get a ✨ prefix; pity pulls get `(pity!)`; cap-downgraded pulls
   get a note. Each Legendary+ pull triggers an announcement (§3.9).
 
-## 3.4 Map — `uwu map`
+## 3.4 Map — `uwu map` (Phase 2 world map)
 
 | | |
 |---|---|
 | Aliases | `uwu areas` |
 
-The 4 areas (Phase 1). Unlock levels are **chat-XP levels**.
+Phase 2 replaced the hunt-only map with the **world map**: **5 regions,
+16 areas** across all of Discord. The 4 Phase 1 areas are Region 1
+(Starting Lands). Unlock levels are **chat-XP levels**.
+
+| Region | Areas | Unlock levels |
+|---|---|---|
+| Starting Lands | Meadow of Beginnings, Whispering Woods, Ember Peaks, The Hollow Deep | 0 / 5 / 10 / 15 |
+| The Shifting Dunes | Sunken Oasis, Glass Dunes, Mirage Town | 15 / 18 / 20 |
+| The Frozen Reaches | Frostbite Pass, Glacial Caverns, Aurora Fields | 30 / 33 / 35 |
+| The Shadowlands | Gloomwood, The Weeping Marsh, Nightfall Spire | 45 / 48 / 50 |
+| The Sky Isles | Cloud Terraces, Storm Citadel, The Void Rift | 60 / 65 / 70 |
+
+The 4 starting areas (Phase 1). Tier pools and monster counts:
 
 | Area | Unlock level | Tier pool (code) | Monsters |
 |---|---|---|---|
@@ -136,11 +146,21 @@ The 4 areas (Phase 1). Unlock levels are **chat-XP levels**.
   | Peaks | — | 20 | 55 | 25 | — | — | — |
   | Hollow | — | — | 5 | 65 | 25 | 4.5 | 0.5 |
 
-- `uwu map` shows `🗺️ Hunt Map — you are level {n}` + one line per area:
-  `{🔒|📍} {name} — Level {n} · {tiers} · {pool} monsters · {blurb}`, then
-  `Hunt with uwu hunt or uwu hunt <area>.`
-- The Hollow Deep is the **only** place Mythic and UwU can be encountered.
-  Rolls can produce them anywhere.
+- `uwu map` shows `🗺️ World Map — you are level {n}` with one line per
+  area, grouped by region; your current location is marked 🔴 ("You are
+  here"), locked areas 🔒. **4 buttons:** Zoom In, Zoom Out, Mark (drop a
+  pin), Last Location (returns to your previous location/view). Buttons
+  change only the view; movement is `uwu travel <area>`.
+- **Travel** (`uwu travel <area>`, Phase 2): **5 min/km** in real time;
+  `uwu travel` with no argument shows your trip status. **Auto-hunt**
+  (`uwu autohunt on|off`): runs only while travelling, 30 s cadence,
+  **200 gold/hour** pro-rata; catches use Phase 1 rates + your guild catch
+  bonus; a DM-style summary lands in the travel channel when the trip ends.
+- The Hollow Deep is the **only** starting-region place Mythic and UwU can
+  be encountered. Rolls can produce them anywhere. Deeper regions hold the
+  higher tiers: Aurora Fields (35) is the first Mythic area outside Hollow;
+  Storm Citadel (65) and The Void Rift (70) are the only UwU areas besides
+  Hollow.
 
 ## 3.5 Zoo — `uwu zoo [name]`
 
@@ -207,13 +227,16 @@ The 4 areas (Phase 1). Unlock levels are **chat-XP levels**.
   field anywhere outside the tier table — it is dead data.
 - **No `sacrifice` command exists.** The only occurrence of the word
   "sacrifice" in hunt code is a doc-comment.
-- **No gem currency exists.** No gem balance, wallet, ledger, table, or
-  gem-adding function anywhere in `src/`. There is no way to earn, hold, or
-  spend gems. Gem uses are undesigned (design doc §10 item 7).
+- **Gems exist as a currency since Phase 2 (LIVE):** `uwu gems` shows the
+  balance; `uwu bal` shows gems on the same one-liner. Earned from **crate
+  drops and tower final-boss clears**; spent on rare shop items (Evolution
+  Stone, 30 gems). There is still no way to earn gems by sacrificing
+  monsters — that path was never built.
 - A `gem` custom emoji exists (animated, fallback 💎) as a generic economy
   emoji; it is never used by any hunt command. The only custom emoji hunt
   messages use is `gold` (static) in roll/sell messages.
-- Gem mechanics belong to Phase 2 design, not Phase 1 — see
+- Gem mechanics beyond this section live in Phase 2 — see
+  [04-economy.md §4.2](04-economy.md#42-sacrifice--gems) and
   [05-phase2-design-index.md](05-phase2-design-index.md).
 
 ## 3.9 Announcements (Legendary+ catches)
@@ -335,8 +358,8 @@ bot at startup (`CREATE TABLE IF NOT EXISTS`).
 
 ## 3.14 Code vs design doc disagreements
 
-1. **Pity can produce Legendary+ in code; doc §3.3 rule 9 says Epic-only.**
-   The largest functional divergence.
+1. ~~**Pity can produce Legendary+ in code; doc §3.3 rule 9 says Epic-only.**~~
+   **FIXED in Phase 2** — pity is now Epic exactly (500-seed test).
 2. **Meadow unlock 0 in code vs 1 in doc.** Deliberate, commented (level 0
    is the starting level).
 3. **Area tier pools widened in code** (Woods +Common, Peaks +Uncommon,
@@ -356,7 +379,7 @@ bot at startup (`CREATE TABLE IF NOT EXISTS`).
 
 ## Verified
 
-- **Tests:** `npm test` 2026-11-07 — 357/357 passed (15 files), including
+- **Tests:** `npm test` 2026-11-07 — 593/593 passed (21 files), including
   `test/hunt.test.ts` (36 hunt tests), `test/emoji.test.ts`.
 - **Code read:** `src/commands/hunt.ts`, `src/lib/hunt.ts`,
   `src/lib/huntDb.ts`, `src/lib/emoji.ts` (hunt parts),

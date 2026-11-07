@@ -9,6 +9,7 @@ import {
   GUILD_MAX_LEVEL,
   GUILD_MAX_MEMBERS,
   addGuildXp,
+  awardGuildXpBestEffort,
   createGuild,
   disbandGuild,
   getGuildByName,
@@ -506,5 +507,29 @@ describe("guild command", () => {
     );
     expect(transferred.allText()).toMatch(/now the Leader/);
     expect((await getGuildByName(db, "Fortec"))?.leader_id).toBe("member");
+  });
+});
+
+describe("awardGuildXpBestEffort", () => {
+  it("is a no-op (no throw, no guild) when the user has no guild", async () => {
+    await expect(awardGuildXpBestEffort(db, "user-1", 10)).resolves.toBeUndefined();
+    expect(await getUserGuild(db, "user-1")).toBeNull();
+  });
+
+  it("adds XP to the member's guild", async () => {
+    await makeGuild("user-1", "Fortec", 0);
+    await awardGuildXpBestEffort(db, "user-1", 10);
+    expect((await getUserGuild(db, "user-1"))?.xp).toBe(10);
+    await awardGuildXpBestEffort(db, "user-1", 40);
+    expect((await getUserGuild(db, "user-1"))?.xp).toBe(50);
+  });
+
+  it("never throws on a DB failure", async () => {
+    const broken = {
+      prepare: () => {
+        throw new Error("db down");
+      },
+    } as unknown as SelenaDb;
+    await expect(awardGuildXpBestEffort(broken, "user-1", 10)).resolves.toBeUndefined();
   });
 });

@@ -12,9 +12,9 @@ the Zenith Esports server, playable in any server it is invited to.
 | [01-core.md](01-core.md) | Prefix router, help system, unknown-command replies, balance / daily / give / leaderboard, levels & rank | **LIVE** |
 | [02-casino.md](02-casino.md) | Slots, blackjack, roulette, coinflip, highlow, mines, scratch — rules, payouts, presentation | **LIVE** |
 | [03-hunt-world.md](03-hunt-world.md) | Hunt world Phase 1: hunt, roll/gacha, map, zoo, inv, sell, rarity tiers, caps, announcements, roster | **LIVE** |
-| [04-economy.md](04-economy.md) | Sell prices, sacrifice & gems (what actually exists), plus shop / auction / fusion / towers / guilds / battles / crates / announcements / logs | **MIXED** — sell/gems are live; everything from §4 onward is **DESIGNED — NOT BUILT** |
-| [05-phase2-design-index.md](05-phase2-design-index.md) | Full index of the Phase 2 design: world map, towers, guilds, battles, levels/fusion, spawn cooldowns, auction, shop, crates, announcements/logs | **DESIGNED — NOT BUILT** |
-| [06-command-reference.md](06-command-reference.md) | Every command (all 42) in one table, plus games, moderation, utility, starboard, automod, timers | **LIVE** |
+| [04-economy.md](04-economy.md) | Sell prices, sacrifice & gems (what actually exists), plus shop / auction / fusion / towers / guilds / battles / crates / announcements / logs | **LIVE** — Phase 2 built 2026-11-07 |
+| [05-phase2-design-index.md](05-phase2-design-index.md) | Full index of the Phase 2 design: world map, towers, guilds, battles, levels/fusion, spawn cooldowns, auction, shop, crates, announcements/logs | **LIVE** — built 2026-11-07, tests 593/593 |
+| [06-command-reference.md](06-command-reference.md) | Every command (all 57) in one table, plus games, moderation, utility, starboard, automod, timers | **LIVE** |
 
 ## Reading the status labels
 
@@ -31,13 +31,14 @@ the Zenith Esports server, playable in any server it is invited to.
 
 ## Verification snapshot (2026-11-07)
 
-- **Tests:** `npm test` — **357/357 passed, 15 files**, run 2026-11-07 ~19:07 IST.
-- **Live deploy:** `dep-dbniifbm8hqs73calr10`, commit `3653bd4`
-  (Spike Puffer roster replacement), status `live`, health endpoint `200`,
-  checked 2026-11-07 ~19:10 IST.
+- **Tests:** `npm test` — **593/593 passed, 21 files**, run 2026-11-07 ~20:20 IST.
+- **Live deploy:** `dep-dbnjiie7bikc73cnve90`, commit `654bb73`
+  (Phase 2 Wave 3: towers + market), status `live`, health endpoint `200`,
+  checked 2026-11-07 ~20:00 IST.
 - **Emoji:** `assets/emoji-hunt/emoji-ids.json` holds **170 uploaded
-  application-emoji IDs** (upload completed 2026-11-07). They are **not yet
-  wired into hunt messages** — hunt/roll/zoo still use Unicode placeholders.
+  application-emoji IDs** (upload completed 2026-11-07). They are **wired
+  into hunt/roll/zoo/inv messages** since commit `47f5f43` (Wave 1 deploy),
+  with Unicode fallback when an id is missing.
 - **Roster:** 100 monsters / 50 weapons / 20 pets. Thorn Hedgehog was
   replaced by **Spike Puffer** (Common, Water, Woods) in commit `3653bd4`;
   the manifest is 170/170 matched.
@@ -45,7 +46,7 @@ the Zenith Esports server, playable in any server it is invited to.
 ## Design docs this guide is built from
 
 - Phase 1 design: [`../hunt-world-design.md`](../hunt-world-design.md)
-- Phase 2 design (design only, not built):
+- Phase 2 design (built 2026-11-07, see §12 build-status column):
   [`../hunt-world-phase2-design.md`](../hunt-world-phase2-design.md)
 
 ## Known disagreements (code vs design doc)
@@ -53,6 +54,7 @@ the Zenith Esports server, playable in any server it is invited to.
 The guide records these where they occur; the full list is in
 [03-hunt-world.md §3.14](03-hunt-world.md#314-code-vs-design-doc-disagreements)
 and [06-command-reference.md §6.7](06-command-reference.md#67-findings--gaps).
-The largest: **pity rolls in code can produce Legendary/Mythic/UwU**,
-while the Phase 1 design doc says pity is Epic-only. Code wins until
-Ronit rules otherwise.
+Resolved in Phase 2: **pity rolls are now Epic exactly** (was leaking into
+Legendary+). Still open: **no `uwu use` command** (shop consumables cannot
+be used yet) and **no evolution-stone mechanic** (the stone is sold, but
+nothing evolves a +6 monster).

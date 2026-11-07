@@ -231,7 +231,7 @@ custom emoji for them. Coinflip faces are hardcoded 🪙 (heads) / ⭐ (tails).
 
 ## Verified
 
-- **Tests:** `npm test` 2026-11-07 — 357/357 passed (15 files), including
+- **Tests:** `npm test` 2026-11-07 — 593/593 passed (21 files), including
   `test/casino.test.ts`, `test/cards.test.ts`, `test/handstrip.test.ts`,
   `test/visualgames.test.ts`.
 - **Code read:** `src/commands/casino.ts`, `src/lib/casino.ts`,

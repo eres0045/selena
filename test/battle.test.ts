@@ -4,6 +4,7 @@ import type { SelenaDb } from "../src/lib/db.js";
 import { getTestDb } from "./testDb.js";
 import { addPoints, getBalance } from "../src/lib/economy.js";
 import { addMonster } from "../src/lib/huntDb.js";
+import { createGuild, getUserGuild } from "../src/lib/guilds.js";
 import { MONSTER_BY_ID, type Monster } from "../src/lib/hunt.js";
 import { FakeButton, FakeChatInput } from "../src/lib/testkit.js";
 import {
@@ -418,6 +419,22 @@ describe("uwu battle command", () => {
     const now = Date.now();
     expect(await getBattleCooldownRemainingMs(db, ALICE, now)).toBeGreaterThan(0);
     expect(await getBattleCooldownRemainingMs(db, BOB, now)).toBeGreaterThan(0);
+  });
+
+  it("battle win grants 50 guild XP to the winner (draw grants none)", async () => {
+    await createGuild(db, ALICE, "Alice Guild", Date.now());
+    const { challengeId } = await challenge();
+    const btn = new FakeButton({ customId: `selena:battle:accept:${challengeId}`, userId: BOB, username: "Bob" });
+    await buttonHandlers["selena:battle"]!(btn as never, ctx());
+    const final = lastEditText(btn);
+    const aliceXp = (await getUserGuild(db, ALICE))?.xp ?? 0;
+    if (final.includes(`<@${ALICE}> wins!`)) {
+      expect(aliceXp).toBe(50);
+    } else {
+      // Bob won (he has no guild) or it was a draw — Alice gets nothing.
+      expect(final).toMatch(/wins!|draw/);
+      expect(aliceXp).toBe(0);
+    }
   });
 
   it("wager is escrowed at accept and the pot goes to the winner (+125 net)", async () => {

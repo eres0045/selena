@@ -80,7 +80,10 @@ The router picks one of five casual lines at random, echoing the name typed:
 | Aliases | `uwu bal`, `uwu money`, `uwu wallet` |
 
 - **One short inline line** (plain text, OwO style):
-  > Hey <@user>, you currently have 🪙 1,234 gold! (567 XP · Level 3)
+  > Hey <@user>, you currently have 🪙 1,234 gold! (💎 12 gems · 567 XP · Level 3)
+- The gem count rides on the same line (Phase 2 market — `uwu gems` shows
+  the balance + how to earn gems; gems come from crates and tower clears,
+  and are spent on rare shop items).
 - Showing another user's balance uses the same wording ("you currently
   have") with that user mentioned. No user argument = your own balance.
 - **Starting balance for a new user: 0 gold, 0 XP, Level 0.**
@@ -184,11 +187,13 @@ internally.
 - Startup fails fast if the database schema can't be ensured, before login.
   Login is skipped entirely when no `DISCORD_TOKEN` is set (commands are
   still validated).
-- A 60-second timer runs due tasks (reminders + giveaways).
+- A 60-second timer runs due tasks (reminders + giveaways + Phase 2
+  sweeps: travel arrivals, auto-hunt ticks, rare-log posts, battle
+  challenge expiry, auction close).
 
 ## Verified
 
-- **Tests:** `npm test` 2026-11-07 — 357/357 passed (15 files), including
+- **Tests:** `npm test` 2026-11-07 — 593/593 passed (21 files), including
   `test/prefix.test.ts`, `test/help.test.ts`, `test/economy.test.ts`,
   `test/rename.test.ts`.
 - **Code read:** `src/lib/router.ts`, `src/commands/help.ts`,

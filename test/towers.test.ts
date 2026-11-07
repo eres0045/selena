@@ -4,6 +4,7 @@ import type { SelenaDb } from "../src/lib/db.js";
 import { getTestDb } from "./testDb.js";
 import { addMonster } from "../src/lib/huntDb.js";
 import { MONSTER_BY_ID } from "../src/lib/hunt.js";
+import { createGuild, getUserGuild } from "../src/lib/guilds.js";
 import { addPoints } from "../src/lib/economy.js";
 import { FakeChatInput } from "../src/lib/testkit.js";
 import {
@@ -255,6 +256,14 @@ describe("enter / checkpoint resume / party", () => {
     expect(resumed.allText()).toContain("Resuming from your checkpoint at floor 1/10");
     const climbed2 = await runCommand({ action: "climb" });
     expect(climbed2.allText()).toContain("cleared floor 2");
+  });
+
+  it("clearing a floor grants 100 guild XP", async () => {
+    await createGuild(db, ALICE, "Alice Guild", Date.now());
+    await runCommand({ action: "enter", target: "Test Meadow Spire" });
+    const climbed = await runCommand({ action: "climb" });
+    expect(climbed.allText()).toContain("cleared floor 1");
+    expect((await getUserGuild(db, ALICE))?.xp).toBe(100);
   });
 
   it("climbing without entering is refused", async () => {

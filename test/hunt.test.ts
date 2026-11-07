@@ -36,6 +36,7 @@ import {
 } from "../src/lib/hunt.js";
 import { HUNT_EMOJI_IDS } from "../src/lib/hunt-emoji-ids.js";
 import { getUserXp } from "../src/lib/levels.js";
+import { createGuild, getUserGuild } from "../src/lib/guilds.js";
 import {
   FUSION_COSTS,
   FUSE_LADDER,
@@ -485,6 +486,45 @@ describe("hunt commands", () => {
     expect(msg.allText()).toContain("The Hollow Deep");
     expect(msg.allText()).toContain("Whispering Woods");
     expect(msg.allText()).toContain("Ember Peaks");
+  });
+
+  it("uwu roll grants 10 guild XP per pull", async () => {
+    await createGuild(db, "user-1", "Test Guild", Date.now());
+    await addPoints(db, GUILD, "user-1", 1000, "seed");
+    const msg = await run("uwu roll");
+    expect(msg.allText()).toContain("Roll ×1");
+    expect((await getUserGuild(db, "user-1"))?.xp).toBe(10);
+  });
+
+  it("uwu hunt catch grants 10 guild XP", async () => {
+    // Meadow encounters are Common (90% catch) — loop fresh hunters
+    // until one catches, like the catch-rate test below.
+    const handler = allButtonHandlers["selena:hunt"]!;
+    for (let i = 0; i < 5; i++) {
+      const uid = `guild-hunter-${i}`;
+      await createGuild(db, uid, `Guild ${i}`, Date.now());
+      const msg = await run("uwu hunt", uid);
+      const customId = (msg.replies[0]!.components as any)[0].toJSON().components[0].custom_id as string;
+      const edits: Record<string, unknown>[] = [];
+      await handler(
+        {
+          customId,
+          user: { id: uid },
+          deferUpdate: async () => {},
+          editReply: async (p: Record<string, unknown>) => {
+            edits.push(p);
+          },
+          reply: async () => {},
+          followUp: async () => {},
+        } as never,
+        { db, guildId: GUILD } as never,
+      );
+      if (((edits[0]?.content as string) ?? "").includes("Caught it!")) {
+        expect((await getUserGuild(db, uid))?.xp).toBe(10);
+        return;
+      }
+    }
+    throw new Error("no hunter caught a monster in 5 tries");
   });
 
   it("uwu zoo is empty at first, uwu inv is empty at first", async () => {

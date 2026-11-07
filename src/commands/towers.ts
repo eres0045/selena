@@ -1,4 +1,5 @@
 import { type Command, type CommandContext, type CommandInvocation } from "../lib/command.js";
+import { awardGuildXpBestEffort } from "../lib/guilds.js";
 import {
   climbFloor,
   ensureTowersSeeded,
@@ -137,6 +138,11 @@ export const commands: Command[] = [
             towerId: progress.towerId,
             nowMs: Date.now(),
           });
+          // Guild XP (Phase 2 §3.2): 100 per tower floor cleared,
+          // best-effort — the climb already settled.
+          if (result.outcome === "win") {
+            await awardGuildXpBestEffort(ctx.db, inv.user.id, 100);
+          }
           return result.text;
         });
         return;
