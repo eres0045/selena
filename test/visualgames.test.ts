@@ -1,228 +1,157 @@
 import { existsSync, readFileSync } from "node:fs";
-import { parseGIF, decompressFrames } from "gifuct-js";
+import { inflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import {
+  SCRATCH_COVERED,
   VISUAL_SUSPENSE,
-  coinflipFlipPath,
-  coinflipLandedPath,
-  composeScratch,
-  composeSlotsSettled,
-  roulettePocketAngle,
-  roulettePocketIndex,
-  rouletteSpinPath,
-  rouletteWheelPath,
-  slotsSpinPath,
-  tryReadAsset,
-  ROULETTE_WHEEL_ORDER,
+  coinflipFaceEmoji,
+  rouletteColorDot,
+  symbolsLine,
 } from "../src/lib/visualgames.js";
+import { EMOJI_IDS } from "../src/lib/emoji.js";
 
 // The module default (captured before any test can mutate it).
 const DEFAULT_SUSPENSE_MS = VISUAL_SUSPENSE.ms;
-
-function gifInfo(buf: Buffer): { width: number; height: number; frames: number } {
-  const gif = parseGIF(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer);
-  const frames = decompressFrames(gif, true);
-  return { width: gif.lsd.width as number, height: gif.lsd.height as number, frames: frames.length };
-}
-
-function gifFramePixels(buf: Buffer): { width: number; height: number; patch: Uint8ClampedArray } {
-  const gif = parseGIF(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer);
-  const frames = decompressFrames(gif, true);
-  const f = frames[0] as { dims: { width: number; height: number }; patch: Uint8ClampedArray };
-  return { width: f.dims.width, height: f.dims.height, patch: f.patch };
-}
-
-/** Width of the opaque x-range of one GIF frame (0 when fully transparent). */
-function frameOpaqueWidth(buf: Buffer, index: number): number {
-  const gif = parseGIF(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer);
-  const frames = decompressFrames(gif, true);
-  const f = frames[index] as { dims: { width: number; height: number }; patch: Uint8ClampedArray };
-  let x0 = f.dims.width;
-  let x1 = -1;
-  for (let y = 0; y < f.dims.height; y++) {
-    for (let x = 0; x < f.dims.width; x++) {
-      if (f.patch[(y * f.dims.width + x) * 4 + 3] !== 0) {
-        if (x < x0) x0 = x;
-        if (x > x1) x1 = x;
-      }
-    }
-  }
-  return x1 < 0 ? 0 : x1 - x0 + 1;
-}
 
 function pngSize(buf: Buffer): { width: number; height: number } {
   return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
 }
 
-/** True when some pixel in the box satisfies the colour test. */
-function hasPixel(
-  patch: Uint8ClampedArray,
-  width: number,
-  box: [number, number, number, number],
-  test: (r: number, g: number, b: number) => boolean,
-): boolean {
-  const [x0, y0, x1, y1] = box;
-  for (let y = y0; y < y1; y++) {
-    for (let x = x0; x < x1; x++) {
-      const i = (y * width + x) * 4;
-      if (patch[i + 3] === 0) continue;
-      if (test(patch[i] as number, patch[i + 1] as number, patch[i + 2] as number)) return true;
+/**
+ * Minimal PNG decoder: 8-bit RGBA (colour type 6), non-interlaced.
+ * Enough to check transparency/size of the shipped emoji PNGs.
+ */
+function pngRgba(buf: Buffer): { width: number; height: number; pixels: Buffer } {
+  let off = 8;
+  let width = 0;
+  let height = 0;
+  let colorType = -1;
+  let bitDepth = 0;
+  const idat: Buffer[] = [];
+  while (off < buf.length) {
+    const len = buf.readUInt32BE(off);
+    const type = buf.toString("ascii", off + 4, off + 8);
+    const data = buf.subarray(off + 8, off + 8 + len);
+    if (type === "IHDR") {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      bitDepth = data[8] as number;
+      colorType = data[9] as number;
+    } else if (type === "IDAT") {
+      idat.push(Buffer.from(data));
+    } else if (type === "IEND") {
+      break;
+    }
+    off += 12 + len;
+  }
+  expect(bitDepth).toBe(8);
+  expect(colorType).toBe(6);
+  const raw = inflateSync(Buffer.concat(idat));
+  const stride = width * 4;
+  const pixels = Buffer.alloc(width * height * 4);
+  let pos = 0;
+  for (let y = 0; y < height; y++) {
+    const filter = raw[pos] as number;
+    pos += 1;
+    const row = raw.subarray(pos, pos + stride);
+    pos += stride;
+    const out = pixels.subarray(y * stride, (y + 1) * stride);
+    for (let x = 0; x < stride; x++) {
+      const a = x >= 4 ? (out[x - 4] as number) : 0;
+      const b = y > 0 ? (pixels[(y - 1) * stride + x] as number) : 0;
+      const c = y > 0 && x >= 4 ? (pixels[(y - 1) * stride + x - 4] as number) : 0;
+      const v = row[x] as number;
+      let pred = 0;
+      if (filter === 1) pred = a;
+      else if (filter === 2) pred = b;
+      else if (filter === 3) pred = (a + b) >> 1;
+      else if (filter === 4) {
+        const p = a + b - c;
+        const pa = Math.abs(p - a);
+        const pb = Math.abs(p - b);
+        const pc = Math.abs(p - c);
+        pred = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      }
+      out[x] = (v + pred) & 0xff;
     }
   }
-  return false;
+  return { width, height, pixels };
 }
 
-describe("roulette wheel order + ball angle", () => {
-  it("is the 37-pocket European order, 0-36 each exactly once", () => {
-    expect(ROULETTE_WHEEL_ORDER).toHaveLength(37);
-    expect([...ROULETTE_WHEEL_ORDER].sort((a, b) => a - b)).toEqual(
-      Array.from({ length: 37 }, (_, i) => i),
-    );
-    expect(ROULETTE_WHEEL_ORDER[0]).toBe(0);
-    expect(ROULETTE_WHEEL_ORDER.slice(0, 8)).toEqual([0, 32, 15, 19, 4, 21, 2, 25]);
+function alphaAt(pixels: Buffer, width: number, x: number, y: number): number {
+  return pixels[(y * width + x) * 4 + 3] as number;
+}
+
+describe("tiny-emoji helpers", () => {
+  it("coinflip faces: Unicode fallbacks render while the IDs are blank", () => {
+    // heads/tails are NOT uploaded yet — the PNGs are in
+    // assets/emoji-animated/ waiting for upload. Until the IDs are
+    // filled in src/lib/emoji.ts, the fallbacks show. (When the IDs
+    // ARE filled, update this test to expect the <a:heads:id> markup.)
+    expect(EMOJI_IDS.heads).toBe("");
+    expect(EMOJI_IDS.tails).toBe("");
+    expect(coinflipFaceEmoji("heads")).toBe("🪙");
+    expect(coinflipFaceEmoji("tails")).toBe("⭐");
+    expect(coinflipFaceEmoji("heads")).not.toBe(coinflipFaceEmoji("tails"));
   });
 
-  it("pocket 0 is centred at the top (-90 + half a pocket)", () => {
-    expect(roulettePocketAngle(0)).toBeCloseTo(-90 + 0.5 * (360 / 37), 9);
-    expect(roulettePocketAngle(32)).toBeCloseTo(-90 + 1.5 * (360 / 37), 9);
-    expect(roulettePocketAngle(26)).toBeCloseTo(-90 + 36.5 * (360 / 37), 9);
+  it("roulette colour dots: red/black/green map to the right dot", () => {
+    expect(rouletteColorDot("red")).toBe("🔴");
+    expect(rouletteColorDot("black")).toBe("⚫");
+    expect(rouletteColorDot("green")).toBe("🟢");
   });
 
-  it("adjacent pockets differ by exactly 360/37 and all 37 angles are distinct", () => {
-    const angles = ROULETTE_WHEEL_ORDER.map((n) => roulettePocketAngle(n));
-    for (let i = 1; i < angles.length; i++) {
-      expect((angles[i] as number) - (angles[i - 1] as number)).toBeCloseTo(360 / 37, 9);
-    }
-    expect(new Set(angles).size).toBe(37);
+  it("symbolsLine joins the result symbols with spaces", () => {
+    expect(symbolsLine(["🍒", "🍋", "7️⃣"])).toBe("🍒 🍋 7️⃣");
+    expect(symbolsLine(["💎", "💎", "💎"])).toBe("💎 💎 💎");
+    expect(symbolsLine([])).toBe("");
   });
 
-  it("the angle for a number maps back to that number's pocket", () => {
-    for (let n = 0; n <= 36; n++) {
-      const a = roulettePocketAngle(n);
-      const idx = Math.floor((((a + 90) % 360) + 360) % 360 / (360 / 37));
-      expect(idx).toBe(roulettePocketIndex(n));
-    }
-  });
-
-  it("throws for numbers that are not on the wheel", () => {
-    expect(() => roulettePocketIndex(37)).toThrow();
-    expect(() => roulettePocketIndex(-1)).toThrow();
-  });
-
-  it("a settled wheel PNG exists for every number, 300x240", () => {
-    for (let n = 0; n <= 36; n++) {
-      const p = rouletteWheelPath(n);
-      expect(existsSync(p), `wheel-${String(n).padStart(2, "0")}.png`).toBe(true);
-      const size = pngSize(readFileSync(p));
-      expect(size).toEqual({ width: 300, height: 240 });
-    }
+  it("scratch suspense shows three covered tiles", () => {
+    expect(SCRATCH_COVERED).toBe("❓ ❓ ❓");
   });
 });
 
-describe("coinflip faces", () => {
-  it("heads and tails are distinct 240x140 PNG close-ups on the same canvas", () => {
-    const heads = readFileSync(coinflipLandedPath("heads"));
-    const tails = readFileSync(coinflipLandedPath("tails"));
-    expect(pngSize(heads)).toEqual({ width: 240, height: 140 });
-    expect(pngSize(tails)).toEqual({ width: 240, height: 140 });
+describe("coin-face emoji PNGs (upload as server emoji 'heads' / 'tails')", () => {
+  const headsPath = "assets/emoji-animated/heads.png";
+  const tailsPath = "assets/emoji-animated/tails.png";
+
+  it("both files exist, are 128x128 RGBA, and fit Discord's 256 KB cap", () => {
+    for (const p of [headsPath, tailsPath]) {
+      expect(existsSync(p), p).toBe(true);
+      const buf = readFileSync(p);
+      expect(pngSize(buf)).toEqual({ width: 128, height: 128 });
+      expect(buf.length).toBeGreaterThan(1000);
+      expect(buf.length).toBeLessThanOrEqual(256 * 1024);
+    }
+  });
+
+  it("heads and tails are distinct faces", () => {
+    const heads = readFileSync(headsPath);
+    const tails = readFileSync(tailsPath);
     expect(heads.equals(tails)).toBe(false);
   });
 
-  it("the toss GIF is animated (16 frames) on the same 240x140 canvas", () => {
-    const buf = readFileSync(coinflipFlipPath());
-    const info = gifInfo(buf);
-    expect(info).toEqual({ width: 240, height: 140, frames: 16 });
-  });
-
-  it("the toss rises, looms big, and lands edge-on (never leaks the face)", () => {
-    const buf = readFileSync(coinflipFlipPath());
-    // Frame 0: small rising coin (~60px wide). Frame 5: big at the top
-    // (~115px wide). Frame 15: edge-on sliver, face hidden (<=10px).
-    expect(frameOpaqueWidth(buf, 0)).toBeGreaterThanOrEqual(40);
-    expect(frameOpaqueWidth(buf, 0)).toBeLessThanOrEqual(80);
-    expect(frameOpaqueWidth(buf, 5)).toBeGreaterThanOrEqual(80);
-    expect(frameOpaqueWidth(buf, 15)).toBeLessThanOrEqual(10);
-  });
-});
-
-describe("spin GIFs", () => {
-  it("slots spin is animated (16 frames, 320x210)", () => {
-    const info = gifInfo(readFileSync(slotsSpinPath()));
-    expect(info).toEqual({ width: 320, height: 210, frames: 16 });
-  });
-
-  it("roulette spin is animated (12 frames, 300x240)", () => {
-    const info = gifInfo(readFileSync(rouletteSpinPath()));
-    expect(info).toEqual({ width: 300, height: 240, frames: 12 });
-  });
-});
-
-describe("small but sharp — no visual is wider than 320px", () => {
-  it("every shipped visual fits the small on-screen budget", async () => {
-    const widths = [
-      gifInfo(readFileSync(coinflipFlipPath())).width,
-      pngSize(readFileSync(coinflipLandedPath("heads"))).width,
-      pngSize(readFileSync(coinflipLandedPath("tails"))).width,
-      gifInfo(readFileSync(slotsSpinPath())).width,
-      gifInfo(readFileSync(rouletteSpinPath())).width,
-      pngSize(readFileSync(rouletteWheelPath(17))).width,
-      gifInfo((await composeSlotsSettled(["🍒", "🍋", "7️⃣"])) as Buffer).width,
-      gifInfo((await composeScratch(["💎", "⭐", "🍒"])) as Buffer).width,
-    ];
-    for (const w of widths) expect(w).toBeLessThanOrEqual(320);
-  });
-});
-
-describe("composeSlotsSettled", () => {
-  it("returns a 320x210 GIF showing the real result symbols", async () => {
-    const buf = await composeSlotsSettled(["🍒", "🍒", "🍒"]);
-    expect(buf).not.toBeNull();
-    const info = gifInfo(buf as Buffer);
-    expect(info).toEqual({ width: 320, height: 210, frames: 1 });
-    // Window 1 (x 39-108, y 55-133) shows a cherry: red pixels present.
-    const { width, patch } = gifFramePixels(buf as Buffer);
-    expect(hasPixel(patch, width, [55, 75, 95, 115], (r, g, b) => r > 150 && g < 110 && b < 110)).toBe(true);
-  });
-
-  it("shows the 7 tile (red 7) when the result is 7-7-7", async () => {
-    const buf = await composeSlotsSettled(["7️⃣", "7️⃣", "7️⃣"]);
-    expect(buf).not.toBeNull();
-    const { width, patch } = gifFramePixels(buf as Buffer);
-    expect(hasPixel(patch, width, [50, 70, 100, 120], (r, g, b) => r > 150 && g < 80 && b < 80)).toBe(true);
-  });
-
-  it("returns null for an unknown symbol or the wrong symbol count", async () => {
-    expect(await composeSlotsSettled(["🍒", "🍒", "🦄"])).toBeNull();
-    expect(await composeSlotsSettled(["🍒", "🍒"])).toBeNull();
-  });
-});
-
-describe("composeScratch", () => {
-  it("covered strip (null) is a 320x120 GIF with three foil tiles", async () => {
-    const buf = await composeScratch(null);
-    expect(buf).not.toBeNull();
-    expect(gifInfo(buf as Buffer)).toEqual({ width: 320, height: 120, frames: 1 });
-  });
-
-  it("revealed strip shows the real drawn symbols (blue diamond)", async () => {
-    const buf = await composeScratch(["💎", "💎", "💎"]);
-    expect(buf).not.toBeNull();
-    const { width, patch } = gifFramePixels(buf as Buffer);
-    // Tile 1 (x 18-105, y 9-109): the diamond is light blue.
-    expect(hasPixel(patch, width, [40, 40, 85, 80], (r, g, b) => b > 200 && r > 100 && r < 200)).toBe(true);
-  });
-
-  it("returns null for an unknown symbol", async () => {
-    expect(await composeScratch(["💎", "💎", "🦄"])).toBeNull();
+  it("transparent corners, opaque centre (clean cutouts, no background)", () => {
+    for (const p of [headsPath, tailsPath]) {
+      const { width, height, pixels } = pngRgba(readFileSync(p));
+      expect(width).toBe(128);
+      expect(height).toBe(128);
+      for (const [x, y] of [
+        [0, 0],
+        [127, 0],
+        [0, 127],
+        [127, 127],
+      ] as const) {
+        expect(alphaAt(pixels, width, x, y)).toBe(0);
+      }
+      expect(alphaAt(pixels, width, 64, 64)).toBe(255);
+    }
   });
 });
 
 describe("visual suspense timing", () => {
   it("defaults to a ~2.4s watch phase", () => {
     expect(DEFAULT_SUSPENSE_MS).toBe(2400);
-  });
-
-  it("tryReadAsset returns null for a missing file", () => {
-    expect(tryReadAsset("/definitely/not/a/real/path.gif")).toBeNull();
   });
 });

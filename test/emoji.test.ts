@@ -1,10 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { EMOJI_IDS, emoji, type EmojiName } from "../src/lib/emoji.js";
 
-const NAMES: EmojiName[] = ["coin", "slots", "roulette", "trophy", "gift", "party", "fire", "star"];
+const NAMES: EmojiName[] = [
+  "coin",
+  "heads",
+  "tails",
+  "slots",
+  "roulette",
+  "trophy",
+  "gift",
+  "party",
+  "fire",
+  "star",
+];
+
+// Uploaded so far — heads/tails are NOT uploaded yet (their PNGs wait
+// in assets/emoji-animated/), so they are excluded from the real-ID test.
+const UPLOADED: EmojiName[] = ["coin", "slots", "roulette", "trophy", "gift", "party", "fire", "star"];
 
 const FALLBACK: Record<EmojiName, string> = {
   coin: "🪙",
+  heads: "🪙",
+  tails: "⭐",
   slots: "🎰",
   roulette: "🎡",
   trophy: "🏆",
@@ -30,9 +47,9 @@ describe("emoji()", () => {
   });
 
   it("returns animated custom-emoji markup for the real uploaded IDs", () => {
-    // Every committed ID is a non-empty digit string, and emoji() renders
+    // Every uploaded ID is a non-empty digit string, and emoji() renders
     // it as <a:name:id> — the markup Discord animates.
-    for (const name of NAMES) {
+    for (const name of UPLOADED) {
       expect(EMOJI_IDS[name]).toMatch(/^[0-9]{10,}$/);
       expect(emoji(name)).toBe(`<a:${name}:${EMOJI_IDS[name]}>`);
     }

@@ -19,7 +19,9 @@ import {
   rankOf,
   rouletteOutcome,
   scratchOutcome,
+  SCRATCH_SYMBOLS,
   settleBlackjack,
+  SLOT_SYMBOLS,
   slotsSpin,
   suitOf,
 } from "../src/lib/casino.js";
@@ -525,7 +527,7 @@ describe("/coinflip command", () => {
   });
 });
 
-describe("visual games: suspense -> reveal flow", () => {
+describe("visual games: suspense -> reveal flow (tiny emoji, NO images)", () => {
   function edits(fake: FakeChatInput) {
     return fake.replies.filter((r) => r.kind === "editReply");
   }
@@ -537,8 +539,13 @@ describe("visual games: suspense -> reveal flow", () => {
     const p = payload as { embeds?: Array<{ title?: string; description?: string; image?: { url?: string } }> };
     return p.embeds?.[0];
   }
+  /** No attached files and no embed image: tiny emoji only. */
+  function expectNoImages(payload: unknown): void {
+    expect(fileNames(payload)).toEqual([]);
+    expect(embedOf(payload)?.image).toBeUndefined();
+  }
 
-  it("coinflip: defers, shows the flip, then edits to the landed face matching the result text", async () => {
+  it("coinflip: defers, shows the spinning coin, then edits to the landed face emoji matching the result text", async () => {
     await seed("user-1", 1000);
     const fake = await run("coinflip", { bet: 100, guess: "heads" });
     expect(fake.replies[0]?.kind).toBe("deferReply");
@@ -546,15 +553,17 @@ describe("visual games: suspense -> reveal flow", () => {
     expect(spin).toBeDefined();
     expect(settled).toBeDefined();
     expect(embedOf(spin!.payload)?.description).toMatch(/Flipping/);
-    expect(fileNames(spin!.payload)).toEqual(["flip.gif"]);
-    const settledEmbed = embedOf(settled!.payload);
-    const landed = /landed \*\*(heads|tails)\*\*/.exec(settledEmbed?.description ?? "")?.[1];
+    expectNoImages(spin!.payload);
+    const settledDesc = embedOf(settled!.payload)?.description ?? "";
+    const landed = /landed \*\*(heads|tails)\*\*/.exec(settledDesc)?.[1];
     expect(landed).toMatch(/^(heads|tails)$/);
-    expect(fileNames(settled!.payload)).toEqual([`${landed}.png`]);
-    expect(settledEmbed?.image?.url).toBe(`attachment://${landed}.png`);
+    // The landed face emoji sits in the text (custom <a:heads:id> once
+    // uploaded, 🪙 / ⭐ fallback until then).
+    expect(settledDesc).toMatch(landed === "heads" ? /🪙|<a:heads:\d+>/ : /⭐|<a:tails:\d+>/);
+    expectNoImages(settled!.payload);
   });
 
-  it("slots: defers, shows the spinning reels, then edits to the settled strip", async () => {
+  it("slots: defers, shows the spinning machine, then edits to the three REAL result symbols inline", async () => {
     await seed("user-1", 1000);
     const fake = await run("slots", { bet: 100 });
     expect(fake.replies[0]?.kind).toBe("deferReply");
@@ -562,12 +571,15 @@ describe("visual games: suspense -> reveal flow", () => {
     expect(spin).toBeDefined();
     expect(settled).toBeDefined();
     expect(embedOf(spin!.payload)?.description).toMatch(/Spinning/);
-    expect(fileNames(spin!.payload)).toEqual(["spin.gif"]);
-    expect(fileNames(settled!.payload)).toEqual(["settled.gif"]);
-    expect(embedOf(settled!.payload)?.image?.url).toBe("attachment://settled.gif");
+    expectNoImages(spin!.payload);
+    const settledDesc = embedOf(settled!.payload)?.description ?? "";
+    const shown = settledDesc.split("\n")[0]?.split(" ") ?? [];
+    expect(shown).toHaveLength(3);
+    for (const s of shown) expect(SLOT_SYMBOLS).toContain(s);
+    expectNoImages(settled!.payload);
   });
 
-  it("roulette: defers, shows the spinning wheel, then edits to the wheel with the ball on the rolled number", async () => {
+  it("roulette: defers, shows the spinning wheel, then edits to the rolled number + colour dot", async () => {
     await seed("user-1", 1000);
     const fake = await run("roulette", { bet: 100, "bet-on": "red" });
     expect(fake.replies[0]?.kind).toBe("deferReply");
@@ -575,16 +587,20 @@ describe("visual games: suspense -> reveal flow", () => {
     expect(spin).toBeDefined();
     expect(settled).toBeDefined();
     expect(embedOf(spin!.payload)?.description).toMatch(/Spinning/);
-    expect(fileNames(spin!.payload)).toEqual(["spin.gif"]);
-    const settledEmbed = embedOf(settled!.payload);
-    const rolled = /landed on \*\*(\d+) /.exec(settledEmbed?.description ?? "")?.[1];
-    expect(rolled).toMatch(/^\d+$/);
-    const wheelName = `wheel-${String(rolled).padStart(2, "0")}.png`;
-    expect(fileNames(settled!.payload)).toEqual([wheelName]);
-    expect(settledEmbed?.image?.url).toBe(`attachment://${wheelName}`);
+    expectNoImages(spin!.payload);
+    const settledDesc = embedOf(settled!.payload)?.description ?? "";
+    const m = /landed on \*\*(\d+)\*\* (🔴|⚫|🟢)/.exec(settledDesc);
+    expect(m).not.toBeNull();
+    const rolled = Number(m?.[1]);
+    expect(rolled).toBeGreaterThanOrEqual(0);
+    expect(rolled).toBeLessThanOrEqual(36);
+    // 0 is green; every other number carries a red or black dot.
+    if (rolled === 0) expect(m?.[2]).toBe("🟢");
+    else expect(["🔴", "⚫"]).toContain(m?.[2]);
+    expectNoImages(settled!.payload);
   });
 
-  it("scratch: defers, shows the covered foil tiles, then edits to the revealed tiles", async () => {
+  it("scratch: defers, shows the covered tiles, then edits to the three REAL drawn symbols inline", async () => {
     await seed("user-1", 1000);
     const fake = await run("scratch", { bet: 100 });
     expect(fake.replies[0]?.kind).toBe("deferReply");
@@ -592,9 +608,13 @@ describe("visual games: suspense -> reveal flow", () => {
     expect(spin).toBeDefined();
     expect(settled).toBeDefined();
     expect(embedOf(spin!.payload)?.description).toMatch(/Scratching/);
-    expect(fileNames(spin!.payload)).toEqual(["covered.gif"]);
-    expect(fileNames(settled!.payload)).toEqual(["revealed.gif"]);
-    expect(embedOf(settled!.payload)?.image?.url).toBe("attachment://revealed.gif");
+    expect(embedOf(spin!.payload)?.description).toContain("❓ ❓ ❓");
+    expectNoImages(spin!.payload);
+    const settledDesc = embedOf(settled!.payload)?.description ?? "";
+    const shown = settledDesc.split("\n")[0]?.split(" ") ?? [];
+    expect(shown).toHaveLength(3);
+    for (const s of shown) expect(SCRATCH_SYMBOLS).toContain(s);
+    expectNoImages(settled!.payload);
   });
 
   it("visual games reply with a single message (defer + 2 edits), never a new reply", async () => {

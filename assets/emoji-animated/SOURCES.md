@@ -15,6 +15,28 @@ the table order; the Discord emoji NAME is the file stem.
 | slots.gif | Mini slot machine, reels scroll and settle 7-7-7, lever pulls | PIL original — `scripts/render_animated_emoji.py` (no fitting emoji.gg slot machine exists; the one found was a blurry gem in a frame) | 14 | 128x128 | 37,726 |
 | roulette.gif | Roulette wheel spinning one full turn, ball orbiting the other way | PIL original — `scripts/render_animated_emoji.py` (no animated roulette wheel on emoji.gg) | 12 | 128x128 | 78,946 |
 
+## Coin faces — heads / tails (2026-11-07, Ronit: tiny-emoji games)
+
+The four visual casino games are now tiny-emoji only (no attached
+pictures — Discord stretches every image to the message width on his
+phone, so images can never look small). The coinflip settles on a
+small custom emoji of the landed face:
+
+| File | What it is | Source | Size | Bytes | Status |
+| --- | --- | --- | --- | --- | --- |
+| heads.png | Gold `$` coin face | PIL original — `scripts/render_coin_face_emoji.py` (same clean disc as the old landed close-up; the emoji.gg `$` face is NOT reused — it carries a faint stock watermark across the `$`) | 128x128 | 4,307 | NOT uploaded yet — upload as server emoji `heads`, fill the ID in `src/lib/emoji.ts` |
+| tails.png | Gold disc with a star emboss | PIL original — same script, same disc construction as heads so both sides read as one coin | 128x128 | 2,182 | NOT uploaded yet — upload as server emoji `tails`, fill the ID in `src/lib/emoji.ts` |
+
+Both are RGBA with transparent corners (verified numerically: corners
+alpha 0, centre opaque) and far under the 256 KB cap. Contact sheet
+`verify/coin-faces.png` (1x + 3x on #313338) viewed by eye: `$` and
+star crisp and unmistakable at small size, no background/halo. Until
+the IDs are filled, the bot falls back to 🪙 / ⭐ (`test/visualgames.test.ts`
+asserts the fallback while the IDs are blank — update that test to
+expect the `<a:heads:id>` markup once the IDs land).
+
+Rebuild: `python3 scripts/render_coin_face_emoji.py`.
+
 ## Background fix (2026-11-07, Ronit: "no bg, make it properly")
 
 Composited every frame of all 8 files on Discord dark (#313338) at 1x

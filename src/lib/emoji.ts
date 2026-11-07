@@ -13,6 +13,8 @@
  */
 export type EmojiName =
   | "coin"
+  | "heads"
+  | "tails"
   | "slots"
   | "roulette"
   | "trophy"
@@ -29,6 +31,12 @@ export type EmojiName =
  */
 export const EMOJI_IDS: Record<EmojiName, string> = {
   coin: "1568514166443212840",
+  // heads/tails: NOT uploaded yet — the PNGs are in assets/emoji-animated/
+  // (heads.png / tails.png). Upload them as server emoji named "heads" and
+  // "tails", then fill in the IDs here. Until then the Unicode fallbacks
+  // below are used, so the coinflip result still shows.
+  heads: "",
+  tails: "",
   slots: "1568506467093454888",
   roulette: "1568506546621784175",
   trophy: "1568506606566510702",
@@ -40,6 +48,8 @@ export const EMOJI_IDS: Record<EmojiName, string> = {
 
 const FALLBACK: Record<EmojiName, string> = {
   coin: "🪙",
+  heads: "🪙",
+  tails: "⭐",
   slots: "🎰",
   roulette: "🎡",
   trophy: "🏆",
