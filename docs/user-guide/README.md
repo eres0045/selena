@@ -51,8 +51,8 @@ the Zenith Esports server, playable in any server it is invited to.
 ## Known disagreements (code vs design doc)
 
 The guide records these where they occur; the full list is in
-[03-hunt-world.md §12](03-hunt-world.md#12-code-vs-design-doc-disagreements)
-and [06-command-reference.md §7](06-command-reference.md#7-findings--gaps).
+[03-hunt-world.md §3.14](03-hunt-world.md#314-code-vs-design-doc-disagreements)
+and [06-command-reference.md §6.7](06-command-reference.md#67-findings--gaps).
 The largest: **pity rolls in code can produce Legendary/Mythic/UwU**,
 while the Phase 1 design doc says pity is Epic-only. Code wins until
 Ronit rules otherwise.
