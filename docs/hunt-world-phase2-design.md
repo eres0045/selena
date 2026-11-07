@@ -154,7 +154,7 @@ Ron's message said "2 small tower with 10 floor and 2 big like 20 floor and one 
 ### 4.3 The Main tower (50 floors)
 
 - **One Main tower in the whole world.** Best rewards in the game.
-- **Location is hidden and never revealed** — it does not appear on `uwu map`, in any list, or in help text. Players must **find it** through exploring, clues, or word of mouth. (How the first discovery works — a hint system, a rare map drop, or pure exploration — is unconfirmed, §10.)
+- **Location is hidden and never revealed** — it does not appear on `uwu map`, in any list, or in help text. Players must **find it** through exploring, clues, or word of mouth. **The Main tower itself is never discoverable by exploring or travel** — it is entered only by exact tower name/id (word of mouth), its area always renders as `???`, and it never appears in the tower list, not even as `???`. (Built 2026-11-07; the mystery system for the other 29 towers is §4.7.)
 - 50 floors, mini-boss every 5th floor, final boss on floor 50.
 - Clear cooldown **7 days** (tower-wide, §4.5). Because there is only one, its cooldown is the longest in the game.
 
@@ -179,6 +179,16 @@ Ron's message said "2 small tower with 10 floor and 2 big like 20 floor and one 
 ### 4.6 Tower commands (working defaults)
 
 `uwu towers` (list towers in your region with floors + cooldown status) · `uwu tower <name>` (detail: floors, requirements, cooldown timer) · `uwu party invite @user` (form a party — recommended minimum depends on the tower: Small 2, Big 4, Main 6; solo or larger parties allowed) · `uwu tower enter <name>` (start/resume a run from your checkpoint) · `uwu tower leave` (stop at a checkpoint; progress saved).
+
+### 4.7 Tower mystery — discovery + progressive floor reveal (BUILT 2026-11-07, Ronit's correction: "why showing tower and all — show unknown, let them encounter or explore then show, when they clear floor then unlock next floor stuff, mystery")
+
+- **Undiscovered towers show as unknown.** `uwu tower` lists one `??? · undiscovered tower — explore the area to find it` row per undiscovered tower (no name, no area, no floors, no level requirement). Discovered towers show their normal compact row. The list header shows only how many you have discovered on that page — never the total. The Main tower never appears at all, not even as `???`.
+- **Discovery — two paths (encounter or explore):**
+  - `uwu explore` (alias `discover`, Towers category): in your **current area**, a **40%** chance per explore to discover one undiscovered tower in that area. **60 s cooldown** (stored in Supabase, survives redeploys). No level gate — a level-0 player can discover the Meadow tower. If no undiscovered tower remains in the area, exploring finds a small consolation (**5–15 gold**). If the explore fails, you found nothing this time. Exploring while travelling is refused ("You're on the road — explore when you arrive.").
+  - **Travel arrival encounter:** when a travel trip arrives, a **25%** chance to stumble on an undiscovered tower in the arrival area — the arrival message announces the discovery.
+- **Entering/detail requires discovery.** `uwu tower <name>` and `uwu tower enter <name>` only work for towers you have discovered. Naming an undiscovered tower (even guessing its exact name) replies that no such tower is known to you — it never confirms the tower exists. (Players who entered a tower before this system existed keep their progress and are treated as knowing it.)
+- **Floors unlock progressively.** A tower's detail shows only cleared floors + the current floor (type, gold/XP rewards, crate, mini-boss/final-boss label). All future floors show as `???`. Clearing a floor unlocks the next floor's details. The final-boss floor stays `???` until the floor before it is cleared.
+- **Persistence:** discovered towers are per-user in Supabase (`user_tower_discoveries`), explore cooldown in `user_explore`. Fail-closed like everything else.
 
 ---
 
@@ -467,7 +477,7 @@ items, but there is no command to use them yet.
 | 11 | Evolution stones (evolve a +6 monster up one tier) | Working default mechanic | NOT BUILT as a mechanic — the stone exists as a shop item (30 gems) and tower/crate drop, but no evolve command exists | Confirm the mechanic exists at all |
 | 12 | Armor / accessories slot | New slot, working default | NOT BUILT — no slot, no accessories in code | Confirm or drop |
 | 13 | Mini-bosses catchable? | No — bosses are never catchable | BUILT (never catchable) | Confirm |
-| 14 | Main tower discovery (how players find a hidden tower) | Unspecified | NOT BUILT — no hint system; exact tower id/name only, area never shown | Hint system / rare map drop / pure exploration? |
+| 14 | Main tower discovery (how players find a hidden tower) | Unspecified | BUILT 2026-11-07 (mystery system, §4.7): normal towers are discovered via `uwu explore` (40% per explore, 60s cooldown, no level gate) or a 25% travel-arrival encounter; undiscovered towers show as `???` and detail/enter refuse unknown names; floors reveal only as cleared. **The Main tower itself stays exact name/id only** — never discoverable by explore/travel, never listed even as `???` | Confirm the numbers (40% / 60s / 25%) or tune |
 | 15 | Tower entry level requirements | Small = area level, Big = +5, Main = 60 | BUILT | Confirm numbers |
 | 16 | Guild create cost (5,000 gold), guild XP awards, level thresholds, max level 10 | Working defaults | BUILT (create 5,000; XP 10 per hunt catch / 10 per roll pull / 50 per battle win / 100 per tower floor) | Confirm or change |
 | 17 | ~~Crate name: "Cache" or "Hoard"~~ — RESOLVED 2026-11-07: just **"Crate"** | Resolved | BUILT | — |

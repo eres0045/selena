@@ -268,6 +268,50 @@ describe("world map + travel + auto-hunt", () => {
     await expect(travelDueSweep(db, null)).resolves.toBeUndefined();
   });
 
+  it("travelDueSweep appends the onArrival hook line to the arrival message", async () => {
+    await setLevel(5);
+    await run("travel", { area: "woods" });
+    await setLocationFields({ travel_ends_at: Date.now() - 1000 });
+    const client = new FakeClient();
+    const hookLine = "🔍 On the way in, you stumbled on a tower: 🗼 Test Tower — go find it!";
+    const seen: { userId: string; areaId: string }[] = [];
+    await travelDueSweep(db, client as never, async (userId, areaId) => {
+      seen.push({ userId, areaId });
+      return hookLine;
+    });
+    expect(seen).toEqual([{ userId: USER, areaId: "woods" }]);
+    expect((await getLocation(db, USER))!.currentArea).toBe("woods");
+    expect(client.sends).toHaveLength(1);
+    expect(client.sends[0]!.content).toBe(`You arrived at Whispering Woods.\n${hookLine}`);
+  });
+
+  it("travelDueSweep still arrives when the onArrival hook throws", async () => {
+    await setLevel(5);
+    await run("travel", { area: "woods" });
+    await setLocationFields({ travel_ends_at: Date.now() - 1000 });
+    const client = new FakeClient();
+    await travelDueSweep(db, client as never, async () => {
+      throw new Error("hook blew up");
+    });
+    const loc = (await getLocation(db, USER))!;
+    expect(loc.currentArea).toBe("woods");
+    expect(loc.travellingTo).toBeNull();
+    expect(loc.travelEndsAt).toBeNull();
+    expect(client.sends).toHaveLength(1);
+    expect(client.sends[0]!.content).toBe("You arrived at Whispering Woods.");
+  });
+
+  it("travelDueSweep with no hook sends only the arrival line (unchanged behaviour)", async () => {
+    await setLevel(5);
+    await run("travel", { area: "woods" });
+    await setLocationFields({ travel_ends_at: Date.now() - 1000 });
+    const client = new FakeClient();
+    await travelDueSweep(db, client as never);
+    expect((await getLocation(db, USER))!.currentArea).toBe("woods");
+    expect(client.sends).toHaveLength(1);
+    expect(client.sends[0]!.content).toBe("You arrived at Whispering Woods.");
+  });
+
   // -------------------------------------------------------------------------
   // Auto-hunt
   // -------------------------------------------------------------------------

@@ -120,7 +120,24 @@ Source: `docs/hunt-world-phase2-design.md` §6.4. Command
 
 Source: `docs/hunt-world-phase2-design.md` §4. Command `uwu tower`
 (alias `towers`): bare `uwu tower` lists; `enter <name>`, `climb`, `leave`.
+New: `uwu explore` (alias `discover`) — explore your current area to
+discover hidden towers.
 
+- **MYSTERY (built 2026-11-07, Ronit's correction): towers are hidden
+  until discovered.** `uwu tower` shows undiscovered towers as
+  `??? · undiscovered tower — explore the area to find it` (no name, no
+  area, no floors, no level requirement); the header shows only how many
+  you discovered on that page, never the total. Discovery is per-user
+  (Supabase `user_tower_discoveries`): **`uwu explore`** in your current
+  area — **40% chance** per explore, **60 s cooldown**, no level gate
+  (a level-0 player can discover the Meadow tower); if the area has no
+  undiscovered tower left, exploring finds **5–15 gold**. **Travel
+  arrival:** 25% chance to stumble on an undiscovered tower in the
+  arrival area. **Detail/enter require discovery** — naming an
+  undiscovered tower replies that no such tower is known to you (never
+  confirms it exists). **Floors unlock progressively:** detail shows
+  only cleared floors + the current floor (type, rewards, boss label);
+  future floors are `???` until the floor before them is cleared.
 - **30 towers** across the world, **seeded deterministic placement**
   (seed `20261107`): **18 Small / 11 big / 1 Main**. Types: **Small 10
   floors, Big 20 floors, Main 50 floors** (one Main tower, location
@@ -151,9 +168,11 @@ Source: `docs/hunt-world-phase2-design.md` §4. Command `uwu tower`
   gems 5/15/50, materials, plus a `tower-clear-<id>` badge. All settled in
   one transaction — fail-closed.
 - ⚠️ **Deviation from the design:** no `uwu party invite` command — party
-  members join by entering the same tower. Open questions: how the hidden
-  Main tower is first discovered (no hint system built); tower entry level
-  numbers.
+  members join by entering the same tower. The hidden Main tower is
+  entered only by exact name/id (word of mouth) — it is never
+  discoverable by exploring or travel. Open questions: tower entry level
+  numbers; the explore/arrival discovery rates (40% / 25%) and the 60 s
+  explore cooldown are working defaults to confirm/tune.
 
 ## 4.7 Guilds & 1v1 battles — LIVE
 
@@ -261,11 +280,11 @@ caps — Mythic 3, UwU 1 — **are** live; see
 
 ## Verified
 
-- **Tests:** `npm test` 2026-11-07 — 593/593 passed (21 files), including
-  `test/market.test.ts` (38), `test/towers.test.ts` (22),
-  `test/guilds.test.ts` (37+3), `test/battle.test.ts` (47),
-  `test/hunt.test.ts` (76), `test/feeds.test.ts` (20), `test/world.test.ts`
-  (22).
+- **Tests:** `npm test` 2026-11-07 — 627/627 passed (22 files), including
+  `test/market.test.ts` (38), `test/towers.test.ts` (31),
+  `test/towerDiscovery.test.ts` (22), `test/guilds.test.ts` (37+3),
+  `test/battle.test.ts` (47), `test/hunt.test.ts` (76),
+  `test/feeds.test.ts` (20), `test/world.test.ts` (25).
 - **Code read:** `src/lib/market.ts`, `src/commands/market.ts`,
   `src/lib/towers.ts`, `src/commands/towers.ts`, `src/lib/guilds.ts`,
   `src/commands/guilds.ts`, `src/lib/battle.ts`, `src/commands/battle.ts`,

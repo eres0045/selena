@@ -5,7 +5,7 @@ import { getTestDb } from "./testDb.js";
 import { addMonster } from "../src/lib/huntDb.js";
 import { MONSTER_BY_ID } from "../src/lib/hunt.js";
 import { createGuild, getUserGuild } from "../src/lib/guilds.js";
-import { addPoints } from "../src/lib/economy.js";
+import { addPoints, getBalance } from "../src/lib/economy.js";
 import { FakeChatInput } from "../src/lib/testkit.js";
 import {
   CLEAR_COOLDOWN_MS,
@@ -14,17 +14,22 @@ import {
   TOWER_SEED,
   climbFloor,
   crateForFloor,
+  discoverTower,
   enterTower,
+  exploreCooldownRemainingMs,
   findTower,
   floorGold,
   floorMonsterLevel,
   floorScale,
   floorTeam,
+  getPlayerLevel,
   getProgress,
   getTowerCooldown,
+  isTowerDiscovered,
   isFinalFloor,
   isMiniBossFloor,
   leaveTower,
+  listUndiscoveredTowersInArea,
   listVisibleTowers,
   plannedTowers,
   seedTowers,
@@ -93,6 +98,12 @@ function findCommand() {
   return cmd;
 }
 
+function findExploreCommand() {
+  const cmd = towerCommands.find((c) => c.name === "explore");
+  if (!cmd) throw new Error("explore command not found");
+  return cmd;
+}
+
 async function runCommand(
   options: Record<string, unknown>,
   userId = ALICE,
@@ -101,6 +112,17 @@ async function runCommand(
   const fake = new FakeChatInput({ commandName: "tower", options, userId, username, guildId: GUILD });
   await findCommand().execute(fake as never, { db, guildId: GUILD });
   return fake;
+}
+
+async function runExplore(userId = ALICE, username = "alice"): Promise<FakeChatInput> {
+  const fake = new FakeChatInput({ commandName: "explore", options: {}, userId, username, guildId: GUILD });
+  await findExploreCommand().execute(fake as never, { db, guildId: GUILD });
+  return fake;
+}
+
+/** Clear the explore cooldown so the next explore rolls immediately. */
+async function resetExploreCooldown(userId: string): Promise<void> {
+  await db.prepare("DELETE FROM user_explore WHERE user_id = ?").run(userId);
 }
 
 beforeEach(() => {
@@ -223,6 +245,9 @@ describe("enter / checkpoint resume / party", () => {
     await insertTower(meadowSmallTower());
     await seedStrongTeam(ALICE);
     await seedStrongTeam(BOB);
+    // Mystery rules: entering needs discovery first.
+    await discoverTower(db, ALICE, "test-small", NOW);
+    await discoverTower(db, BOB, "test-small", NOW);
   });
 
   it("entering starts a solo party and warns the recommended minimum is 2", async () => {
@@ -273,6 +298,7 @@ describe("enter / checkpoint resume / party", () => {
 
   it("level requirement blocks entry below the tower's level", async () => {
     await insertTower(meadowBigTower());
+    await discoverTower(db, ALICE, "test-big", NOW);
     const fake = await runCommand({ action: "enter", target: "Test Meadow Keep" });
     expect(fake.allText()).toContain("need to be level 5");
   });
@@ -411,7 +437,7 @@ describe("recommended party sizes", () => {
   });
 });
 
-describe("tower list pagination (live bug: 29-tower list exceeded 2,000 chars)", () => {
+describe("tower list pagination — mystery rules (undiscovered towers are ???)", () => {
   /** Tower names listed on one page's content (compact rows only — the header also starts with 🗼). */
   function namesOnPage(content: string): string[] {
     return content
@@ -431,28 +457,15 @@ describe("tower list pagination (live bug: 29-tower list exceeded 2,000 chars)",
     return null;
   }
 
-  it("every region page fits under 2,000 characters and all 29 visible towers are reachable", async () => {
-    const seeded = await seedTowers(db);
-    const main = seeded.find((t) => t.type === "main")!;
-    const visible = await listVisibleTowers(db);
-    expect(visible).toHaveLength(29);
-
-    // Page 1 from the bare command.
-    const first = await runCommand({});
+  /** Flip through every region page starting from a bare-list reply. */
+  async function collectPages(first: FakeChatInput): Promise<string[]> {
     const firstPayload = first.firstReplyPayload() as { content: string; components?: unknown };
-    const firstContent = String(firstPayload.content);
-    expect(firstContent.length).toBeLessThan(2000);
-    expect(firstPayload.components).toBeDefined();
-
-    // Flip through every page with the Next button, collecting names.
-    const seen = new Set(namesOnPage(firstContent));
-    const pageContents = [firstContent];
+    const contents = [String(firstPayload.content)];
     let customId = nextButtonId(firstPayload);
-    const updates: { content: string; components?: unknown }[] = [];
     let guard = 0;
     while (customId && guard < 10) {
       guard++;
-      updates.length = 0;
+      const updates: { content: string; components?: unknown }[] = [];
       const handler = towerButtonHandlers["selena:tower"]!;
       await handler(
         {
@@ -466,18 +479,167 @@ describe("tower list pagination (live bug: 29-tower list exceeded 2,000 chars)",
         { db, guildId: GUILD } as never,
       );
       expect(updates).toHaveLength(1);
-      const content = String(updates[0]!.content);
-      expect(content.length).toBeLessThan(2000);
-      pageContents.push(content);
-      for (const n of namesOnPage(content)) seen.add(n);
+      contents.push(String(updates[0]!.content));
       customId = nextButtonId(updates[0]);
     }
-    expect(pageContents.length).toBeGreaterThan(1);
-    expect(seen.size).toBe(29);
-    for (const t of visible) expect(seen.has(t.name)).toBe(true);
-    for (const c of pageContents) {
+    return contents;
+  }
+
+  it("a fresh user sees ZERO tower names (all ???), the header counts discovered only, and every page fits under 2,000 chars — after discovering all 29, every name appears and Main never does", async () => {
+    const seeded = await seedTowers(db);
+    const main = seeded.find((t) => t.type === "main")!;
+    const visible = await listVisibleTowers(db);
+    expect(visible).toHaveLength(29);
+
+    // Fresh user: flip through every page.
+    const freshPages = await collectPages(await runCommand({}));
+    expect(freshPages.length).toBeGreaterThan(1);
+    for (const c of freshPages) {
+      expect(c.length).toBeLessThan(2000);
+      expect(c).toContain("discovered");
+      expect(c).not.toContain("29 known towers");
       expect(c).not.toContain(main.name);
       expect(c).not.toContain("tower-main");
+      for (const t of visible) expect(c).not.toContain(t.name);
+      expect(namesOnPage(c)).toHaveLength(0);
+      expect(c).toContain("??? · undiscovered tower — explore the area to find it");
+      expect(c).toContain("uwu explore");
     }
+    // The first page's header counts discovered towers on that page: 0.
+    expect(freshPages[0]).toContain("· 0 discovered):");
+
+    // Discover every visible tower, then flip again: all 29 names appear.
+    for (const t of visible) {
+      await discoverTower(db, ALICE, t.towerId, NOW);
+    }
+    const knownPages = await collectPages(await runCommand({}));
+    expect(knownPages.length).toBe(freshPages.length);
+    const seen = new Set<string>();
+    for (const c of knownPages) {
+      expect(c.length).toBeLessThan(2000);
+      expect(c).not.toContain("29 known towers");
+      expect(c).not.toContain(main.name);
+      expect(c).not.toContain("tower-main");
+      expect(c).not.toContain("??? · undiscovered tower");
+      for (const n of namesOnPage(c)) seen.add(n);
+    }
+    expect(seen.size).toBe(29);
+    for (const t of visible) expect(seen.has(t.name)).toBe(true);
+  });
+});
+
+describe("discovery gates + progressive floor reveal", () => {
+  beforeEach(async () => {
+    await insertTower(meadowSmallTower());
+  });
+
+  it("guessing an undiscovered tower's name in detail or enter gets 'not known to you' — never a confirmation it exists", async () => {
+    const detail = await runCommand({ action: "Test Meadow Spire" });
+    expect(detail.allText()).toContain("No tower by that name is known to you");
+    expect(detail.allText()).not.toContain("Test Meadow Spire");
+    const entered = await runCommand({ action: "enter", target: "Test Meadow Spire" });
+    expect(entered.allText()).toContain("No tower by that name is known to you");
+    expect(entered.allText()).not.toContain("Test Meadow Spire");
+    expect(await getProgress(db, ALICE, "test-small")).toBeNull();
+  });
+
+  it("after discovering, detail shows floor 1 revealed and floors 2–10 as ???; at floor 4 it shows floors 1–5 (floor 5 mini-boss) and floors 6–10 as ???", async () => {
+    await discoverTower(db, ALICE, "test-small", NOW);
+    const fresh = await runCommand({ action: "Test Meadow Spire" });
+    const freshText = fresh.allText();
+    expect(freshText).toContain("Test Meadow Spire");
+    expect(freshText).toContain("F1 · 3 wild monsters · +30g · +55 XP · 10% Wooden Crate");
+    expect(freshText).toContain("Floors 2–10 — ??? (clear floor 1 to reveal more)");
+    expect(freshText).not.toContain("F2");
+    expect(freshText).not.toContain("F10");
+    expect(freshText).not.toContain("Final boss");
+    expect(freshText).not.toContain("Mini-boss every 5th floor");
+
+    await setProgress(db, ALICE, "test-small", 4, null, NOW);
+    const mid = await runCommand({ action: "Test Meadow Spire" });
+    const midText = mid.allText();
+    expect(midText).toContain("F1 · 3 wild monsters · +30g · +55 XP · 10% Wooden Crate");
+    expect(midText).toContain("F5 · 💪 Mini-boss · +70g · +75 XP · 🎁 Golden Crate");
+    expect(midText).toContain("Floors 6–10 — ??? (clear floor 5 to reveal more)");
+    expect(midText).not.toContain("F6");
+    expect(midText).not.toContain("F10");
+    expect(midText).not.toContain("Final boss");
+  });
+
+  it("a user with progress on a tower (pre-mystery knowledge) passes the gate and the discovery is backfilled", async () => {
+    await setProgress(db, ALICE, "test-small", 2, null, NOW);
+    expect(await isTowerDiscovered(db, ALICE, "test-small")).toBe(false);
+    const detail = await runCommand({ action: "Test Meadow Spire" });
+    expect(detail.allText()).toContain("Test Meadow Spire");
+    expect(detail.allText()).toContain("F3 · 3 wild monsters");
+    expect(await isTowerDiscovered(db, ALICE, "test-small")).toBe(true);
+  });
+});
+
+describe("uwu explore", () => {
+  beforeEach(async () => {
+    // Seed FIRST: seedTowers is idempotent and no-ops once any tower
+    // row exists, so the manual test tower goes in after.
+    await seedTowers(db);
+    await insertTower(meadowSmallTower());
+  });
+
+  /** Discover every undiscovered meadow tower except the target, so explores can only find the target. */
+  async function leaveOnlyTargetUndiscovered(targetId: string): Promise<void> {
+    const undiscovered = await listUndiscoveredTowersInArea(db, ALICE, "meadow");
+    for (const t of undiscovered) {
+      if (t.towerId !== targetId) await discoverTower(db, ALICE, t.towerId, NOW);
+    }
+  }
+
+  it("a level-0 user in the meadow discovers the Meadow tower (eventually) and the success reply names it", async () => {
+    await leaveOnlyTargetUndiscovered("test-small");
+    expect(await getPlayerLevel(db, GUILD, ALICE)).toBe(0);
+    let successText: string | null = null;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const fake = await runExplore();
+      if (await isTowerDiscovered(db, ALICE, "test-small")) {
+        successText = fake.allText();
+        break;
+      }
+      await resetExploreCooldown(ALICE);
+    }
+    expect(await isTowerDiscovered(db, ALICE, "test-small")).toBe(true);
+    expect(successText).not.toBeNull();
+    expect(successText!).toContain("Test Meadow Spire");
+    expect(successText!).toContain("Small tower");
+    expect(successText!).toContain("10 floors");
+  });
+
+  it("a second explore immediately after returns the cooldown message and does not roll", async () => {
+    await leaveOnlyTargetUndiscovered("test-small");
+    await runExplore();
+    const again = await runExplore();
+    expect(again.allText()).toMatch(/⏳ You need a breather — explore again in \d+s\./);
+    expect(await exploreCooldownRemainingMs(db, ALICE, Date.now())).toBeGreaterThan(0);
+  });
+
+  it("exploring an area with all towers discovered grants 5–15 consolation gold and says so", async () => {
+    const undiscovered = await listUndiscoveredTowersInArea(db, ALICE, "meadow");
+    for (const t of undiscovered) await discoverTower(db, ALICE, t.towerId, NOW);
+    const before = (await getBalance(db, GUILD, ALICE)).points;
+    const fake = await runExplore();
+    const text = fake.allText();
+    expect(text).toContain("You already know every tower in Meadow");
+    const match = text.match(/\+(\d+) gold/);
+    expect(match).not.toBeNull();
+    const gold = Number(match![1]);
+    expect(gold).toBeGreaterThanOrEqual(5);
+    expect(gold).toBeLessThanOrEqual(15);
+    expect((await getBalance(db, GUILD, ALICE)).points).toBe(before + gold);
+  });
+
+  it("exploring mid-travel is refused and does not start a cooldown", async () => {
+    await db
+      .prepare("INSERT INTO user_location (user_id, current_area, travelling_to, travel_ends_at) VALUES (?, ?, ?, ?)")
+      .run(ALICE, "meadow", "woods", Date.now() + 600_000);
+    const fake = await runExplore();
+    expect(fake.allText()).toContain("You're on the road — explore when you arrive.");
+    expect(await exploreCooldownRemainingMs(db, ALICE, Date.now())).toBe(0);
   });
 });

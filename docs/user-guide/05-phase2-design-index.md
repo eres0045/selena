@@ -79,8 +79,19 @@ level +5, Main = level 60.
 **Tower-wide clear cooldowns:** Small **6 h**, Big **12 h**, Main **7 days**
 (after expiry the checkpoint resets to floor 0).
 Commands (built): `uwu tower` (list), `uwu tower enter <name>`,
-`uwu tower climb`, `uwu tower leave`. ⚠️ **Deviation:** no
+`uwu tower climb`, `uwu tower leave`, `uwu explore` (alias `discover`).
+⚠️ **Deviation:** no
 `uwu party invite` — party members join by entering the same tower.
+**MYSTERY (built 2026-11-07):** undiscovered towers list as `???`
+(no name/area/floors/level); header shows only your discovered count,
+never the total. Discover via `uwu explore` (40% per explore, 60 s
+cooldown, no level gate; 5–15 gold consolation when the area is fully
+discovered) or a 25% travel-arrival encounter. Detail/enter refuse
+towers you haven't discovered (never confirms they exist). Floors
+reveal progressively — detail shows cleared floors + the current floor
+only; future floors are `???` until cleared. The Main tower is never
+discoverable by explore/travel — exact name/id only, never listed even
+as `???`.
 Floor scaling (built): monster level = area unlock + floor (cap 100);
 stats × (1 + 5%/floor above 1) on top of +2%/level. Mini-boss: one tier
 above the area's top tier (cap UwU), HP ×3, ATK/DEF ×1.5. Final boss:

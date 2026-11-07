@@ -680,6 +680,20 @@ CREATE TABLE IF NOT EXISTS user_battle (
   user_id TEXT PRIMARY KEY,
   last_battle_at BIGINT
 );
+
+-- Tower mystery discovery (2026-11-07). Discovery is per-user, no
+-- guild_id — the world is shared across Discord, like user_location.
+CREATE TABLE IF NOT EXISTS user_tower_discoveries (
+  user_id TEXT NOT NULL,
+  tower_id TEXT NOT NULL,
+  discovered_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, tower_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_explore (
+  user_id TEXT PRIMARY KEY,
+  last_explore_at BIGINT
+);
 `;
 
 let db: SelenaDb | null = null;

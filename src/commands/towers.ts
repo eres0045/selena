@@ -1,41 +1,70 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { type Command, type CommandContext, type CommandInvocation } from "../lib/command.js";
+import { addPoints } from "../lib/economy.js";
 import { awardGuildXpBestEffort } from "../lib/guilds.js";
-import { REGIONS } from "../lib/world.js";
+import { secureFloat } from "../lib/rng.js";
+import { findWorldArea, REGIONS } from "../lib/world.js";
 import {
   climbFloor,
+  discoverTower,
   ensureTowersSeeded,
   enterTower,
+  EXPLORE_CONSOLATION_GOLD_MAX,
+  EXPLORE_CONSOLATION_GOLD_MIN,
+  EXPLORE_DISCOVERY_CHANCE,
+  exploreCooldownRemainingMs,
+  FINAL_BOSS_TIER,
   findTower,
+  floorReveal,
   formatCooldown,
+  getDiscoveredTowerIds,
   getPlayerLevel,
   getProgress,
   getTowerCooldown,
   getUserParty,
+  isTowerDiscovered,
   leaveTower,
+  listUndiscoveredTowersInArea,
   listVisibleTowers,
+  NORMAL_FLOOR_CRATE,
   RECOMMENDED_PARTY,
+  setExploreCooldown,
   towerAreaLabel,
   towerCooldownRemainingMs,
   towerSizeLabel,
   type TowerRow,
 } from "../lib/towers.js";
+import { resolveCurrentArea } from "./world.js";
 
 /**
  * Towers (Phase 2, design docs/hunt-world-phase2-design.md §4).
  *
- * `uwu tower` — list the known towers (the hidden Main tower is
- * NEVER listed, and its area never appears anywhere). The list is
- * paginated one region per page with ◀ ▶ buttons: 29 towers in the
- * old one-shot format blew past Discord's 2,000-character message
- * limit and the reply failed outright, so EVERY page is built to fit
- * (compact one-line-per-tower rows) and every page stays under the
- * limit. All 29 visible towers are reachable by flipping pages.
- * `uwu tower <name>` — detail for one tower (floors, level req,
- * recommended party, cooldown timer, your checkpoint).
+ * MYSTERY RULES (Ronit's order, 2026-11-07): towers are mysterious.
+ * Undiscovered towers show as ??? — never by name, never with an
+ * area, floor count, level requirement, cooldown or checkpoint.
+ * Discovery is per user: `uwu explore` in an area (40% per explore,
+ * 60s cooldown) or a 25% roll on travel arrival. Floors reveal only
+ * as cleared: floor N+1 is revealed once floor N is cleared, so the
+ * final-boss floor stays ??? until floorReached = floors-1. The Main
+ * tower stays completely hidden (never listed, never named, not even
+ * as ???) and is entered only by exact name/id.
+ *
+ * `uwu tower` — list the known towers, paginated one region per page
+ * with ◀ ▶ buttons: 29 towers in the old one-shot format blew past
+ * Discord's 2,000-character message limit and the reply failed
+ * outright, so EVERY page is built to fit (compact one-line-per-tower
+ * rows) and every page stays under the limit. The header counts only
+ * the DISCOVERED towers on that page — it never shows a total.
+ * `uwu tower <name>` — detail for one tower, but only if you have
+ * discovered it (or already have progress on it): floors, level req,
+ * recommended party, cooldown timer, your checkpoint, and one line
+ * per REVEALED floor — hidden floors collapse to a single ??? line.
+ * `uwu explore` — explore your current area; you might discover a
+ * hidden tower (60s cooldown). No level gate.
  * `uwu tower enter <tower>` — start or resume a run from your
  * checkpoint floor. Your party is whoever enters together; members
- * join the active run with the same command.
+ * join the active run with the same command. Undiscovered towers
+ * cannot be entered — the reply never confirms they exist.
  * `uwu tower climb` — fight the next floor through the battle
  * engine (mini-boss every 5th floor, final boss on the top floor —
  * bosses are never catchable, drops only).
@@ -78,6 +107,11 @@ function towerLine(t: TowerRow, cooldownMs: number, checkpoint: number | null): 
   return `🗼 ${t.name} · ${size} · ${t.floors}F · ${towerAreaLabel(t)} · Lv ${t.levelReq}+${cd}${cp}`;
 }
 
+/** An undiscovered tower: no name, no area, no floors, no level, nothing. */
+function undiscoveredLine(): string {
+  return "??? · undiscovered tower — explore the area to find it";
+}
+
 interface TowerListPage {
   regionId: string;
   regionName: string;
@@ -101,28 +135,42 @@ async function towerListPages(ctx: CommandContext): Promise<{ pages: TowerListPa
   return { pages, total: towers.length };
 }
 
-/** Render one region page of the tower list (page clamped into range). */
+/**
+ * Render one region page of the tower list (page clamped into range).
+ * Discovered towers show their compact row; undiscovered ones show
+ * only the ??? line. The header counts discovered towers ON THIS
+ * PAGE only — the total is never shown.
+ */
 async function towerPageContent(
   ctx: CommandContext,
   userId: string,
   wantedPage: number,
 ): Promise<{ content: string; page: number; pageCount: number }> {
-  const { pages, total } = await towerListPages(ctx);
+  const { pages } = await towerListPages(ctx);
   if (pages.length === 0) {
     return { content: "No towers stand in this world yet — strange. Try again in a bit.", page: 0, pageCount: 0 };
   }
   const page = Math.min(Math.max(0, Math.floor(wantedPage) || 0), pages.length - 1);
   const now = Date.now();
   const region = pages[page]!;
-  const lines: string[] = [
-    `🗼 Towers — ${region.regionName} (page ${page + 1}/${pages.length} · ${total} known towers):`,
-  ];
+  const discovered = await getDiscoveredTowerIds(ctx.db, userId);
+  let discoveredOnPage = 0;
+  const lines: string[] = [];
+  const rows: string[] = [];
   for (const t of region.towers) {
+    if (!discovered.has(t.towerId)) {
+      rows.push(undiscoveredLine());
+      continue;
+    }
+    discoveredOnPage++;
     const cd = await towerCooldownRemainingMs(ctx.db, t.towerId, now);
     const progress = await getProgress(ctx.db, userId, t.towerId);
-    lines.push(towerLine(t, cd, progress ? progress.floorReached : null));
+    rows.push(towerLine(t, cd, progress ? progress.floorReached : null));
   }
+  lines.push(`🗼 Towers — ${region.regionName} (page ${page + 1}/${pages.length} · ${discoveredOnPage} discovered):`);
+  lines.push(...rows);
   lines.push("Use ◀ ▶ to flip regions · Enter one with `uwu tower enter <name>` — or see one in detail with `uwu tower <name>`.");
+  lines.push("Found a ??? — explore your current area with `uwu explore` to discover its towers.");
   return { content: lines.join("\n"), page, pageCount: pages.length };
 }
 
@@ -159,25 +207,79 @@ async function handleTowerListButton(inv: any, ctx: CommandContext): Promise<voi
   }
 }
 
+/**
+ * Discovery gate (detail + enter). Returns the refusal text when the
+ * tower is undiscovered, or null when the user may proceed. The
+ * hidden Main tower bypasses the gate entirely (exact name/id entry
+ * stays as it is). A tower the user has progress on proves they knew
+ * it before the mystery rebuild, so the discovery is recorded
+ * best-effort and they proceed. Anything else undiscovered is refused
+ * WITHOUT confirming the tower exists.
+ */
+async function discoveryRefusal(
+  ctx: CommandContext,
+  userId: string,
+  tower: TowerRow,
+): Promise<string | null> {
+  if (tower.hidden) return null;
+  if (await isTowerDiscovered(ctx.db, userId, tower.towerId)) return null;
+  const progress = await getProgress(ctx.db, userId, tower.towerId);
+  if (progress) {
+    try {
+      await discoverTower(ctx.db, userId, tower.towerId, Date.now());
+    } catch {
+      // Best-effort only: a failed backfill never blocks entry/detail.
+    }
+    return null;
+  }
+  return "No tower by that name is known to you — explore areas to discover towers.";
+}
+
 async function detailText(ctx: CommandContext, userId: string, tower: TowerRow): Promise<string> {
   const now = Date.now();
   const cd = await getTowerCooldown(ctx.db, tower.towerId);
   const cdMs = cd ? Math.max(0, cd.resetsAt - now) : 0;
   const progress = await getProgress(ctx.db, userId, tower.towerId);
+  const floorReached = progress?.floorReached ?? 0;
   const party = await getUserParty(ctx.db, userId, tower.towerId);
   const lines = [
     `🗼 ${tower.hidden ? "A hidden tower" : tower.name} — ${towerSizeLabel(tower)} tower · ${tower.floors} floors`,
     `📍 Area: ${towerAreaLabel(tower)}`,
     `🔒 Entry: level ${tower.levelReq}+`,
     `👥 Recommended party: ${RECOMMENDED_PARTY[tower.type]}+ (solo allowed, but hard — bigger parties allowed too)`,
-    `💪 Mini-boss every 5th floor · 👑 final boss on floor ${tower.floors} (uncatchable — drops only)`,
+  ];
+  // Floor reveal: one line per revealed floor (floors 1..floorReached+1),
+  // then a single ??? line for the hidden range. Never leak the
+  // structure ("mini-boss every 5th floor" / the final-boss floor)
+  // for floors the player has not earned yet.
+  for (const r of floorReveal(tower, floorReached)) {
+    if (!r.revealed) continue;
+    const kindLabel =
+      r.kind === "normal"
+        ? "3 wild monsters"
+        : r.kind === "mini-boss"
+          ? "💪 Mini-boss"
+          : `👑 Final boss (${FINAL_BOSS_TIER[tower.type]})`;
+    const crate =
+      r.crateTier !== null
+        ? ` · 🎁 ${r.crateTier} Crate`
+        : r.crateChance
+          ? ` · 10% ${NORMAL_FLOOR_CRATE[tower.type]} Crate`
+          : "";
+    lines.push(`F${r.floor} · ${kindLabel} · +${r.gold}g · +${r.xp} XP${crate}`);
+  }
+  const firstHidden = floorReached + 2;
+  if (firstHidden <= tower.floors) {
+    lines.push(`Floors ${firstHidden}–${tower.floors} — ??? (clear floor ${floorReached + 1} to reveal more)`);
+  }
+  lines.push(
     cdMs > 0
       ? `⏳ Cleared — resets in ${formatCooldown(cdMs)}`
       : "✅ Ready to climb",
     progress && progress.floorReached > 0
       ? `📍 Your checkpoint: floor ${progress.floorReached}/${tower.floors}`
       : "📍 You haven't started this tower yet",
-  ];
+  );
   if (party) lines.push(`👥 Your party: ${party.members.length} member${party.members.length === 1 ? "" : "s"} (leader <@${party.leaderId}>)`);
   lines.push(`Enter with \`uwu tower enter ${tower.hidden ? tower.towerId : tower.name}\`.`);
   return lines.join("\n");
@@ -254,6 +356,8 @@ export const commands: Command[] = [
         await runAction(inv, async () => {
           const tower = await findTower(ctx.db, target);
           if (!tower) return `No tower by that name — see the known towers with \`uwu tower\`.`;
+          const refused = await discoveryRefusal(ctx, inv.user.id, tower);
+          if (refused) return refused;
           const level = await getPlayerLevel(ctx.db, ctx.guildId, inv.user.id);
           const entered = await enterTower(ctx.db, {
             userId: inv.user.id,
@@ -284,7 +388,56 @@ export const commands: Command[] = [
         const query = [action, target].filter(Boolean).join(" ");
         const tower = await findTower(ctx.db, query);
         if (!tower) return `No tower by that name — see the known towers with \`uwu tower\`.`;
+        const refused = await discoveryRefusal(ctx, inv.user.id, tower);
+        if (refused) return refused;
         return detailText(ctx, inv.user.id, tower);
+      });
+    },
+  },
+  {
+    name: "explore",
+    description: "Explore your current area — you might discover a hidden tower (60s cooldown).",
+    aliases: ["discover"],
+    async execute(inv, ctx) {
+      await ensureTowersSeeded(ctx.db);
+      await runAction(inv, async () => {
+        const now = Date.now();
+        // Mid-travel: explore only once you have arrived.
+        const locRow = (await ctx.db
+          .prepare("SELECT travelling_to, travel_ends_at FROM user_location WHERE user_id = ?")
+          .get(inv.user.id)) as { travelling_to: unknown; travel_ends_at: unknown } | undefined;
+        if (
+          locRow?.travelling_to != null &&
+          Number(locRow.travel_ends_at ?? 0) > now
+        ) {
+          return "You're on the road — explore when you arrive.";
+        }
+        const remaining = await exploreCooldownRemainingMs(ctx.db, inv.user.id, now);
+        if (remaining > 0) {
+          return `⏳ You need a breather — explore again in ${Math.ceil(remaining / 1000)}s.`;
+        }
+        // Cooldown is set FIRST, so a failed roll still costs it.
+        await setExploreCooldown(ctx.db, inv.user.id, now);
+        const areaId = await resolveCurrentArea(ctx.db, ctx.guildId, inv.user.id);
+        const areaName = findWorldArea(areaId)?.name ?? areaId;
+        const undiscovered = await listUndiscoveredTowersInArea(ctx.db, inv.user.id, areaId);
+        if (undiscovered.length === 0) {
+          const gold =
+            EXPLORE_CONSOLATION_GOLD_MIN +
+            Math.floor(secureFloat() * (EXPLORE_CONSOLATION_GOLD_MAX - EXPLORE_CONSOLATION_GOLD_MIN + 1));
+          await addPoints(ctx.db, ctx.guildId, inv.user.id, gold, "explore");
+          return `🔍 You already know every tower in ${areaName} — but poking around turned up +${gold} gold.`;
+        }
+        if (secureFloat() < EXPLORE_DISCOVERY_CHANCE) {
+          const tower = undiscovered[Math.floor(secureFloat() * undiscovered.length)]!;
+          await discoverTower(ctx.db, inv.user.id, tower.towerId, now);
+          return (
+            `🔍 You found something! 🗼 ${tower.name} — a ${towerSizeLabel(tower)} tower, ` +
+            `${tower.floors} floors, in ${areaName} · enter at level ${tower.levelReq}+. ` +
+            `See it with \`uwu tower ${tower.name}\`.`
+          );
+        }
+        return `🔍 You searched ${areaName} thoroughly but found nothing this time — the towers here stay hidden. Try again in a bit.`;
       });
     },
   },

@@ -1,8 +1,8 @@
-# 06 — Command reference (all 57) + misc live systems
+# 06 — Command reference (all 58) + misc live systems
 
 **Status: LIVE.** Every command below is implemented in `src/`, in the live
 registry (`src/commands/index.ts`), and deployed. Counted from the registry:
-**57 commands** across 13 modules.
+**58 commands** across 13 modules.
 
 ## 6.1 Full command table
 
@@ -58,11 +58,12 @@ registry (`src/commands/index.ts`), and deployed. Counted from the registry:
 |---|---|---|---|
 | `battle` | `fight`, `duel` | `<@user> [wager]` | Accept/Decline buttons, 60 s expiry; auto top-3; winner 100 gold + XP, loser 25; wager cap 1,000 escrowed; 1-min cooldown |
 
-### Towers (1) — Phase 2
+### Towers (2) — Phase 2
 
 | Command | Aliases | Args | Notes |
 |---|---|---|---|
-| `tower` | `towers` | `[action] [target]` | Bare = list (Main tower never listed); `enter <name>`, `climb`, `leave`; checkpoints every floor; clear cooldowns 6h/12h/7d |
+| `tower` | `towers` | `[action] [target]` | Bare = list (undiscovered towers show as `???`, Main never listed); `enter <name>`, `climb`, `leave`; detail shows only cleared floors + current floor, future floors `???`; checkpoints every floor; clear cooldowns 6h/12h/7d |
+| `explore` | `discover` | — | Explore your current area — 40% to discover an undiscovered tower there, 60 s cooldown, no level gate; 5–15 gold consolation when the area is fully discovered; refused while travelling |
 
 ### Market (5) — Phase 2
 
@@ -227,7 +228,7 @@ docs might expect.
 6. **No min/max validation** for mute/timeout minutes, ban `delete-days`,
    modlog `limit`, or remind minutes.
 7. ~~**Help comment is stale** ("all 36 commands fit")~~ — **FIXED in
-   Phase 2** (comment now says 57; registry is 57).
+   Phase 2** (comment now says 58; registry is 58).
 8. **Starboard triggers on ANY reaction**, not just ⭐.
 9. **Automod's warn branch is unreachable** with current settings (all
    violations delete).
@@ -246,14 +247,14 @@ docs might expect.
 
 ## Verified
 
-- **Tests:** `npm test` 2026-11-07 — 593/593 passed (21 files), including
+- **Tests:** `npm test` 2026-11-07 — 627/627 passed (22 files), including
   `test/games.test.ts`, `test/mod.test.ts`, `test/utility.test.ts`,
   `test/boot.test.ts`, plus the Phase 2 test files.
 - **Code read:** `src/commands/games.ts`, `src/commands/mod.ts`,
   `src/commands/utility.ts`, `src/lib/games.ts`, `src/lib/trivia.ts`,
   `src/lib/automod.ts`, `src/index.ts`, plus `src/lib/db.ts`,
   `src/lib/levels.ts`, `src/lib/command.ts`, `src/commands/index.ts` for
-  inventory verification. The 57-command inventory was counted from the
+  inventory verification. The 58-command inventory was counted from the
   live registry.
 - **Live Discord check: NOT DONE** (no browser access in this session).
   To verify live in `#🤖-miya-bot`: `uwu ttt @user`, `uwu trivia`,

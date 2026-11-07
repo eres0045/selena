@@ -599,8 +599,21 @@ interface TravelRow {
  * Arrive every user whose trip has ended: current_area becomes the
  * destination, travel fields clear (last_location keeps the origin),
  * and "You arrived at <Area>." is sent to the travel channel.
+ *
+ * Optional `onArrival` hook: called after the arrival UPDATE succeeds
+ * for a user, with (userId, destination area id). When it returns a
+ * non-null line, that line is appended to the arrival message on its
+ * own line. A hook that throws (or returns null) never breaks the
+ * arrival — the player still arrives and the plain arrival line still
+ * sends. The hook is injected by the caller (index.ts wires it to the
+ * tower-discovery roll); this module stays tower-free and never
+ * imports lib/towers.ts.
  */
-export async function travelDueSweep(db: SelenaDb, client: SweepClient | null): Promise<void> {
+export async function travelDueSweep(
+  db: SelenaDb,
+  client: SweepClient | null,
+  onArrival?: (userId: string, areaId: string) => Promise<string | null>,
+): Promise<void> {
   const now = Date.now();
   let rows: TravelRow[];
   try {
@@ -630,10 +643,18 @@ export async function travelDueSweep(db: SelenaDb, client: SweepClient | null): 
       console.error(`uwu: travel sweep arrival failed for ${userId}:`, e instanceof Error ? e.message : e);
       continue;
     }
+    let extra: string | null = null;
+    if (onArrival) {
+      try {
+        extra = await onArrival(userId, destId);
+      } catch {
+        extra = null;
+      }
+    }
     await sendToChannel(
       client,
       r.travel_channel_id == null ? null : String(r.travel_channel_id),
-      `You arrived at ${dest?.name ?? destId}.`,
+      `You arrived at ${dest?.name ?? destId}.` + (extra ? `\n${extra}` : ""),
     );
   }
 }

@@ -145,10 +145,23 @@ export async function runDueTasks(db: SelenaDb, client: Client | null): Promise<
   // rare-log posts need a client to send anywhere, so they wait.
   try {
     const { travelDueSweep, processAutoHuntTicks } = (await import("./commands/world.js")) as {
-      travelDueSweep: (db: SelenaDb, client: Client | null) => Promise<void>;
+      travelDueSweep: (
+        db: SelenaDb,
+        client: Client | null,
+        onArrival?: (userId: string, areaId: string) => Promise<string | null>,
+      ) => Promise<void>;
       processAutoHuntTicks: (db: SelenaDb, client: Client | null, nowMs: number) => Promise<void>;
     };
-    await travelDueSweep(db, client);
+    const { maybeDiscoverOnArrival } = (await import("./lib/towers.js")) as {
+      maybeDiscoverOnArrival: (db: SelenaDb, userId: string, areaId: string, nowMs: number) => Promise<string | null>;
+    };
+    await travelDueSweep(db, client, async (userId: string, areaId: string) => {
+      try {
+        return await maybeDiscoverOnArrival(db, userId, areaId, Date.now());
+      } catch {
+        return null;
+      }
+    });
     await processAutoHuntTicks(db, client, now);
   } catch (e) {
     console.error("Selena: world sweep failed:", e instanceof Error ? e.message : e);

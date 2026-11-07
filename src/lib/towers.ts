@@ -72,9 +72,21 @@ import type { SelenaDb } from "./db.js";
  *   (Small: 10 shards; Big: 25 shards + 5 crystals; Main: 50 shards
  *   + 10 crystals + 1 evolution stone) into user_materials, and a
  *   `tower-clear-<tower_id>` badge into user_badges.
- * - Discovery: the Main tower can be entered by exact tower name/id
- *   (word of mouth / exploration) but is never listed, never shown
- *   on any list/detail area, and `uwu tower` never hints it exists.
+ * - Discovery (MYSTERY rebuild, 2026-11-07 — Ronit's order): towers
+ *   are mysterious — undiscovered towers show as ??? and are never
+ *   listed by name. Discovery is PER USER (user_tower_discoveries;
+ *   no guild_id — the world is shared across Discord, like
+ *   user_location). A non-hidden tower is discovered by `uwu explore`
+ *   in its area (40% per explore, 60s cooldown between explores;
+ *   when an area has no undiscovered towers left, exploring finds
+ *   5–15 consolation gold instead) or by a 25% roll when arriving
+ *   in an area by travel (maybeDiscoverOnArrival). Floors reveal
+ *   only as cleared: floor N+1 is revealed once floor N is cleared
+ *   (floorReveal). The Main tower is NEVER discoverable —
+ *   discoverTower returns false for it; it is entered only by exact
+ *   tower name/id (word of mouth / exploration), never listed, never
+ *   shown on any list/detail area, and `uwu tower` never hints it
+ *   exists.
  *
  * All persistent state lives in Supabase (towers, tower_parties,
  * tower_progress, tower_cooldowns, user_crates, user_materials,
@@ -337,6 +349,132 @@ export function towerAreaLabel(t: TowerRow): string {
 
 export function towerSizeLabel(t: TowerRow): string {
   return t.type === "small" ? "Small" : t.type === "big" ? "Big" : "Main";
+}
+
+// ---------------------------------------------------------------------------
+// Discovery — mystery rebuild (2026-11-07, Ronit's spec)
+// ---------------------------------------------------------------------------
+
+/**
+ * WORKING DEFAULTS (Ron's spec + these numbers — recorded here so
+ * Ronit can tune them):
+ * - EXPLORE_DISCOVERY_CHANCE = 0.4 (40% per `uwu explore`).
+ * - EXPLORE_COOLDOWN_MS = 60_000 (60s between explores).
+ * - TRAVEL_ARRIVAL_DISCOVERY_CHANCE = 0.25 (25% on travel arrival).
+ * - EXPLORE_CONSOLATION_GOLD_MIN/MAX = 5/15 (gold found when an area
+ *   has no undiscovered towers left).
+ * Discovery is PER USER (user_tower_discoveries, no guild_id — the
+ * world is shared across Discord). The hidden Main tower is NEVER
+ * discoverable: discoverTower returns false for it, and the
+ * undiscovered-list helpers never include it.
+ */
+export const EXPLORE_DISCOVERY_CHANCE = 0.4;
+export const EXPLORE_COOLDOWN_MS = 60_000;
+export const TRAVEL_ARRIVAL_DISCOVERY_CHANCE = 0.25;
+export const EXPLORE_CONSOLATION_GOLD_MIN = 5;
+export const EXPLORE_CONSOLATION_GOLD_MAX = 15;
+
+/** True if this user has discovered this tower. */
+export async function isTowerDiscovered(db: SelenaDb, userId: string, towerId: string): Promise<boolean> {
+  const row = (await db
+    .prepare("SELECT 1 AS found FROM user_tower_discoveries WHERE user_id = ? AND tower_id = ?")
+    .get(userId, towerId)) as { found: number } | undefined;
+  return row !== undefined;
+}
+
+/** The set of tower ids this user has discovered. */
+export async function getDiscoveredTowerIds(db: SelenaDb, userId: string): Promise<Set<string>> {
+  const rows = (await db
+    .prepare("SELECT tower_id FROM user_tower_discoveries WHERE user_id = ?")
+    .all(userId)) as Record<string, unknown>[];
+  return new Set(rows.map((r) => String(r.tower_id)));
+}
+
+/**
+ * Record a discovery; returns true if newly discovered, false if
+ * already known. NEVER discovers a hidden (Main) tower — returns
+ * false for hidden towers (and for unknown tower ids). Throws on DB
+ * error (fail-closed: the caller must not treat a failed insert as a
+ * discovery).
+ */
+export async function discoverTower(
+  db: SelenaDb,
+  userId: string,
+  towerId: string,
+  nowMs: number,
+): Promise<boolean> {
+  const tower = await getTower(db, towerId);
+  if (!tower || tower.hidden) return false;
+  const res = await db
+    .prepare("INSERT OR IGNORE INTO user_tower_discoveries (user_id, tower_id, discovered_at) VALUES (?, ?, ?)")
+    .run(userId, towerId, nowMs);
+  return res.changes > 0;
+}
+
+/**
+ * Non-hidden towers in this area the user has NOT discovered
+ * (ordered by tower_id). Hidden towers are excluded by the query and
+ * can therefore never leak through this list.
+ */
+export async function listUndiscoveredTowersInArea(
+  db: SelenaDb,
+  userId: string,
+  areaId: string,
+): Promise<TowerRow[]> {
+  const rows = (await db
+    .prepare("SELECT * FROM towers WHERE hidden = 0 AND area = ? ORDER BY tower_id")
+    .all(areaId)) as Record<string, unknown>[];
+  const discovered = await getDiscoveredTowerIds(db, userId);
+  return rows.map(toTowerRow).filter((t) => !discovered.has(t.towerId));
+}
+
+/** Ms until the user may explore again (0 = ready). */
+export async function exploreCooldownRemainingMs(db: SelenaDb, userId: string, nowMs: number): Promise<number> {
+  const row = (await db
+    .prepare("SELECT last_explore_at FROM user_explore WHERE user_id = ?")
+    .get(userId)) as { last_explore_at: number | null } | undefined;
+  if (!row || row.last_explore_at === null) return 0;
+  return Math.max(0, Number(row.last_explore_at) + EXPLORE_COOLDOWN_MS - nowMs);
+}
+
+/** Stamp the user's explore cooldown at nowMs. */
+export async function setExploreCooldown(db: SelenaDb, userId: string, nowMs: number): Promise<void> {
+  await db
+    .prepare(
+      "INSERT INTO user_explore (user_id, last_explore_at) VALUES (?, ?) " +
+        "ON CONFLICT (user_id) DO UPDATE SET last_explore_at = EXCLUDED.last_explore_at",
+    )
+    .run(userId, nowMs);
+}
+
+/**
+ * Travel-arrival discovery: 25% roll; on success pick a random
+ * undiscovered non-hidden tower in areaId, record the discovery, and
+ * return the full discovery announcement line. Returns null when the
+ * roll fails, when no undiscovered tower exists in the area, or when
+ * areaId is unknown. Throws on DB error (the caller treats a throw
+ * as "no discovery" — arrival still proceeds).
+ */
+export async function maybeDiscoverOnArrival(
+  db: SelenaDb,
+  userId: string,
+  areaId: string,
+  nowMs: number,
+  rand: () => number = secureFloat,
+): Promise<string | null> {
+  if (rand() >= TRAVEL_ARRIVAL_DISCOVERY_CHANCE) return null;
+  const area = findWorldArea(areaId);
+  if (!area) return null;
+  const undiscovered = await listUndiscoveredTowersInArea(db, userId, areaId);
+  if (undiscovered.length === 0) return null;
+  const tower = undiscovered[Math.floor(rand() * undiscovered.length)]!;
+  const discovered = await discoverTower(db, userId, tower.towerId, nowMs);
+  if (!discovered) return null;
+  return (
+    `🔍 On the way in, you stumbled on a tower: 🗼 ${tower.name} — a ${towerSizeLabel(tower)} tower, ` +
+    `${tower.floors} floors, in ${area.name} · enter at level ${tower.levelReq}+. ` +
+    `See it with \`uwu tower ${tower.name}\`.`
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -698,6 +836,55 @@ export function crateForFloor(tower: TowerRow, floor: number, rand: () => number
   if (isFinalFloor(floor, tower.floors)) return FINAL_CRATE[tower.type];
   if (isMiniBossFloor(floor, tower.floors)) return MINI_BOSS_CRATE[tower.type];
   return rand() < NORMAL_FLOOR_CRATE_CHANCE ? NORMAL_FLOOR_CRATE[tower.type] : null;
+}
+
+export interface FloorReveal {
+  floor: number;
+  revealed: boolean;
+  kind: "normal" | "mini-boss" | "final-boss";
+  gold: number;
+  xp: number;
+  crateTier: string | null;
+  crateChance: boolean;
+}
+
+/**
+ * Pure helper — which floors of a tower are revealed to a player who
+ * has cleared up to floorReached. Floors 1..floorReached+1 are
+ * revealed (kind/gold/xp/crate from the floorGold/floorXp/crate
+ * logic — for normal floors crateTier is null and crateChance is
+ * true, meaning "10% Wooden/Iron/Silver"; for boss floors crateTier
+ * is the guaranteed crate and crateChance is false). Floors beyond
+ * floorReached+1 have revealed=false — kind/gold/xp are still filled
+ * in for convenience but MUST be treated as hidden by callers. The
+ * final floor is therefore only revealed once floorReached =
+ * floors-1.
+ */
+export function floorReveal(tower: TowerRow, floorReached: number): FloorReveal[] {
+  const out: FloorReveal[] = [];
+  for (let floor = 1; floor <= tower.floors; floor++) {
+    const kind = isFinalFloor(floor, tower.floors)
+      ? "final-boss"
+      : isMiniBossFloor(floor, tower.floors)
+        ? "mini-boss"
+        : "normal";
+    const crateTier =
+      kind === "final-boss"
+        ? FINAL_CRATE[tower.type]
+        : kind === "mini-boss"
+          ? MINI_BOSS_CRATE[tower.type]
+          : null;
+    out.push({
+      floor,
+      revealed: floor <= floorReached + 1,
+      kind,
+      gold: floorGold(tower, floor),
+      xp: floorXp(floor),
+      crateTier,
+      crateChance: kind === "normal",
+    });
+  }
+  return out;
 }
 
 export async function grantCrate(db: SelenaDb, userId: string, crateTier: string, qty = 1): Promise<void> {
