@@ -424,6 +424,54 @@ CREATE TABLE IF NOT EXISTS reminders (
   delivered INTEGER NOT NULL DEFAULT 0,
   created_at BIGINT NOT NULL
 );
+
+-- Hunt world (Phase 1, 2026-11-07). Ownership rows carry guild_id so
+-- per-Discord-server supply caps are enforced by counting rows per
+-- (guild_id, monster_id) — see src/lib/huntDb.ts (fail closed).
+CREATE TABLE IF NOT EXISTS user_monsters (
+  guild_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  monster_id INTEGER NOT NULL,
+  count INTEGER NOT NULL DEFAULT 1,
+  source TEXT NOT NULL DEFAULT 'hunt',
+  caught_at BIGINT NOT NULL,
+  PRIMARY KEY (guild_id, user_id, monster_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_weapons (
+  guild_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  weapon_id INTEGER NOT NULL,
+  count INTEGER NOT NULL DEFAULT 1,
+  equipped INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (guild_id, user_id, weapon_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_pets (
+  guild_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  pet_id INTEGER NOT NULL,
+  count INTEGER NOT NULL DEFAULT 1,
+  active INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (guild_id, user_id, pet_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_hunt (
+  guild_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  last_hunt_at BIGINT,
+  current_area TEXT,
+  PRIMARY KEY (guild_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_roll (
+  guild_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  rolls_since_epic INTEGER NOT NULL DEFAULT 0,
+  rolls_today INTEGER NOT NULL DEFAULT 0,
+  roll_day TEXT,
+  PRIMARY KEY (guild_id, user_id)
+);
 `;
 
 let db: SelenaDb | null = null;

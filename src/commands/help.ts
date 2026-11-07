@@ -19,6 +19,7 @@ export const HELP_EMBED_LIMIT = 6000;
 export const CATEGORY_EMOJI: Record<string, string> = {
   Economy: "💰",
   Casino: "🎰",
+  Hunt: "🗺️",
   Games: "🎮",
   Moderation: "🛡️",
   Utility: "🔧",
