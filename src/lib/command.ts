@@ -1,4 +1,5 @@
 import { EmbedBuilder } from "discord.js";
+import type { ImageURLOptions } from "discord.js";
 import type { SelenaDb } from "./db.js";
 
 export interface CommandContext {
@@ -13,7 +14,14 @@ export interface CommandUser {
   username: string;
   /** Global display name (discord.js User.displayName); absent in fakes. */
   displayName?: string;
-  displayAvatarURL?: () => string;
+  /**
+   * Real discord.js signature (ImageURLOptions): callers pass
+   * { extension: "png", size: 256, forceStatic: true } to force a still
+   * PNG. NEVER detach this method and call it unbound — it reads
+   * `this.avatarURL` and throws (that silent throw was the profile-card
+   * avatar bug: every card rendered the "?" placeholder).
+   */
+  displayAvatarURL?: (options?: ImageURLOptions) => string;
 }
 
 /** A role as a command sees it. */

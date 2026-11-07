@@ -1,5 +1,7 @@
-import { describe, expect, it, beforeEach, vi } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { fileURLToPath } from "node:url";
+import { AttachmentBuilder } from "discord.js";
+import { parseGIF, decompressFrames } from "gifuct-js";
 import type { SelenaDb } from "../src/lib/db.js";
 import { getTestDb } from "./testDb.js";
 import { addPoints, getBalance } from "../src/lib/economy.js";
@@ -51,14 +53,19 @@ beforeEach(async () => {
 });
 
 class FakeInv implements CommandInvocation {
-  user: { id: string; username: string };
+  user: { id: string; username: string; displayAvatarURL?: () => string };
   guildId = GUILD;
   channelId = "chan-1";
   options: CommandOptions;
   replies: ReplyPayload[] = [];
 
-  constructor(userId: string, args: Record<string, string | number | null> = {}) {
+  constructor(userId: string, args: Record<string, string | number | null> = {}, avatarUrl?: string) {
     this.user = { id: userId, username: userId };
+    if (avatarUrl !== undefined) {
+      // Arrow closure (no `this` use): the `this`-dependent behaviour
+      // is covered by the DiscordLikeUser tests below.
+      this.user.displayAvatarURL = () => avatarUrl;
+    }
     this.options = {
       getString: (n: string) => (typeof args[n] === "string" ? (args[n] as string) : null),
       getInteger: (n: string) => (typeof args[n] === "number" ? (args[n] as number) : null),
@@ -99,9 +106,15 @@ class FakeInv implements CommandInvocation {
 
 const ctxFor = (testDb: SelenaDb): CommandContext => ({ db: testDb, guildId: GUILD });
 
-async function runCmd(cmds: Command[], name: string, userId: string, args: Record<string, string | number | null>): Promise<FakeInv> {
+async function runCmd(
+  cmds: Command[],
+  name: string,
+  userId: string,
+  args: Record<string, string | number | null>,
+  avatarUrl?: string,
+): Promise<FakeInv> {
   const cmd = cmds.find((c) => c.name === name)!;
-  const inv = new FakeInv(userId, args);
+  const inv = new FakeInv(userId, args, avatarUrl);
   await cmd.execute(inv, ctxFor(db));
   return inv;
 }
@@ -354,6 +367,149 @@ describe("getGlobalRank", () => {
 });
 
 // ---------------------------------------------------------------------------
+// fetchAvatarBuffer (avatar bug fix, 2026-11-08)
+// ---------------------------------------------------------------------------
+
+/**
+ * Faithful stand-in for a real discord.js User: displayAvatarURL reads
+ * `this` (via avatarURL), exactly like the real class — detaching the
+ * method and calling it unbound throws TypeError, which was the bug.
+ * The URL builder mirrors @discordjs/rest dynamicMakeURL: animated
+ * hashes force .gif unless forceStatic is set.
+ */
+class DiscordLikeUser {
+  id: string;
+  username: string;
+  avatar: string | null;
+  seenOptions: Array<Record<string, unknown>> = [];
+
+  constructor(id: string, avatar: string | null) {
+    this.id = id;
+    this.username = id;
+    this.avatar = avatar;
+  }
+
+  avatarURL(options: { extension?: string; size?: number; forceStatic?: boolean } = {}): string | null {
+    if (!this.avatar) return null;
+    const ext = this.avatar.startsWith("a_") && !options.forceStatic ? "gif" : (options.extension ?? "webp");
+    return `https://cdn.discordapp.com/avatars/${this.id}/${this.avatar}.${ext}?size=${options.size ?? 1024}`;
+  }
+
+  displayAvatarURL(options: { extension?: string; size?: number; forceStatic?: boolean } = {}): string {
+    this.seenOptions.push(options);
+    return this.avatarURL(options) ?? "https://cdn.discordapp.com/embed/avatars/3.png";
+  }
+}
+
+describe("fetchAvatarBuffer", () => {
+  let fetchAvatarBuffer: (inv: CommandInvocation) => Promise<Buffer | null>;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(async () => {
+    fetchAvatarBuffer = (await import("../src/commands/profile.js")).fetchAvatarBuffer;
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    errorSpy.mockRestore();
+  });
+
+  const pngBytes = (text = "fake-png"): Buffer => Buffer.from(text);
+
+  function stubFetchOk(body: Buffer): { calls: string[] } {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        calls.push(url);
+        return {
+          ok: true,
+          status: 200,
+          arrayBuffer: async () => body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength),
+        };
+      }),
+    );
+    return { calls };
+  }
+
+  it("returns the avatar bytes for a user with a custom avatar (bound call works)", async () => {
+    const user = new DiscordLikeUser(USER, "abc123hash");
+    const { calls } = stubFetchOk(pngBytes());
+    const out = await fetchAvatarBuffer({ user } as unknown as CommandInvocation);
+    expect(out?.toString()).toBe("fake-png");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toBe("https://cdn.discordapp.com/avatars/user-1/abc123hash.png?size=256");
+  });
+
+  it("forces a still PNG even for animated avatars", async () => {
+    const user = new DiscordLikeUser(USER, "a_animatedhash");
+    const { calls } = stubFetchOk(pngBytes());
+    const out = await fetchAvatarBuffer({ user } as unknown as CommandInvocation);
+    expect(out).not.toBeNull();
+    expect(user.seenOptions[0]).toEqual({ extension: "png", size: 256, forceStatic: true });
+    expect(calls[0]).toContain(".png?size=256");
+    expect(calls[0]).not.toContain(".gif");
+  });
+
+  it("fetches the Discord default avatar URL for a user with no custom avatar", async () => {
+    const user = new DiscordLikeUser(USER, null);
+    const { calls } = stubFetchOk(pngBytes("default"));
+    const out = await fetchAvatarBuffer({ user } as unknown as CommandInvocation);
+    expect(out?.toString()).toBe("default");
+    expect(calls).toEqual(["https://cdn.discordapp.com/embed/avatars/3.png"]);
+  });
+
+  it("retries once on network failure, then returns null and logs the reason", async () => {
+    const user = new DiscordLikeUser(USER, "abc123hash");
+    const fetchMock = vi.fn(async () => {
+      throw new Error("ECONNRESET");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const out = await fetchAvatarBuffer({ user } as unknown as CommandInvocation);
+    expect(out).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(errorSpy).toHaveBeenCalled();
+    expect(errorSpy.mock.calls.map((c) => String(c[0])).join(" ")).toContain("attempt 2/2");
+  });
+
+  it("retries once on HTTP 500, then returns null", async () => {
+    const user = new DiscordLikeUser(USER, "abc123hash");
+    const fetchMock = vi.fn(async () => ({ ok: false, status: 500, arrayBuffer: async () => new ArrayBuffer(0) }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await fetchAvatarBuffer({ user } as unknown as CommandInvocation)).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("recovers when the first attempt fails and the second succeeds", async () => {
+    const user = new DiscordLikeUser(USER, "abc123hash");
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("timeout"))
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => {
+          const b = pngBytes("recovered");
+          return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
+        },
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    const out = await fetchAvatarBuffer({ user } as unknown as CommandInvocation);
+    expect(out?.toString()).toBe("recovered");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns null without fetching when the user has no displayAvatarURL", async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(0) }));
+    vi.stubGlobal("fetch", fetchMock);
+    const out = await fetchAvatarBuffer({ user: { id: USER, username: USER } } as unknown as CommandInvocation);
+    expect(out).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Commands (FakeInv harness)
 // ---------------------------------------------------------------------------
 
@@ -459,6 +615,89 @@ describe("profile commands", () => {
     expect(gif.lsd.height).toBe(500);
     expect(buf.length).toBeGreaterThan(1000);
     await writeFile(path.join(dir, "card.gif"), buf);
+  });
+
+  it("uwu profile composites the fetched avatar into the card", async () => {
+    // End-to-end: fetch -> render -> attachment, with a solid RED avatar.
+    // The avatar box centre (x 100..140, y 100..140) must come out
+    // red-dominant — that only happens when the fetched bytes land in
+    // the card (the "?" fallback would show the dark background there).
+    const sharp = (await import("sharp")).default;
+    const redAvatar = await sharp({
+      create: { width: 256, height: 256, channels: 3, background: { r: 255, g: 0, b: 0 } },
+    })
+      .png()
+      .toBuffer();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => redAvatar.buffer.slice(redAvatar.byteOffset, redAvatar.byteOffset + redAvatar.byteLength),
+      })),
+    );
+    try {
+      const inv = await runCmd(
+        profileCommands,
+        "profile",
+        USER,
+        { action: null, target: null },
+        "https://cdn.discordapp.com/avatars/user-1/abc.png?size=256",
+      );
+      expect(inv.replies.length).toBe(1);
+      const files = inv.replies[0]!.files as AttachmentBuilder[] | undefined;
+      expect(files).toHaveLength(1);
+      const gif = (files![0] as AttachmentBuilder).attachment as Buffer;
+      expect(gif.subarray(0, 6).toString("ascii")).toMatch(/^GIF8[79]a$/);
+      const parsed = parseGIF(gif.buffer.slice(gif.byteOffset, gif.byteOffset + gif.byteLength));
+      const frame = decompressFrames(parsed, true)[0]!;
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let n = 0;
+      for (let y = 100; y < 140; y++) {
+        for (let x = 100; x < 140; x++) {
+          const i = (y * frame.dims.width + x) * 4;
+          r += frame.patch[i] as number;
+          g += frame.patch[i + 1] as number;
+          b += frame.patch[i + 2] as number;
+          n++;
+        }
+      }
+      expect(r / n).toBeGreaterThan(80);
+      expect(r / n).toBeGreaterThan(g / n + 40);
+      expect(r / n).toBeGreaterThan(b / n + 40);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("uwu profile still renders the card (placeholder avatar) when the avatar fetch fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("ECONNRESET");
+      }),
+    );
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const inv = await runCmd(
+        profileCommands,
+        "profile",
+        USER,
+        { action: null, target: null },
+        "https://cdn.discordapp.com/avatars/user-1/abc.png?size=256",
+      );
+      expect(inv.replies.length).toBe(1);
+      const files = inv.replies[0]!.files as AttachmentBuilder[] | undefined;
+      expect(files).toHaveLength(1);
+      const gif = (files![0] as AttachmentBuilder).attachment as Buffer;
+      expect(gif.subarray(0, 6).toString("ascii")).toMatch(/^GIF8[79]a$/);
+      expect(errorSpy).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      errorSpy.mockRestore();
+    }
   });
 
   it("profile / bg / about resolve by alias (p, background, aboutme)", () => {

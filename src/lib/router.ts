@@ -1,3 +1,4 @@
+import type { ImageURLOptions } from "discord.js";
 import { allCommands } from "../commands/index.js";
 import {
   errorEmbed,
@@ -302,7 +303,7 @@ export interface SentMessageLike {
 
 export interface PrefixMessageLike {
   content: string;
-  author: { id: string; username: string; bot?: boolean; displayName?: string; displayAvatarURL?: () => string };
+  author: { id: string; username: string; bot?: boolean; displayName?: string; displayAvatarURL?: (options?: ImageURLOptions) => string };
   webhookId?: string | null;
   guildId?: string | null;
   channelId?: string;

@@ -95,6 +95,37 @@ function baseInput(overrides: Partial<ProfileCardInput> = {}): ProfileCardInput 
   };
 }
 
+function firstFramePixels(buf: Buffer): { patch: Uint8ClampedArray; width: number; height: number } {
+  const gif = parseGIF(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+  const frames = decompressFrames(gif, true);
+  const f = frames[0]!;
+  return { patch: f.patch, width: f.dims.width, height: f.dims.height };
+}
+
+/** Mean RGB over a rectangle of the decoded frame (avatar region check). */
+function meanRgb(
+  frame: { patch: Uint8ClampedArray; width: number },
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): { r: number; g: number; b: number } {
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let n = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const i = (y * frame.width + x) * 4;
+      r += frame.patch[i] as number;
+      g += frame.patch[i + 1] as number;
+      b += frame.patch[i + 2] as number;
+      n++;
+    }
+  }
+  return { r: r / n, g: g / n, b: b / n };
+}
+
 describe("renderProfileCard", () => {
   it("renders an 800x500 animated GIF under 5MB from an animated bg", async () => {
     const buf = await renderProfileCard(baseInput());
@@ -115,6 +146,27 @@ describe("renderProfileCard", () => {
     const buf = await renderProfileCard(baseInput({ avatarBuffer: null }));
     expect(buf.subarray(0, 6).toString("ascii")).toMatch(/^GIF8[79]a$/);
     expect(buf.length).toBeGreaterThan(1000);
+  });
+
+  it("composites the avatar pixels into the card (red avatar = red avatar region)", async () => {
+    // Solid red avatar on the static BLUE background: the avatar box
+    // (x 40..190, y 40..190) must come out red-dominant in the centre
+    // (the white border + scrim are avoided by sampling the middle).
+    const redAvatar = await sharp({
+      create: { width: 256, height: 256, channels: 3, background: { r: 255, g: 0, b: 0 } },
+    })
+      .png()
+      .toBuffer();
+    const withAvatar = await renderProfileCard(baseInput({ backgroundPath: bgPngPath, avatarBuffer: redAvatar }));
+    const rgb = meanRgb(firstFramePixels(withAvatar), 100, 100, 140, 140);
+    expect(rgb.r).toBeGreaterThan(80);
+    expect(rgb.r).toBeGreaterThan(rgb.g + 40);
+    expect(rgb.r).toBeGreaterThan(rgb.b + 40);
+    // Control: the same card with a null avatar is NOT red there
+    // (blue background under the dark scrim).
+    const noAvatar = await renderProfileCard(baseInput({ backgroundPath: bgPngPath, avatarBuffer: null }));
+    const rgbNull = meanRgb(firstFramePixels(noAvatar), 100, 100, 140, 140);
+    expect(rgbNull.r).toBeLessThan(rgbNull.b);
   });
 
   it("renders with empty about and null guild (placeholder text, no throw)", async () => {

@@ -38,24 +38,60 @@ async function replyError(
   await inv.reply({ embeds: [errorEmbed(msg).toJSON()] });
 }
 
-/** Fetch the user's avatar bytes, or null when there is none / it fails. */
-async function fetchAvatarBuffer(inv: CommandInvocation): Promise<Buffer | null> {
-  const urlFn = (inv.user as { displayAvatarURL?: () => string }).displayAvatarURL;
-  if (typeof urlFn !== "function") return null;
+/**
+ * Avatar fetch for the profile card.
+ *
+ * ROOT CAUSE (2026-11-08): the old code detached `displayAvatarURL`
+ * from the user (`const urlFn = inv.user.displayAvatarURL; urlFn()`).
+ * discord.js `User.displayAvatarURL` reads `this.avatarURL`, so the
+ * unbound call threw `TypeError: Cannot read properties of undefined
+ * (reading 'avatarURL')` for EVERY user — the catch swallowed it and
+ * every card rendered the "?" placeholder. The offline sample worked
+ * because it passed a locally-made buffer, bypassing this function.
+ *
+ * Rules now: call displayAvatarURL as a METHOD on the user (bound
+ * `this`); force a still PNG (`forceStatic` — without it, animated
+ * avatars come back as .gif even with extension "png"); 10s timeout +
+ * one retry; every failure is LOGGED with its reason, never swallowed
+ * silently. A user with no custom avatar still gets a real image:
+ * displayAvatarURL returns the Discord default-avatar URL, which is
+ * fetched like any other. The "?" placeholder now only appears when
+ * the fetch genuinely fails.
+ */
+export const AVATAR_FETCH_TIMEOUT_MS = 10_000;
+export const AVATAR_FETCH_MAX_ATTEMPTS = 2;
+
+export async function fetchAvatarBuffer(inv: CommandInvocation): Promise<Buffer | null> {
+  const user = inv.user;
+  if (typeof user.displayAvatarURL !== "function") {
+    console.error("uwu: avatar fetch skipped: user has no displayAvatarURL");
+    return null;
+  }
   let url: string;
   try {
-    url = urlFn();
-  } catch {
+    // Method call on the user object — never detach this (see above).
+    url = user.displayAvatarURL({ extension: "png", size: 256, forceStatic: true });
+  } catch (e) {
+    console.error("uwu: avatar URL failed:", e instanceof Error ? e.message : e);
     return null;
   }
-  if (!url) return null;
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    return Buffer.from(await res.arrayBuffer());
-  } catch {
+  if (!url) {
+    console.error("uwu: avatar fetch skipped: displayAvatarURL returned an empty URL");
     return null;
   }
+  for (let attempt = 1; attempt <= AVATAR_FETCH_MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(AVATAR_FETCH_TIMEOUT_MS) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return Buffer.from(await res.arrayBuffer());
+    } catch (e) {
+      console.error(
+        `uwu: avatar fetch failed (attempt ${attempt}/${AVATAR_FETCH_MAX_ATTEMPTS}, ${url}):`,
+        e instanceof Error ? e.message : e,
+      );
+    }
+  }
+  return null;
 }
 
 async function handleEquip(
