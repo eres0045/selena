@@ -204,6 +204,24 @@ export interface BattleRoundLog {
   /** Standings snapshot after the round, for the replay display. */
   aLine: string;
   bLine: string;
+  /** Per-fighter HP snapshot after the round (for the battle card). */
+  aFighters: BattleFighterSnapshot[];
+  bFighters: BattleFighterSnapshot[];
+}
+
+/** One fighter's state after a round — what the battle card draws. */
+export interface BattleFighterSnapshot {
+  monsterId: number;
+  name: string;
+  level: number;
+  fuseLevel: number;
+  hp: number;
+  maxHp: number;
+  alive: boolean;
+  /** The side's currently fighting monster (first alive). */
+  active: boolean;
+  /** Names of active status effects on this fighter. */
+  effects: string[];
 }
 
 export interface BattleResult {
@@ -215,6 +233,8 @@ export interface BattleResult {
   finalBlow: { attackerName: string; move: string; targetName: string } | null;
   aRemainingHp: number;
   bRemainingHp: number;
+  /** Full-HP snapshot before round 1 (for the battle card's opening frame). */
+  opening: { aFighters: BattleFighterSnapshot[]; bFighters: BattleFighterSnapshot[] };
 }
 
 function fighterName(f: BattleFighter): string {
@@ -566,6 +586,23 @@ export function simulateBattle(
   const alive = (s: SideState): BattleFighter | undefined => s.fighters.find((f) => f.hp > 0);
   const sideAlive = (s: SideState): boolean => s.fighters.some((f) => f.hp > 0);
 
+  /** Per-fighter HP snapshot for the battle card (after a round's actions). */
+  const snapshot = (s: SideState): BattleFighterSnapshot[] => {
+    const act = alive(s);
+    return s.fighters.map((f) => ({
+      monsterId: f.monster.id,
+      name: fighterName(f),
+      level: f.level,
+      fuseLevel: f.fuseLevel,
+      hp: Math.max(0, f.hp),
+      maxHp: f.maxHp,
+      alive: f.hp > 0,
+      active: act === f,
+      effects: f.effects.map((e) => e.name),
+    }));
+  };
+  const opening = { aFighters: snapshot(sideA), bFighters: snapshot(sideB) };
+
   let n = 0;
   while (n < MAX_BATTLE_ROUNDS && sideAlive(sideA) && sideAlive(sideB)) {
     n += 1;
@@ -602,7 +639,14 @@ export function simulateBattle(
       if (f.hp > 0) ageEffects(f);
     }
     flat.push(...lines);
-    rounds.push({ n, lines, aLine: standingsLine(sideA), bLine: standingsLine(sideB) });
+    rounds.push({
+      n,
+      lines,
+      aLine: standingsLine(sideA),
+      bLine: standingsLine(sideB),
+      aFighters: snapshot(sideA),
+      bFighters: snapshot(sideB),
+    });
   }
 
   let winner: BattleResult["winner"];
@@ -631,6 +675,7 @@ export function simulateBattle(
     finalBlow,
     aRemainingHp: sideA.fighters.reduce((t, f) => t + Math.max(0, f.hp), 0),
     bRemainingHp: sideB.fighters.reduce((t, f) => t + Math.max(0, f.hp), 0),
+    opening,
   };
 }
 
