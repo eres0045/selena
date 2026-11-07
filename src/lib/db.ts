@@ -694,6 +694,24 @@ CREATE TABLE IF NOT EXISTS user_explore (
   user_id TEXT PRIMARY KEY,
   last_explore_at BIGINT
 );
+
+-- Profiles (2026-11-07). Profile data is GLOBAL (keyed by user_id alone,
+-- like user_location): your About Me and background follow you across
+-- servers. Backgrounds are bought with guild-scoped gold (the guild the
+-- purchase ran in), but ownership is global — a background bought in one
+-- server is yours everywhere.
+CREATE TABLE IF NOT EXISTS user_profiles (
+  user_id TEXT PRIMARY KEY,
+  about TEXT NOT NULL DEFAULT '',
+  equipped_bg TEXT NOT NULL DEFAULT 'default'
+);
+
+CREATE TABLE IF NOT EXISTS user_backgrounds (
+  user_id TEXT NOT NULL,
+  bg_id TEXT NOT NULL,
+  purchased_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, bg_id)
+);
 `;
 
 let db: SelenaDb | null = null;

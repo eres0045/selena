@@ -1,0 +1,250 @@
+[
+  {
+    "id": "default",
+    "name": "Default",
+    "type": "static",
+    "file": "default.png",
+    "price": 0,
+    "source_url": ""
+  },
+  {
+    "id": "neon-street",
+    "name": "Neon Street",
+    "type": "static",
+    "file": "neon-street.jpg",
+    "price": 20000,
+    "source_url": "https://w.wallhaven.cc/full/po/wallhaven-pomqg9.jpg"
+  },
+  {
+    "id": "rainy-street",
+    "name": "Rainy Street",
+    "type": "static",
+    "file": "rainy-street.jpg",
+    "price": 18000,
+    "source_url": "https://w.wallhaven.cc/full/gw/wallhaven-gwvzy7.png"
+  },
+  {
+    "id": "ocean-sunset",
+    "name": "Ocean Sunset",
+    "type": "static",
+    "file": "ocean-sunset.jpg",
+    "price": 18000,
+    "source_url": "https://w.wallhaven.cc/full/k8/wallhaven-k8jeqm.png"
+  },
+  {
+    "id": "snowy-village",
+    "name": "Snowy Village",
+    "type": "static",
+    "file": "snowy-village.jpg",
+    "price": 18000,
+    "source_url": "https://w.wallhaven.cc/full/gw/wallhaven-gw1e3d.png"
+  },
+  {
+    "id": "galaxy-drift",
+    "name": "Galaxy Drift",
+    "type": "static",
+    "file": "galaxy-drift.jpg",
+    "price": 17000,
+    "source_url": "https://w.wallhaven.cc/full/1q/wallhaven-1qoej1.png"
+  },
+  {
+    "id": "sakura-path",
+    "name": "Sakura Path",
+    "type": "static",
+    "file": "sakura-path.jpg",
+    "price": 16000,
+    "source_url": "https://w.wallhaven.cc/full/9o/wallhaven-9okqyw.jpg"
+  },
+  {
+    "id": "eclipse-blade",
+    "name": "Eclipse Blade",
+    "type": "static",
+    "file": "eclipse-blade.jpg",
+    "price": 16000,
+    "source_url": "https://w.wallhaven.cc/full/ml/wallhaven-mloe19.png"
+  },
+  {
+    "id": "lotus-rain",
+    "name": "Lotus Rain",
+    "type": "static",
+    "file": "lotus-rain.jpg",
+    "price": 15000,
+    "source_url": "https://w.wallhaven.cc/full/d8/wallhaven-d8vjom.png"
+  },
+  {
+    "id": "beach-day",
+    "name": "Beach Day",
+    "type": "static",
+    "file": "beach-day.jpg",
+    "price": 14000,
+    "source_url": "https://w.wallhaven.cc/full/rq/wallhaven-rqexm7.jpg"
+  },
+  {
+    "id": "autumn-leaves",
+    "name": "Autumn Leaves",
+    "type": "static",
+    "file": "autumn-leaves.jpg",
+    "price": 12000,
+    "source_url": "https://w.wallhaven.cc/full/9o/wallhaven-9oky71.jpg"
+  },
+  {
+    "id": "starry-space",
+    "name": "Starry Space",
+    "type": "animated",
+    "file": "starry-space.gif",
+    "price": 48000,
+    "source_url": "https://media.tenor.com/02Y4uGZPKPQAAAAd/night-sky-stars.gif"
+  },
+  {
+    "id": "cloud-sea",
+    "name": "Cloud Sea",
+    "type": "animated",
+    "file": "cloud-sea.gif",
+    "price": 48000,
+    "source_url": "https://media.tenor.com/-2KMbS1XrKUAAAAd/heythatme-cloud.gif"
+  },
+  {
+    "id": "comet-night",
+    "name": "Comet Night",
+    "type": "animated",
+    "file": "comet-night.gif",
+    "price": 45000,
+    "source_url": "https://media.tenor.com/2PoAn8rF-OAAAAAd/night-sky-night.gif"
+  },
+  {
+    "id": "waterfall-valley",
+    "name": "Waterfall Valley",
+    "type": "animated",
+    "file": "waterfall-valley.gif",
+    "price": 45000,
+    "source_url": "https://media.tenor.com/04hLpaOWYN4AAAAd/waterfall-anime.gif"
+  },
+  {
+    "id": "flower-field",
+    "name": "Flower Field",
+    "type": "animated",
+    "file": "flower-field.gif",
+    "price": 45000,
+    "source_url": "https://media.tenor.com/-GAX-e1bgfUAAAAd/petals-flowers.gif"
+  },
+  {
+    "id": "forest-spirit",
+    "name": "Forest Spirit",
+    "type": "animated",
+    "file": "forest-spirit.gif",
+    "price": 42000,
+    "source_url": "https://media.tenor.com/-Os48QY_xEIAAAAd/studio-ghibli-aesthetic.gif"
+  },
+  {
+    "id": "golden-sunset",
+    "name": "Golden Sunset",
+    "type": "animated",
+    "file": "golden-sunset.gif",
+    "price": 40000,
+    "source_url": "https://media.tenor.com/0qBG1Yxjh1UAAAAd/love-live-sunset.gif"
+  },
+  {
+    "id": "neon-city",
+    "name": "Neon City",
+    "type": "animated",
+    "file": "neon-city.gif",
+    "price": 40000,
+    "source_url": "https://media.tenor.com/2FIMeyZLsD8AAAAd/anime-1980s.gif"
+  },
+  {
+    "id": "aquarium-night",
+    "name": "Aquarium Night",
+    "type": "animated",
+    "file": "aquarium-night.gif",
+    "price": 38000,
+    "source_url": "https://media.tenor.com/0b1Wwm8BTeUAAAAd/anime-anime-coffee.gif"
+  },
+  {
+    "id": "stargazing-night",
+    "name": "Stargazing Night",
+    "type": "animated",
+    "file": "stargazing-night.gif",
+    "price": 38000,
+    "source_url": "https://media.tenor.com/05u1G7_UlLcAAAAd/anime-love.gif"
+  },
+  {
+    "id": "sakura-dreams",
+    "name": "Sakura Dreams",
+    "type": "animated",
+    "file": "sakura-dreams.gif",
+    "price": 35000,
+    "source_url": "https://media.tenor.com/1Jxk2tD-H9MAAAAd/teleport-guy.gif"
+  },
+  {
+    "id": "starry-sleep",
+    "name": "Starry Sleep",
+    "type": "animated",
+    "file": "starry-sleep.gif",
+    "price": 35000,
+    "source_url": "https://media.tenor.com/-KLOoR7ZU0wAAAAd/anime-sleeping.gif"
+  },
+  {
+    "id": "twilight-bloom",
+    "name": "Twilight Bloom",
+    "type": "animated",
+    "file": "twilight-bloom.gif",
+    "price": 35000,
+    "source_url": "https://media.tenor.com/2SPaMvRXcZcAAAAd/anime-another.gif"
+  },
+  {
+    "id": "cloudy-night",
+    "name": "Cloudy Night",
+    "type": "animated",
+    "file": "cloudy-night.gif",
+    "price": 35000,
+    "source_url": "https://media.tenor.com/-GmDy8jpYrIAAAAd/night-time-anime.gif"
+  },
+  {
+    "id": "beach-sunset",
+    "name": "Beach Sunset",
+    "type": "animated",
+    "file": "beach-sunset.gif",
+    "price": 32000,
+    "source_url": "https://media.tenor.com/0ifoirdcDi8AAAAd/anime-sunset.gif"
+  },
+  {
+    "id": "crimson-sun",
+    "name": "Crimson Sun",
+    "type": "animated",
+    "file": "crimson-sun.gif",
+    "price": 32000,
+    "source_url": "https://media.tenor.com/-RNOB5xDZ5gAAAAd/sunset.gif"
+  },
+  {
+    "id": "night-balcony",
+    "name": "Night Balcony",
+    "type": "animated",
+    "file": "night-balcony.gif",
+    "price": 30000,
+    "source_url": "https://media.tenor.com/4wuIR3sMYjoAAAAd/waiting-vrchat.gif"
+  },
+  {
+    "id": "rainy-village",
+    "name": "Rainy Village",
+    "type": "animated",
+    "file": "rainy-village.gif",
+    "price": 30000,
+    "source_url": "https://media.tenor.com/0Qyw1jwj7NcAAAAd/aesthetic-anime.gif"
+  },
+  {
+    "id": "winter-snow",
+    "name": "Winter Snow",
+    "type": "animated",
+    "file": "winter-snow.gif",
+    "price": 30000,
+    "source_url": "https://media.tenor.com/2Aw1_npXU-QAAAAd/wintersnight-winter.gif"
+  },
+  {
+    "id": "ocean-waves-ride",
+    "name": "Ocean Waves Ride",
+    "type": "animated",
+    "file": "ocean-waves-ride.gif",
+    "price": 25000,
+    "source_url": "https://media.tenor.com/3dMG23W7vsYAAAAd/taku-morisaki-ocean-waves.gif"
+  }
+]

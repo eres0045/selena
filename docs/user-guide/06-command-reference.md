@@ -1,8 +1,8 @@
-# 06 — Command reference (all 58) + misc live systems
+# 06 — Command reference (all 61) + misc live systems
 
 **Status: LIVE.** Every command below is implemented in `src/`, in the live
 registry (`src/commands/index.ts`), and deployed. Counted from the registry:
-**58 commands** across 13 modules.
+**61 commands** across 14 modules.
 
 ## 6.1 Full command table
 
@@ -70,10 +70,18 @@ registry (`src/commands/index.ts`), and deployed. Counted from the registry:
 | Command | Aliases | Args | Notes |
 |---|---|---|---|
 | `auction` | `auctions` | `<action> [args]` | `sell <item> <price>` (min 100), `bid <id> <amount>` (min +10%), `list`, `info <id>`, `cancel <id>`, `mine`; 24h, 5% fee, escrowed bids |
-| `shop` | `store` | `[buy <item> [qty]]` | Daily stock, same for everyone, midnight UTC; max 3 per item per player per day; gold + gems |
+| `shop` | `store` | `[buy <item> [qty]]` | Daily stock, same for everyone, midnight UTC; max 3 per item per player per day; gold + gems; `shop bg` lists the 30 profile backgrounds, `shop buy bg <name>` buys one (see §4.3 in [04-economy.md](04-economy.md)) |
 | `crates` | `crate` | — | List owned crates |
 | `open` | `opencrate` | `<crate>` | Open one crate, reveal loot |
 | `gems` | `gem` | — | Gem balance + how to earn gems |
+
+### Profile (3)
+
+| Command | Aliases | Args | Notes |
+|---|---|---|---|
+| `profile` | `p` | `[bg <name>]` | Your profile card — an 800×500 animated GIF image attachment (level, global rank, XP bar, gold, gems, About Me, monsters caught, guild); `uwu profile bg <name>` equips a background you own |
+| `bg` | `background` | `<name>` | Equip a profile background you own, by name or id (prefix match works); the free Default always equips |
+| `about` | `aboutme` | `[text...]` | Set your About Me line (max 100 chars; @everyone/@here and Discord invite links are stripped); empty shows the current line |
 
 ### Announcements (4) — Phase 2
 
@@ -228,7 +236,7 @@ docs might expect.
 6. **No min/max validation** for mute/timeout minutes, ban `delete-days`,
    modlog `limit`, or remind minutes.
 7. ~~**Help comment is stale** ("all 36 commands fit")~~ — **FIXED in
-   Phase 2** (comment now says 58; registry is 58).
+   Phase 2** (comment now says 61; registry is 61).
 8. **Starboard triggers on ANY reaction**, not just ⭐.
 9. **Automod's warn branch is unreachable** with current settings (all
    violations delete).
@@ -247,14 +255,15 @@ docs might expect.
 
 ## Verified
 
-- **Tests:** `npm test` 2026-11-07 — 627/627 passed (22 files), including
+- **Tests:** `npm test` 2026-11-07 — 679/679 passed (24 files), including
   `test/games.test.ts`, `test/mod.test.ts`, `test/utility.test.ts`,
-  `test/boot.test.ts`, plus the Phase 2 test files.
+  `test/boot.test.ts`, plus the Phase 2 test files and the new
+  `test/profile.test.ts` (39 tests: buy/equip/about/rank/shop-bg/real render).
 - **Code read:** `src/commands/games.ts`, `src/commands/mod.ts`,
   `src/commands/utility.ts`, `src/lib/games.ts`, `src/lib/trivia.ts`,
   `src/lib/automod.ts`, `src/index.ts`, plus `src/lib/db.ts`,
   `src/lib/levels.ts`, `src/lib/command.ts`, `src/commands/index.ts` for
-  inventory verification. The 58-command inventory was counted from the
+  inventory verification. The 61-command inventory was counted from the
   live registry.
 - **Live Discord check: NOT DONE** (no browser access in this session).
   To verify live in `#🤖-miya-bot`: `uwu ttt @user`, `uwu trivia`,

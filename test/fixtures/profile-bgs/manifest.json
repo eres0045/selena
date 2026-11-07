@@ -1,0 +1,250 @@
+[
+  {
+    "id": "default",
+    "name": "Default",
+    "file": "default.png",
+    "price": 0,
+    "type": "static",
+    "source_url": ""
+  },
+  {
+    "id": "meadow-dawn",
+    "name": "Meadow Dawn",
+    "file": "meadow-dawn.png",
+    "price": 10000,
+    "type": "static",
+    "source_url": "https://example.invalid/meadow-dawn"
+  },
+  {
+    "id": "ember-night",
+    "name": "Ember Night",
+    "file": "ember-night.png",
+    "price": 12000,
+    "type": "static",
+    "source_url": "https://example.invalid/ember-night"
+  },
+  {
+    "id": "frost-peaks",
+    "name": "Frost Peaks",
+    "file": "frost-peaks.png",
+    "price": 14000,
+    "type": "static",
+    "source_url": "https://example.invalid/frost-peaks"
+  },
+  {
+    "id": "golden-hour",
+    "name": "Golden Hour",
+    "file": "golden-hour.png",
+    "price": 11000,
+    "type": "static",
+    "source_url": "https://example.invalid/golden-hour"
+  },
+  {
+    "id": "deep-forest",
+    "name": "Deep Forest",
+    "file": "deep-forest.png",
+    "price": 15000,
+    "type": "static",
+    "source_url": "https://example.invalid/deep-forest"
+  },
+  {
+    "id": "ocean-calm",
+    "name": "Ocean Calm",
+    "file": "ocean-calm.png",
+    "price": 13000,
+    "type": "static",
+    "source_url": "https://example.invalid/ocean-calm"
+  },
+  {
+    "id": "starlit-field",
+    "name": "Starlit Field",
+    "file": "starlit-field.png",
+    "price": 17000,
+    "type": "static",
+    "source_url": "https://example.invalid/starlit-field"
+  },
+  {
+    "id": "autumn-leaves",
+    "name": "Autumn Leaves",
+    "file": "autumn-leaves.png",
+    "price": 16000,
+    "type": "static",
+    "source_url": "https://example.invalid/autumn-leaves"
+  },
+  {
+    "id": "desert-dusk",
+    "name": "Desert Dusk",
+    "file": "desert-dusk.png",
+    "price": 18000,
+    "type": "static",
+    "source_url": "https://example.invalid/desert-dusk"
+  },
+  {
+    "id": "misty-lake",
+    "name": "Misty Lake",
+    "file": "misty-lake.png",
+    "price": 20000,
+    "type": "static",
+    "source_url": "https://example.invalid/misty-lake"
+  },
+  {
+    "id": "starfall",
+    "name": "Starfall",
+    "file": "starfall.gif",
+    "price": 25000,
+    "type": "animated",
+    "source_url": "https://example.invalid/starfall"
+  },
+  {
+    "id": "aurora-dance",
+    "name": "Aurora Dance",
+    "file": "aurora-dance.gif",
+    "price": 30000,
+    "type": "animated",
+    "source_url": "https://example.invalid/aurora-dance"
+  },
+  {
+    "id": "fireflies",
+    "name": "Fireflies",
+    "file": "fireflies.gif",
+    "price": 27000,
+    "type": "animated",
+    "source_url": "https://example.invalid/fireflies"
+  },
+  {
+    "id": "rainy-window",
+    "name": "Rainy Window",
+    "file": "rainy-window.gif",
+    "price": 32000,
+    "type": "animated",
+    "source_url": "https://example.invalid/rainy-window"
+  },
+  {
+    "id": "neon-city",
+    "name": "Neon City",
+    "file": "neon-city.gif",
+    "price": 35000,
+    "type": "animated",
+    "source_url": "https://example.invalid/neon-city"
+  },
+  {
+    "id": "galaxy-swirl",
+    "name": "Galaxy Swirl",
+    "file": "galaxy-swirl.gif",
+    "price": 40000,
+    "type": "animated",
+    "source_url": "https://example.invalid/galaxy-swirl"
+  },
+  {
+    "id": "bubble-rise",
+    "name": "Bubble Rise",
+    "file": "bubble-rise.gif",
+    "price": 28000,
+    "type": "animated",
+    "source_url": "https://example.invalid/bubble-rise"
+  },
+  {
+    "id": "snowfall",
+    "name": "Snowfall",
+    "file": "snowfall.gif",
+    "price": 33000,
+    "type": "animated",
+    "source_url": "https://example.invalid/snowfall"
+  },
+  {
+    "id": "lava-flow",
+    "name": "Lava Flow",
+    "file": "lava-flow.gif",
+    "price": 38000,
+    "type": "animated",
+    "source_url": "https://example.invalid/lava-flow"
+  },
+  {
+    "id": "butterfly-garden",
+    "name": "Butterfly Garden",
+    "file": "butterfly-garden.gif",
+    "price": 45000,
+    "type": "animated",
+    "source_url": "https://example.invalid/butterfly-garden"
+  },
+  {
+    "id": "cloud-drift",
+    "name": "Cloud Drift",
+    "file": "cloud-drift.gif",
+    "price": 26000,
+    "type": "animated",
+    "source_url": "https://example.invalid/cloud-drift"
+  },
+  {
+    "id": "lightning-storm",
+    "name": "Lightning Storm",
+    "file": "lightning-storm.gif",
+    "price": 36000,
+    "type": "animated",
+    "source_url": "https://example.invalid/lightning-storm"
+  },
+  {
+    "id": "cherry-blossom",
+    "name": "Cherry Blossom",
+    "file": "cherry-blossom.gif",
+    "price": 42000,
+    "type": "animated",
+    "source_url": "https://example.invalid/cherry-blossom"
+  },
+  {
+    "id": "underwater-glow",
+    "name": "Underwater Glow",
+    "file": "underwater-glow.gif",
+    "price": 31000,
+    "type": "animated",
+    "source_url": "https://example.invalid/underwater-glow"
+  },
+  {
+    "id": "meteor-shower",
+    "name": "Meteor Shower",
+    "file": "meteor-shower.gif",
+    "price": 47000,
+    "type": "animated",
+    "source_url": "https://example.invalid/meteor-shower"
+  },
+  {
+    "id": "northern-lights",
+    "name": "Northern Lights",
+    "file": "northern-lights.gif",
+    "price": 50000,
+    "type": "animated",
+    "source_url": "https://example.invalid/northern-lights"
+  },
+  {
+    "id": "fireworks",
+    "name": "Fireworks",
+    "file": "fireworks.gif",
+    "price": 29000,
+    "type": "animated",
+    "source_url": "https://example.invalid/fireworks"
+  },
+  {
+    "id": "ocean-waves",
+    "name": "Ocean Waves",
+    "file": "ocean-waves.gif",
+    "price": 34000,
+    "type": "animated",
+    "source_url": "https://example.invalid/ocean-waves"
+  },
+  {
+    "id": "falling-leaves",
+    "name": "Falling Leaves",
+    "file": "falling-leaves.gif",
+    "price": 39000,
+    "type": "animated",
+    "source_url": "https://example.invalid/falling-leaves"
+  },
+  {
+    "id": "cosmic-dust",
+    "name": "Cosmic Dust",
+    "file": "cosmic-dust.gif",
+    "price": 44000,
+    "type": "animated",
+    "source_url": "https://example.invalid/cosmic-dust"
+  }
+]

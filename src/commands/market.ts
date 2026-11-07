@@ -29,6 +29,8 @@ import {
   type Auction,
 } from "../lib/market.js";
 import { utcDayString } from "../lib/huntDb.js";
+import { buyBackground, findBackground, getOwnedBackgrounds, getUserProfile } from "../lib/profile.js";
+import { DEFAULT_BG_ID, getBackground, listBackgrounds } from "../lib/profileBgs.js";
 
 /**
  * Market commands — auction house + daily shop + crates + gems
@@ -305,6 +307,11 @@ async function handleShopBuy(
     await replyError(inv, "Usage: `uwu shop buy <item> [qty]` — e.g. `uwu shop buy Heal Potion 2`.");
     return;
   }
+  // `uwu shop buy bg <name>` — profile backgrounds are a PERMANENT
+  // catalogue, not daily stock: they never go through buyFromShop.
+  if (tokens[0]!.toLowerCase() === "bg") {
+    return handleShopBuyBg(inv, ctx, tokens.slice(1).join(" "));
+  }
   let qty = 1;
   let nameTokens = tokens;
   const last = tokens[tokens.length - 1]!;
@@ -341,6 +348,74 @@ async function handleShopBuy(
   } catch (e) {
     console.error("uwu: shop buy failed:", e instanceof Error ? e.message : e);
     await replyError(inv, "Couldn't buy that — try again in a bit.");
+  }
+}
+
+async function handleShopBgList(inv: Parameters<Command["execute"]>[0], ctx: CommandContext): Promise<void> {
+  try {
+    const bgs = listBackgrounds();
+    if (bgs.length === 0) {
+      await replyError(inv, "Profile backgrounds aren't available yet — the background catalogue hasn't landed. Try again later.");
+      return;
+    }
+    const owned = new Set(await getOwnedBackgrounds(ctx.db, inv.user.id));
+    const equipped = (await getUserProfile(ctx.db, inv.user.id)).equippedBg;
+    const statics = bgs.filter((b) => b.type === "static");
+    const animated = bgs.filter((b) => b.type === "animated");
+    const lineFor = (b: { id: string; name: string; price: number; type: string }): string => {
+      const marks = `${owned.has(b.id) ? " ✓ owned" : ""}${equipped === b.id ? " ★ equipped" : ""}`;
+      const kind = b.type === "animated" ? "GIF" : "static";
+      return `· ${b.name} — ${fmt(b.price)} gold [${kind}]${marks}`;
+    };
+    const lines = [
+      `· Default — free [static]${equipped === DEFAULT_BG_ID ? " ★ equipped" : " ✓ owned"}`,
+      `Static (${statics.length}):`,
+      ...statics.map(lineFor),
+      `Animated GIF (${animated.length}):`,
+      ...animated.map(lineFor),
+    ];
+    const bal = await getBalance(ctx.db, ctx.guildId, inv.user.id);
+    await inv.reply({
+      content:
+        `🖼️ Profile backgrounds — ${bgs.length} total, permanent catalogue, never rotates (you have ${fmt(bal.points)} gold):\n` +
+        `${lines.join("\n")}\n` +
+        `Buy with \`uwu shop buy bg <name>\`, equip with \`uwu bg <name>\` — your card shows it with \`uwu profile\`.`,
+    });
+  } catch (e) {
+    console.error("uwu: shop bg failed:", e instanceof Error ? e.message : e);
+    await replyError(inv, "Couldn't load the backgrounds — try again in a bit.");
+  }
+}
+
+async function handleShopBuyBg(
+  inv: Parameters<Command["execute"]>[0],
+  ctx: CommandContext,
+  query: string,
+): Promise<void> {
+  const q = query.trim();
+  if (!q) {
+    await replyError(inv, "Usage: `uwu shop buy bg <name>` — see `uwu shop bg` for the full list.");
+    return;
+  }
+  const bg = findBackground(q);
+  if (!bg) {
+    await replyError(inv, `I don't know a background called "${q}" — see \`uwu shop bg\` for the full list.`);
+    return;
+  }
+  try {
+    const res = await buyBackground(ctx.db, ctx.guildId, inv.user.id, bg.id, Date.now());
+    if (!res.ok) {
+      await replyError(inv, res.error ?? "Couldn't buy that background.");
+      return;
+    }
+    await inv.reply({
+      content:
+        `🖼️ Bought **${res.bgName}** for ${fmt(res.price ?? 0)} gold — you have ${fmt(res.remainingGold ?? 0)} gold left.\n` +
+        `Equip it with \`uwu bg ${res.bgName}\` and see it on \`uwu profile\`.`,
+    });
+  } catch (e) {
+    console.error("uwu: shop buy bg failed:", e instanceof Error ? e.message : e);
+    await replyError(inv, "Couldn't buy that background — try again in a bit.");
   }
 }
 
@@ -445,8 +520,9 @@ export const commands: Command[] = [
       const action = (inv.options.getString("action") ?? "").trim().toLowerCase();
       const target = inv.options.getString("item") ?? "";
       if (action === "buy") return handleShopBuy(inv, ctx, target);
+      if (action === "bg") return handleShopBgList(inv, ctx);
       if (!action) return handleShopShow(inv, ctx);
-      await inv.reply({ content: "Shop — `uwu shop` to browse, `uwu shop buy <item> [qty]` to buy." });
+      await inv.reply({ content: "Shop — `uwu shop` to browse, `uwu shop buy <item> [qty]` to buy, `uwu shop bg` for profile backgrounds." });
     },
   },
   {

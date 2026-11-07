@@ -70,6 +70,42 @@ Source: `docs/hunt-world-phase2-design.md` §9.1. Commands `uwu shop`,
   sit in `user_items` inventory until a use command is built. The roll
   ticket, Tower Key effect, and pet-egg hatching are all blocked on this.
 
+### 4.3a Profile backgrounds — LIVE
+
+Commands `uwu shop bg`, `uwu shop buy bg <name>`, `uwu bg <name>`,
+`uwu profile`, `uwu about <text>` (`src/commands/market.ts` shop wiring,
+`src/commands/profile.ts`, `src/lib/profile.ts`, `src/lib/profileBgs.ts`).
+Tables: `user_profiles` (about + equipped bg, global per user),
+`user_backgrounds` (ownership, global per user).
+
+- **30 backgrounds, permanent catalogue — never rotates, never part of
+  the daily stock:** **10 static** images (low price, roughly 10,000–
+  20,000 gold) + **20 animated GIFs** (high price, roughly 25,000–50,000
+  gold). Prices come from the manifest (`assets/profile-bgs/manifest.json`,
+  entries `{ id, name, file, price, type, source_url }` where `type` is
+  `"static"` or `"animated"`); nothing hardcodes a price.
+- **Default is free** — every user starts on it, it always equips, and it
+  is never sold.
+- `uwu shop bg` — lists all 30 with name + price + `[static]`/`[GIF]` mark
+  + `✓ owned` / `★ equipped` marks. `uwu shop buy bg <name>` — buys with
+  **guild-scoped gold** (the guild the purchase ran in, same as every shop
+  buy); one transaction — unknown / already-owned / can't-afford all refuse
+  before any gold moves. Ownership is **global**: a background bought in one
+  server is yours everywhere.
+- `uwu bg <name>` (alias `background`) — equips a background you own, by
+  name or id (prefix match works); `uwu profile bg <name>` does the same.
+  Equipping one you don't own refuses with the price and the buy command.
+- `uwu profile` (alias `p`) — your profile card as an **800×500 animated
+  GIF image attachment** (`profile.gif`): level + XP bar (existing curve in
+  `src/lib/levels.ts`), **global rank** (total XP summed across all guilds),
+  gold, gems, About Me, monsters caught, guild name. On any render failure
+  the command falls back to a plain-text error — never a crash, never a
+  broken file.
+- `uwu about <text>` (alias `aboutme`) — sets the About Me line (max **100
+  chars**); empty shows the current line. `@everyone`/`@here` mentions and
+  Discord invite links are stripped before storing, so a stored About Me
+  can never ping anyone.
+
 ## 4.4 Auction house — LIVE
 
 Source: `docs/hunt-world-phase2-design.md` §8. Commands

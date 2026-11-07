@@ -132,7 +132,7 @@ describe("tokenizeArgs", () => {
 
 describe("resolveCommand / alias table", () => {
   it("resolves every command by name", () => {
-    expect(allCommands.length).toBe(58);
+    expect(allCommands.length).toBe(61);
     for (const cmd of allCommands) {
       expect(resolveCommand(cmd.name)).toBe(cmd);
     }
@@ -174,8 +174,11 @@ describe("resolveCommand / alias table", () => {
   it("the removed Fun commands (and every alias) resolve to nothing", () => {
     // 2026-11-07: Ronit removed the whole Fun category — 8ball, meme,
     // ship, rate, joke, roast, compliment, wouldyourather, truthordare,
-    // uwu, profile. None of them (nor any alias) may resolve anymore,
-    // and the help box must not list a Fun group.
+    // uwu. None of them (nor any alias) may resolve anymore, and the
+    // help box must not list a Fun group. NOTE: `profile` is NOT in
+    // this list anymore — the old Fun `profile`/`prof`/`me` is gone,
+    // but a NEW `uwu profile` (profile-card command, alias `p`) was
+    // added 2026-11-07 in the Profile category; `prof`/`me` stay dead.
     for (const name of [
       "8ball", "8b", "eightball", "ask",
       "meme", "memes",
@@ -187,7 +190,7 @@ describe("resolveCommand / alias table", () => {
       "wouldyourather", "wyr", "rather",
       "truthordare", "tod",
       "uwu", "uwuify", "owo",
-      "profile", "prof", "me",
+      "prof", "me",
     ]) {
       expect(resolveCommand(name)).toBeUndefined();
     }

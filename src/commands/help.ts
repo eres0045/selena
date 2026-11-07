@@ -61,7 +61,7 @@ export function helpAuthor(user: {
 /** Build the one-box command list: title + short intro, then one field
  * per category holding ONLY the command names as inline `code` chips —
  * no descriptions, no aliases in the list. That is what keeps it short:
- * all 58 commands fit in a single embed. When `author` is given, the
+ * all 61 commands fit in a single embed. When `author` is given, the
  * requesting user's name + avatar head the box (OwO-style). */
 export function buildHelpEmbed(
   groups: HelpGroupLike[],

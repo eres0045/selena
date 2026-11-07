@@ -287,7 +287,8 @@ two built-but-unusable gaps: **`uwu use`** (shop consumables) and the
   `dep-dbnjb6e417fc73du42p0` (commit `7f43a63`), Wave 3
   `dep-dbnjiie7bikc73cnve90` (commit `654bb73`) — all live, health 200.
 - **Code check:** every command name above was verified against
-  `src/commands/index.ts` (57 commands) and the module sources.
+  `src/commands/index.ts` (61 commands as of the 2026-11-07 Profile
+  addition — 57 at Phase 2 verification time) and the module sources.
 - **Live Discord check: NOT DONE** — no browser access in this session.
   To verify live in `#🤖-miya-bot`: `uwu map`, `uwu travel`, `uwu autohunt
   on`, `uwu guild`, `uwu battle @user`, `uwu fuse <monster>`, `uwu tower`,

@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
+import { fileURLToPath } from "node:url";
 import type { SelenaDb } from "../src/lib/db.js";
 import { getTestDb } from "./testDb.js";
 import { addPoints, getBalance } from "../src/lib/economy.js";
@@ -554,5 +555,59 @@ describe("market commands (command-level)", () => {
     const m = gems.text().match(/You have (\d+) gems/);
     expect(m).not.toBeNull();
     expect(Number(m![1])).toBeGreaterThanOrEqual(7);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Shop backgrounds (Worker C) — `uwu shop bg` / `uwu shop buy bg <name>`
+//
+// The real manifest (assets/profile-bgs/manifest.json, Worker A) is not
+// on disk yet, so these tests point the loader at the same fixture
+// manifest test/profile.test.ts uses (default + 10 static + 20
+// animated) and re-import the market module fresh after
+// vi.resetModules(), so it picks the fixture up. The statically
+// imported `commands` above keep the empty catalogue — only the
+// dynamically imported copy below is used here.
+// ---------------------------------------------------------------------------
+
+describe("shop backgrounds", () => {
+  let bgShopCmd: { execute: (inv: CommandInvocation, ctx: CommandContext) => Promise<void> };
+  let bgProfileLib: typeof import("../src/lib/profile.js");
+
+  beforeEach(async () => {
+    db = getTestDb();
+    process.env.SELENA_PROFILE_BGS_MANIFEST = fileURLToPath(
+      new URL("./fixtures/profile-bgs/manifest.json", import.meta.url),
+    );
+    vi.resetModules();
+    const fresh = await import("../src/commands/market.js");
+    bgShopCmd = fresh.commands.find((c) => c.name === "shop")!;
+    bgProfileLib = await import("../src/lib/profile.js");
+  });
+
+  it("uwu shop bg lists 30 backgrounds, static + GIF sections", async () => {
+    const inv = new FakeInv(BIDDER1, { action: "bg", item: null });
+    await bgShopCmd.execute(inv, ctxFor(db));
+    expect(inv.text()).toContain("30 total");
+    expect(inv.text()).toContain("Static (10):");
+    expect(inv.text()).toContain("Animated GIF (20):");
+    expect(inv.text()).toContain("Meadow Dawn — 10,000 gold [static]");
+    expect(inv.text()).toContain("Starfall — 25,000 gold [GIF]");
+  });
+
+  it("uwu shop buy bg buys one of each type and the daily shop is untouched", async () => {
+    await giveGold(BIDDER1, 100000);
+    const buyStatic = new FakeInv(BIDDER1, { action: "buy", item: "bg meadow-dawn" });
+    await bgShopCmd.execute(buyStatic, ctxFor(db));
+    expect(buyStatic.text()).toContain("Bought **Meadow Dawn** for 10,000 gold");
+    const buyGif = new FakeInv(BIDDER1, { action: "buy", item: "bg starfall" });
+    await bgShopCmd.execute(buyGif, ctxFor(db));
+    expect(buyGif.text()).toContain("Bought **Starfall** for 25,000 gold");
+    expect(buyGif.text()).toContain("65,000 gold left");
+    expect(await bgProfileLib.getOwnedBackgrounds(db, BIDDER1)).toEqual(["meadow-dawn", "starfall"]);
+    // Daily rotating stock is a separate path and still works.
+    const buyDaily = new FakeInv(BIDDER1, { action: "buy", item: "Lure Bait" });
+    await bgShopCmd.execute(buyDaily, ctxFor(db));
+    expect(buyDaily.text()).toContain("Bought 1 × Lure Bait");
   });
 });
