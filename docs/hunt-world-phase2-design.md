@@ -45,7 +45,7 @@ One shared world across **all of Discord** (every server with the bot). The 4 Ph
 | 12 | Caps stay **per server for catching/rolling**; **no cap on buying/owning** via auction or trade. |
 | 13 | Auction house is **global** across Discord, fixed 24h, 5% fee. |
 | 14 | Shop refreshes **daily at midnight UTC**, same stock for everyone. |
-| 15 | Duplicates fuse: 2 of the same monster → 1 stronger monster, up to +3. |
+| 15 | Duplicates fuse: 2 of the same monster → 1 stronger monster, up to +6. |
 
 ---
 
@@ -261,9 +261,12 @@ Ron's message said "2 small tower with 10 floor and 2 big like 20 floor and one 
   - **+1:** unlocks one extra effect slot (the fused monster can carry one more status effect than normal, up to the 2-effect cap in battle — in practice this means it *has* a second effect to use).
   - **+2:** its signature move's trigger chance +10 percentage points (e.g. Burn 25% → 35%).
   - **+3:** gains a second signature effect (chosen from its type's effect list — working default, unconfirmed).
-- **Max +3.** A +3 monster is shown as `Stone Beetle +3`.
+  - **+4:** its signature move's trigger chance +10 percentage points again.
+  - **+5:** +20% stats on this fuse step (instead of +10%).
+  - **+6:** gains a third signature effect (capstone — chosen from its type's effect list).
+- **Max +6.** A +6 monster is shown as `Stone Beetle +6`.
 - **Cost:** gold per fuse, scaling with tier (working defaults — unconfirmed, §10): Common 100 · Uncommon 250 · Rare 500 · Epic 1,000 · Legendary 2,500 · Mythic 5,000 · UwU 25,000. The fused monster keeps the better level of the two; the other copy is consumed.
-- **Why fusion matters:** duplicates stop being sell fodder. A Common with ten copies is the material for one strong +3 Common — which is still a Common (tier dominates, §6.2), but a *good* one. Fusion is the long-term sink for duplicates and the reason to keep hunting Commons.
+- **Why fusion matters:** duplicates stop being sell fodder. A Common with 64 copies is the material for one strong +6 Common — which is still a Common (tier dominates, §6.2), but a *good* one. Fusion is the long-term sink for duplicates and the reason to keep hunting Commons.
 - Fusion never changes a monster's tier, never duplicates a capped monster (fusing two Mythics still counts as the same 2 owned copies becoming 1 — the per-server cap counts *copies*, so fusion can only reduce a server's count, never increase it — §7.2).
 
 ---
@@ -383,7 +386,7 @@ After a high-tier monster is caught (by hunt, roll, or auto-hunt — **any** sou
 | **Gems** | Rare currency; rare shop items, fusion of high tiers | Bosses, sacrifices (Phase 1 §2.4), crates |
 | **Pet eggs** | Hatch into pets | Crates, shop (occasional), tower drops |
 | **Skill books / scrolls** | Teach monsters new moves or effects | Tower drops, crates |
-| **Evolution stones** | Evolve a monster to the next tier (new mechanic — working default, unconfirmed: one stone + shards + gold evolves a +3 monster up one tier) | Main tower, Mythic crates |
+| **Evolution stones** | Evolve a monster to the next tier (new mechanic — working default, unconfirmed: one stone + shards + gold evolves a +6 monster up one tier) | Main tower, Mythic crates |
 | **Keys** | Tower keys, chest keys | Shop, crates |
 | **Roll tickets** | A free `uwu roll` | Shop, crates, quests (future) |
 | **Treasure chests** | A random bundle of the above (a crate that contains crates' worth of loot — the "big" drop) | Final bosses only |
@@ -407,7 +410,7 @@ Phase 1 tables stay as they are (§9 of Phase 1 doc). New tables (all created by
 | `spawn_cooldowns` | monster_id, caught_at, available_at | Global spawn cooldowns (§7.1) |
 | `guilds` | guild_id (bot guild, not Discord guild), name, leader_id, level, xp, created_at | Guilds (max 20 members) |
 | `guild_members` | guild_id, user_id, role (leader/officer/member), joined_at | Membership + roles |
-| `user_monster_levels` | user_id, monster_id (instance), level, xp, fuse_level (+0–+3) | Monster levels + fusion state (§6) — or columns on `user_monsters` |
+| `user_monster_levels` | user_id, monster_id (instance), level, xp, fuse_level (+0–+6) | Monster levels + fusion state (§6) — or columns on `user_monsters` |
 | `auctions` | auction_id, seller_id, item_type, item_ref, start_price, current_bid, current_bidder, ends_at, status | Listings + escrow state (§8) |
 | `shop_stock` | date, item_id, price, currency (gold/gems), qty_per_player | Daily shop (§9.1) — one row per item per day, same for everyone |
 | `user_crates` | user_id, crate_tier, qty | Crate inventory (§9.2) |
@@ -430,8 +433,8 @@ Phase 1 tables stay as they are (§9 of Phase 1 doc). New tables (all created by
 | 7 | Monster level cap | 100 | Confirm 50 / 100 / other |
 | 8 | Monster level stat scaling (+2%/level) + XP/coin reward formulas (§6.2–6.3) | Working defaults | Confirm or tune |
 | 9 | Battle team pick | Auto top-3 | Confirm auto vs manual `uwu team` pick |
-| 10 | Fusion numbers: +10% stats, effect unlocks at +1/+2/+3, gold costs by tier (§6.4) | Working defaults | Confirm or tune |
-| 11 | Evolution stones (evolve a +3 monster up one tier) | Working default mechanic | Confirm the mechanic exists at all |
+| 10 | Fusion numbers: +10% stats, effect unlocks at +1..+6, gold costs by tier (§6.4) | Working defaults | Confirm or tune |
+| 11 | Evolution stones (evolve a +6 monster up one tier) | Working default mechanic | Confirm the mechanic exists at all |
 | 12 | Armor / accessories slot | New slot, working default | Confirm or drop |
 | 13 | Mini-bosses catchable? | No — bosses are never catchable | Confirm |
 | 14 | Main tower discovery (how players find a hidden tower) | Unspecified | Hint system / rare map drop / pure exploration? |
