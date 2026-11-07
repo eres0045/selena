@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 350" width="250" height="350">
+<rect x="1" y="1" width="248" height="348" rx="16" fill="#fffdf7" stroke="#000" stroke-opacity=".4" stroke-width="2"/>
+<g>
+    <text x="32" y="74" text-anchor="middle" font-family="Georgia,'DejaVu Serif','Times New Roman',serif" font-weight="700"
+      font-size="78"  fill="#c62233">A</text>
+    <g transform="translate(32 116) rotate(0) scale(0.36)"><path d="M0 40C-6 33-44 8-44-16C-44-32-32-42-20-42C-10-42-3-36 0-28C3-36 10-42 20-42C32-42 44-32 44-16C44 8 6 33 0 40Z" fill="#c62233"/></g></g><g transform="rotate(180 125 175)">
+    <text x="32" y="74" text-anchor="middle" font-family="Georgia,'DejaVu Serif','Times New Roman',serif" font-weight="700"
+      font-size="78"  fill="#c62233">A</text>
+    <g transform="translate(32 116) rotate(0) scale(0.36)"><path d="M0 40C-6 33-44 8-44-16C-44-32-32-42-20-42C-10-42-3-36 0-28C3-36 10-42 20-42C32-42 44-32 44-16C44 8 6 33 0 40Z" fill="#c62233"/></g></g><g transform="translate(125 175) rotate(0) scale(1.35)"><path d="M0 40C-6 33-44 8-44-16C-44-32-32-42-20-42C-10-42-3-36 0-28C3-36 10-42 20-42C32-42 44-32 44-16C44 8 6 33 0 40Z" fill="#c62233"/></g>
+</svg>

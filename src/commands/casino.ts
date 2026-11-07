@@ -114,8 +114,8 @@ function bjEmbed(
 
 /**
  * One compact OwO-style embed for a blackjack game state: a single small
- * strip image (dealer row on top, player row below, ~50px per card,
- * ~280px-wide file, transparent background) with the newly dealt cards
+ * strip image (dealer row on top, player row below, ~100px per card,
+ * ~700px-wide file, transparent background) with the newly dealt cards
  * flipping — each row labelled in-image ("DEALER 17" / "YOU 15", "?" for
  * the dealer's total while the hole card is hidden). The dealer's hole
  * card stays face-down until the hand is over. When a card has no

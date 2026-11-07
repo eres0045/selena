@@ -10,8 +10,8 @@ Output: assets/cards/flips/<CODE>.gif, e.g. AS.gif, 10H.gif, KD.gif.
 The GIFs are the source of the animated cards Selena attaches to
 /blackjack and /highlow replies (Discord cannot render the HTML itself).
 Captures run at 4x resolution (600px wide) by default, or 8x (1200px
-wide) with --scale 8, so the later downscale to the ~40px cards stays
-crisp ("4k" sharp, not blurry). 8x is the sharpness pick for v6:
+wide) with --scale 8, so the later downscale to the ~100px cards stays
+crisp ("4k" sharp, not blurry). 8x is the sharpness pick for v6/v7:
 Ronit wants visibly crisp cards, and the extra source detail survives
 the 30x downscale better. Screenshots use
 omit_background, so the card's rounded corners are TRANSPARENT — no
@@ -56,9 +56,10 @@ SUIT_NAMES = {"S": "spades", "H": "hearts", "D": "diamonds", "C": "clubs"}
 
 CARD_WIDTH_PX = 150
 CAPTURE_SCALE = 4       # device_scale_factor: screenshots come out at
-                        # 600x840 so the downscale to ~40px stays sharp.
+                        # 600x840 at 4x, 1200x1680 at 8x, so the
+                        # downscale to ~100px stays sharp.
                         # --scale 8 captures at 1200x1680 for maximum
-                        # sharpness (v6: Ronit wants visibly crisp,
+                        # sharpness (v6/v7: Ronit wants visibly crisp,
                         # 4K-level cards — 8x gives the downscale far
                         # more detail to work with). Capture cost grows
                         # with scale; 8x takes ~2x as long as 4x.
@@ -134,8 +135,8 @@ def capture_codes(page, codes: list[str], outdir: Path) -> None:
         # The centre-x tolerance is 20px at 600px capture scale: a pure
         # rotateY under the scene's 1400px perspective shifts the card's
         # projected centre by up to ~9px either way mid-flip (the near
-        # edge is magnified) — that is the real 3D flip, and at the ~40px
-        # ship size it is under a pixel either way, invisible.
+        # edge is magnified) — that is the real 3D flip, and at the ~100px
+        # ship size it is ~2px either way, invisible.
         # What must NOT happen is the old lift/tilt drift or deck
         # bleed-through.
         stats = [_opaque_stats(im) for im in imgs]

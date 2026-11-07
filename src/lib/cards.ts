@@ -5,17 +5,20 @@ import { dirname, resolve } from "node:path";
 /**
  * Animated playing cards for the casino games.
  *
- * Discord cannot render HTML/CSS/JS, so the cards are pre-rendered: the
- * <playing-card> component in assets/cards/playing-cards.html (Ronit's own
- * file) is rendered in headless Chromium by scripts/capture_flips.py and
- * each card's 3D flip (back -> flip -> face) is captured as an animated
- * GIF in assets/cards/flips/<CODE>.gif. The bot attaches those GIFs to
- * its replies; the HTML file stays in the repo as the source of the GIFs.
- * The GIFs are shrunk to ~40px-wide cards by scripts/resize_flips.py,
- * then composed into one (~280px) transparent strip per game
+ * Discord cannot render PNGs as animations, so the cards are
+ * pre-rendered: the faces in assets/cards/real-pack/ (Ronit's own card
+ * pack — classic realistic design, 4K PNGs) are turned into flip GIFs
+ * by scripts/render_pack_flips.py — each card's 3D flip (back -> flip
+ * -> face) as an animated GIF in assets/cards/flips/<CODE>.gif. The
+ * bot attaches those GIFs to its replies; the pack stays in the repo
+ * as the source of the GIFs. (The older playing-cards.html
+ * web-component art is kept as a reference only; it no longer supplies
+ * the faces.)
+ * The GIFs are ~100px-wide cards, then composed into one (~700px)
+ * transparent strip per game
  * by src/lib/handstrip.ts — bigger than the 28px version so the cards
  * read at phone size, smaller than the 50px version, and sharp, because
- * the cards are rendered at 4x and Lanczos-downscaled. The GIFs play ONCE
+ * the cards are rendered at 8x and Lanczos-downscaled. The GIFs play ONCE
  * and stop on the face (no loop extension), use disposal method 2 so
  * each frame is a clean image (no mid-flip smear), and the card corners
  * are transparent (no felt box). Row labels ("DEALER" / "YOU" + totals)

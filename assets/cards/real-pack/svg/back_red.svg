@@ -1,0 +1,17 @@
+<svg width="250" height="350" viewBox="0 0 250 350" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <pattern id="lat" width="22" height="22" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <rect width="22" height="22" fill="#a3202c"/>
+          <path d="M0 11H22M11 0V22" stroke="#f1d2d4" stroke-width="1.2" opacity=".5"/>
+          <circle cx="11" cy="11" r="3" fill="#f1d2d4" opacity=".75"/>
+        </pattern>
+      </defs>
+      <rect x="1" y="1" width="248" height="348" rx="16" fill="#fbf8f0" stroke="#000" stroke-opacity=".4" stroke-width="2"/>
+      <clipPath id="cc"><rect x="1" y="1" width="248" height="348" rx="16"/></clipPath><rect x="14" y="14" width="222" height="322" rx="8" fill="#a3202c"/>
+      <rect x="22" y="22" width="206" height="306" rx="5" fill="url(#lat)" stroke="#f1d2d4" stroke-width="1.5"/>
+      <ellipse cx="125" cy="175" rx="60" ry="82" fill="#a3202c" stroke="#fbf8f0" stroke-width="3"/>
+      <ellipse cx="125" cy="175" rx="48" ry="68" fill="url(#lat)" stroke="#f1d2d4" stroke-width="1.5"/>
+      <path d="M125 120L134 166L180 175L134 184L125 230L116 184L70 175L116 166Z" fill="#fbf8f0"/>
+      <path d="M125 120L134 166L180 175L134 184L125 230L116 184L70 175L116 166Z" fill="none" stroke="#a3202c" stroke-width="1.5" transform="rotate(45 125 175) scale(.62) translate(76 107)"/>
+      <circle cx="125" cy="175" r="9" fill="#a3202c"/>
+    </svg>

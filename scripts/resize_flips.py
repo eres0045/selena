@@ -1,24 +1,28 @@
 #!/usr/bin/env python3
-"""Shrink the rendered flip GIFs to the cards the bot ships (~40px wide).
+"""Shrink the rendered flip GIFs to the cards the bot ships (~100px wide).
 
 Reads assets/cards/flips/<CODE>.gif (1200x1680 at 8x capture, 12 frames)
-and rewrites each in place at 40x56 with a high-quality Lanczos
+and rewrites each in place at 100x140 with a high-quality Lanczos
 downscale, so the cards stay crisp instead of blurry, plus an unsharp
 pass on the colour channels only (alpha untouched) to restore the
-edge crispness the 30x downscale softens. Transparency is preserved
+edge crispness the 12x downscale softens. Transparency is preserved
 (the card's rounded corners stay transparent — no felt box), and the
 GIFs play ONCE (no loop extension) with disposal 2 — they stop on the
 face and never smear mid-flip (see scripts/gifutil.py).
 
-Why 8x + strong unsharp: Ronit wants visibly crisp, 4K-level cards.
-The 8x source (1200x1680) gives the 30x downscale far more detail to
-average than 4x did, and a stronger unsharp (radius 1.2, 100%) keeps
-rank/pip edges tight at 40px. Compared by eye at 3x/6x zoom: 8x+100
-is visibly crisper than 4x+60 on face cards and pips, with no halo;
-pushing to 150% adds nothing and starts to fringe. GIF total stays
-~1.6 MB across all 52.
+Why 100px, not 40px (v7): Discord displays the strip at ~message
+width (~620px on Ronit's phone), so the v6 40px cards were upscaled
+~2.5x on screen and went blurry. A 100px card in a ~700px strip
+displays ~1:1, so the pips, ranks and labels stay crisp and realistic.
 
-Usage: python3 scripts/resize_flips.py [--width 40]
+Why 8x + radius 2.0 unsharp: the 8x source (1200x1680) gives the 12x
+downscale far more detail to average, and radius 2.0 / 100% keeps
+rank/pip edges tight at 100px. Compared by eye at 2x zoom on A/K/10:
+2.0 is a touch crisper than the v6 radius 1.2 with no halo; 150%
+was already shown to fringe at 40px, so it was not retried here.
+GIF total stays ~6.5 MB across all 52.
+
+Usage: python3 scripts/resize_flips.py [--width 100]
 """
 import argparse
 import sys
@@ -33,10 +37,11 @@ ROOT = Path(__file__).resolve().parent.parent
 FLIPS = ROOT / "assets" / "cards" / "flips"
 
 # Unsharp pass after the downscale (colour channels only, alpha
-# untouched): radius 1.2, 100% — the v6 sharpness pick. Compared by eye
-# at 3x/6x zoom against 4x+60% (softer) and 8x+150% (no better, starts
-# to fringe); 8x+100% is visibly the crispest with no halo.
-UNSHARP_RADIUS = 1.2
+# untouched): radius 2.0, 100% — the v7 sharpness pick (see module
+# docstring). Compared by eye at 2x zoom against radius 1.2 (the v6
+# setting): 2.0 is visibly a touch crisper on face cards and pips,
+# with no halo.
+UNSHARP_RADIUS = 2.0
 UNSHARP_PERCENT = 100
 UNSHARP_THRESHOLD = 2
 
@@ -72,7 +77,7 @@ def resize_gif(path: Path, width: int) -> tuple[int, int, int, int]:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--width", type=int, default=40)
+    ap.add_argument("--width", type=int, default=100)
     args = ap.parse_args()
     total = 0
     for path in sorted(FLIPS.glob("*.gif")):

@@ -31,11 +31,11 @@ function gifHasTransparency(buf: Buffer): boolean {
 const LOOP_EXT = Buffer.from("NETSCAPE2.0");
 
 describe("composeHandStrip (OwO-style compact strips)", () => {
-  it("uses ~40px cards in a (~280px) strip file", () => {
-    expect(STRIP_CARD_W).toBe(40);
-    expect(STRIP_CARD_H).toBe(56);
+  it("uses ~100px cards in a (~700px) strip file", () => {
+    expect(STRIP_CARD_W).toBe(100);
+    expect(STRIP_CARD_H).toBe(140);
     expect(STRIP_STEP).toBeGreaterThan(STRIP_CARD_W); // gap, not overlap
-    expect(STRIP_MIN_WIDTH).toBe(280);
+    expect(STRIP_MIN_WIDTH).toBe(700);
   });
 
   it("composes a two-row blackjack strip: dealer on top, player below, centred in a small frame", async () => {
@@ -64,11 +64,11 @@ describe("composeHandStrip (OwO-style compact strips)", () => {
     // Padding around the centred hand is transparent…
     expect(frame[(0 * width + 0) * 4 + 3]).toBe(0);
     // …and so is a card's own rounded corner: the first dealer card
-    // starts at x0 = (280 - (40 + 46)) / 2 = 97, y = 0.
+    // starts at x0 = (700 - (100 + 115)) / 2 = 242, y = 0.
     const x0 = Math.floor((STRIP_MIN_WIDTH - (STRIP_CARD_W + STRIP_STEP)) / 2);
     expect(frame[(0 * width + x0) * 4 + 3]).toBe(0);
     // …while the card centre is opaque.
-    expect(frame[(28 * width + (x0 + 20)) * 4 + 3]).toBe(255);
+    expect(frame[(70 * width + (x0 + 50)) * 4 + 3]).toBe(255);
   });
 
   it("animates the newly dealt card and keeps the others still", async () => {
@@ -82,7 +82,7 @@ describe("composeHandStrip (OwO-style compact strips)", () => {
     // The byte scan can over-count (0x21 0xF9 can occur inside image data),
     // so it only bounds the real frame count from below.
     expect(gifFrameCount(strip?.buffer as Buffer)).toBeGreaterThanOrEqual(strip?.frames as number);
-    expect(strip?.buffer.length).toBeLessThan(1_000_000);
+    expect(strip?.buffer.length).toBeLessThan(3_000_000);
   });
 
   it("the animated strip plays ONCE and ends on the face", async () => {
@@ -123,7 +123,7 @@ describe("composeHandStrip (OwO-style compact strips)", () => {
     expect(strip).toBeNull();
   });
 
-  it("a single-row high/low strip is one row tall and small", async () => {
+  it("a single-row high/low strip is one row tall", async () => {
     const strip = await composeHandStrip([[{ code: "5H" }, { code: "9D", animate: true }]]);
     expect(strip).not.toBeNull();
     expect(strip?.width).toBe(STRIP_MIN_WIDTH);
@@ -149,18 +149,18 @@ describe("composeHandStrip (OwO-style compact strips)", () => {
     expect(gifHasTransparency(buf)).toBe(true);
     const { width, frames } = decodeGifFrames(buf);
     const frame = frames[0] as Buffer;
-    // The label column (x 8..64) has real ink: the DEALER word and the
+    // The label column (x 20..180) has real ink: the DEALER word and the
     // "?" below it. Count opaque pixels in the dealer row's label block.
     let ink = 0;
     for (let y = 0; y < STRIP_CARD_H; y++) {
-      for (let x = 8; x < 64; x++) {
+      for (let x = 20; x < 180; x++) {
         if (frame[(y * width + x) * 4 + 3] === 255) ink++;
       }
     }
-    expect(ink).toBeGreaterThan(150);
+    expect(ink).toBeGreaterThan(900);
     // …while the padding around the labels stays transparent.
     expect(frame[(0 * width + 0) * 4 + 3]).toBe(0);
-    expect(frame[(10 * width + 270) * 4 + 3]).toBe(0);
+    expect(frame[(25 * width + 675) * 4 + 3]).toBe(0);
   });
 
   it("labels: the total changes the strip, and '?' renders", async () => {

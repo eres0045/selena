@@ -6,13 +6,17 @@ import { flipGifExists, flipGifPath, labelGifExists, labelGifPath } from "./card
 /**
  * OwO-style compact card displays: one small strip image per embed.
  *
- * The strip file is ~280px wide with ~40px cards — between the 50px
- * version (too big) and the 28px version (too small to read) — and the
- * cards stay sharp because they are rendered at 4x (600x840) and
- * Lanczos-downscaled to 40x56 with a mild unsharp. The strip background
- * is TRANSPARENT (GIF transparency), not a green felt box, so it blends
- * into Discord's dark embed and each card stands on its own with a
- * small gap between cards.
+ * The strip file is ~700px wide with ~100px cards — the SAME on-screen
+ * size as the v6 strip (~280px file, ~40px cards), but the file is 2.5x
+ * bigger because Discord displays the strip at ~message width (~620px
+ * on Ronit's phone) and upscaling the 280px file 2.2x is what blurred
+ * the pips, ranks and labels. A ~700px file displays ~1:1 (or slightly
+ * downscaled, which stays sharp), so the cards look realistic and
+ * crystal clear. The cards are rendered at 8x (1200x1680) and
+ * Lanczos-downscaled to 100x140 with an unsharp pass. The strip
+ * background is TRANSPARENT (GIF transparency), not a green felt box,
+ * so it blends into Discord's dark embed and each card stands on its
+ * own with a small gap between cards.
  *
  * The image explains itself: every row carries its label IN the image —
  * a word ("DEALER" / "YOU" / "FIRST" / "NEXT") over the row's total
@@ -26,8 +30,8 @@ import { flipGifExists, flipGifPath, labelGifExists, labelGifPath } from "./card
  * other cards stay face-up — and it plays ONCE (no loop extension),
  * ending with all cards face-up. A settled hand is a static one-frame
  * strip. All frames come from the pre-rendered flip GIFs in
- * assets/cards/flips/ (rendered from Ronit's playing-cards.html at 4x,
- * downscaled sharp to 40px, transparent corners, disposal 2 so the flip
+ * assets/cards/flips/ (rendered from Ronit's playing-cards.html at 8x,
+ * downscaled sharp to 100px, transparent corners, disposal 2 so the flip
  * never smears); the strip is composed at reply time with pure-JS GIF
  * decode/encode (gifuct-js + gif-encoder-2) — no native canvas.
  *
@@ -40,29 +44,31 @@ import { flipGifExists, flipGifPath, labelGifExists, labelGifPath } from "./card
  * disposal 2 (see encodeGif).
  */
 
-export const STRIP_CARD_W = 40;
-export const STRIP_CARD_H = 56;
-/** px between the left edges of neighbouring cards: 40px card + 6px gap. */
-export const STRIP_STEP = 46;
+export const STRIP_CARD_W = 100;
+export const STRIP_CARD_H = 140;
+/** px between the left edges of neighbouring cards: 100px card + 15px gap. */
+export const STRIP_STEP = 115;
 /** px between the dealer row and the player row. */
-export const STRIP_ROW_GAP = 10;
+export const STRIP_ROW_GAP = 25;
 /**
  * Minimum strip width in the file. Hands are laid out from the left in
- * this frame, so even a 2-card hand ships as a ~280px-wide file.
+ * this frame, so even a 2-card hand ships as a ~700px-wide file —
+ * about message width on Ronit's phone, so Discord displays it ~1:1
+ * instead of upscaling a small file (the v6 blur).
  */
-export const STRIP_MIN_WIDTH = 280;
+export const STRIP_MIN_WIDTH = 700;
 export const STRIP_FRAME_MS = 95;
 /** Left/right padding of the strip frame. */
-export const STRIP_PAD = 8;
+export const STRIP_PAD = 20;
 /** Width of the label column at the left of each row (word + total). */
-export const LABEL_W = 64;
+export const LABEL_W = 160;
 /** Gap between the label column and the first card. */
-export const LABEL_GAP = 6;
+export const LABEL_GAP = 15;
 /** Gap between the label word and the total beneath it. */
-export const LABEL_LINE_GAP = 3;
-/** Word sprites ("DEALER", "YOU", ...) are 16px tall; totals 19px. */
-export const LABEL_WORD_H = 16;
-export const LABEL_VALUE_H = 19;
+export const LABEL_LINE_GAP = 8;
+/** Word sprites ("DEALER", "YOU", ...) are 40px tall; totals 48px. */
+export const LABEL_WORD_H = 40;
+export const LABEL_VALUE_H = 48;
 /** Magenta marks transparent pixels for the GIF encoder (see encodeGif). */
 const TRANSPARENT_RGB = 0xff00ff;
 
@@ -142,8 +148,14 @@ function loadCardFrames(code: string): Buffer[] | null {
   const cached = frameCache.get(code);
   if (cached) return cached;
   if (!flipGifExists(code)) return null;
-  const { frames } = decodeGifFrames(readFileSync(flipGifPath(code)));
+  const { width, height, frames } = decodeGifFrames(readFileSync(flipGifPath(code)));
   if (frames.length === 0) return null;
+  // Guard against a stale/mismatched asset: a flip GIF rendered at a
+  // different size than the strip expects would paste out of bounds
+  // (Uint8ClampedArray turns out-of-range reads into black pixels),
+  // so a whole hand would ship as black cards. Fail the strip instead
+  // and let the caller fall back to a text-only embed.
+  if (width !== STRIP_CARD_W || height !== STRIP_CARD_H) return null;
   frameCache.set(code, frames);
   return frames;
 }
@@ -234,7 +246,7 @@ function drawRowLabel(
   const valueY = labelTop + LABEL_WORD_H + LABEL_LINE_GAP;
   for (const glyph of glyphs) {
     pasteImage(canvas, dstW, glyph.frame, glyph.width, glyph.height, x, valueY);
-    x += glyph.width + 2;
+    x += glyph.width + 5;
   }
   return true;
 }

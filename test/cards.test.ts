@@ -50,12 +50,12 @@ describe("animated flip GIFs (rendered from Ronit's playing-cards.html)", () => 
     }
   });
 
-  it("every GIF is a real animated GIF, 40x56, under 1 MB", () => {
+  it("every GIF is a real animated GIF, 100x140, under 1 MB", () => {
     for (const code of FLIP_CODES) {
       const buf = readFileSync(flipGifPath(code));
       expect(buf.subarray(0, 6).toString("ascii")).toBe("GIF89a");
-      expect(buf.readUInt16LE(6)).toBe(40);
-      expect(buf.readUInt16LE(8)).toBe(56);
+      expect(buf.readUInt16LE(6)).toBe(100);
+      expect(buf.readUInt16LE(8)).toBe(140);
       expect(gifFrameCount(buf)).toBeGreaterThanOrEqual(7);
       expect(statSync(flipGifPath(code)).size).toBeLessThan(1_000_000);
     }
