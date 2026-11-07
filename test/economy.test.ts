@@ -239,7 +239,7 @@ describe("/leaderboard command", () => {
     const fake = await run("leaderboard", {});
     const text = fake.allText();
     expect(text).toMatch(/90/);
-    expect(text.indexOf("90")).toBeLessThan(text.indexOf("10"));
+    expect(text.indexOf("**90**")).toBeLessThan(text.indexOf("**10**"));
   });
 
   it("error path: empty guild explains nobody has points yet", async () => {

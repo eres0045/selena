@@ -16,24 +16,36 @@ const FALLBACK: Record<EmojiName, string> = {
 
 describe("emoji()", () => {
   it("falls back to Unicode while an ID is \"\" (not uploaded yet)", () => {
+    // The committed IDs are real now; blank each one in turn (restoring
+    // afterwards) to prove the fallback still works per name.
     for (const name of NAMES) {
-      expect(EMOJI_IDS[name]).toBe("");
-      expect(emoji(name)).toBe(FALLBACK[name]);
+      const saved = EMOJI_IDS[name];
+      EMOJI_IDS[name] = "";
+      try {
+        expect(emoji(name)).toBe(FALLBACK[name]);
+      } finally {
+        EMOJI_IDS[name] = saved;
+      }
     }
   });
 
-  it("returns animated custom-emoji markup once an ID is set", () => {
+  it("returns animated custom-emoji markup for the real uploaded IDs", () => {
+    // Every committed ID is a non-empty digit string, and emoji() renders
+    // it as <a:name:id> — the markup Discord animates.
+    for (const name of NAMES) {
+      expect(EMOJI_IDS[name]).toMatch(/^[0-9]{10,}$/);
+      expect(emoji(name)).toBe(`<a:${name}:${EMOJI_IDS[name]}>`);
+    }
     // A real snowflake as a STRING: as a JS number it would round
     // (...678 -> ...680), which is why EMOJI_IDS stores strings.
+    const saved = EMOJI_IDS.coin;
     EMOJI_IDS.coin = "123456789012345678";
     try {
       expect(emoji("coin")).toBe("<a:coin:123456789012345678>");
-      // Other names still fall back — IDs are independent.
-      expect(emoji("party")).toBe("🎉");
     } finally {
-      EMOJI_IDS.coin = "";
+      EMOJI_IDS.coin = saved;
     }
-    expect(emoji("coin")).toBe("🪙");
+    expect(emoji("coin")).toBe(`<a:coin:${saved}>`);
   });
 
   it("covers every name the commands use", () => {
