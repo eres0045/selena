@@ -1,5 +1,7 @@
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { type Command, type CommandContext, type CommandInvocation } from "../lib/command.js";
 import { awardGuildXpBestEffort } from "../lib/guilds.js";
+import { REGIONS } from "../lib/world.js";
 import {
   climbFloor,
   ensureTowersSeeded,
@@ -23,7 +25,12 @@ import {
  * Towers (Phase 2, design docs/hunt-world-phase2-design.md §4).
  *
  * `uwu tower` — list the known towers (the hidden Main tower is
- * NEVER listed, and its area never appears anywhere).
+ * NEVER listed, and its area never appears anywhere). The list is
+ * paginated one region per page with ◀ ▶ buttons: 29 towers in the
+ * old one-shot format blew past Discord's 2,000-character message
+ * limit and the reply failed outright, so EVERY page is built to fit
+ * (compact one-line-per-tower rows) and every page stays under the
+ * limit. All 29 visible towers are reachable by flipping pages.
  * `uwu tower <name>` — detail for one tower (floors, level req,
  * recommended party, cooldown timer, your checkpoint).
  * `uwu tower enter <tower>` — start or resume a run from your
@@ -56,29 +63,100 @@ async function runAction(inv: Inv, fn: () => Promise<string>): Promise<void> {
   }
 }
 
+/**
+ * One compact tower row. The old verbose row ("Small · 10 floors ·
+ * party 2+ recommended · ...") ran ~130 characters per tower, so 29
+ * towers blew past Discord's 2,000-character message limit and the
+ * whole list reply failed. This row keeps the facts that matter in
+ * the list (size, floors, area, entry level, ready/cooldown, your
+ * checkpoint); the rest lives in the detail view (`uwu tower <name>`).
+ */
 function towerLine(t: TowerRow, cooldownMs: number, checkpoint: number | null): string {
-  const cd = cooldownMs > 0 ? ` · ⏳ resets in ${formatCooldown(cooldownMs)}` : " · ✅ ready";
-  const cp = checkpoint !== null && checkpoint > 0 ? ` · 📍 you're at floor ${checkpoint}/${t.floors}` : "";
-  return (
-    `🗼 ${t.name} — ${towerSizeLabel(t)} · ${t.floors} floors · ${towerAreaLabel(t)} · ` +
-    `Lv ${t.levelReq}+ · party ${RECOMMENDED_PARTY[t.type]}+ recommended${cd}${cp}`
-  );
+  const size = t.type === "small" ? "S" : "B";
+  const cd = cooldownMs > 0 ? ` · ⏳ ${formatCooldown(cooldownMs)}` : " · ✅";
+  const cp = checkpoint !== null && checkpoint > 0 ? ` · 📍 ${checkpoint}/${t.floors}` : "";
+  return `🗼 ${t.name} · ${size} · ${t.floors}F · ${towerAreaLabel(t)} · Lv ${t.levelReq}+${cd}${cp}`;
 }
 
-async function listText(ctx: CommandContext, userId: string): Promise<string> {
+interface TowerListPage {
+  regionId: string;
+  regionName: string;
+  towers: TowerRow[];
+}
+
+/** Visible towers grouped by region (REGIONS order), skipping empty regions. */
+async function towerListPages(ctx: CommandContext): Promise<{ pages: TowerListPage[]; total: number }> {
   const towers = await listVisibleTowers(ctx.db);
-  if (towers.length === 0) return "No towers stand in this world yet — strange. Try again in a bit.";
-  const now = Date.now();
-  const lines: string[] = [
-    `🗼 Towers of the world — ${towers.length} known towers (party sizes are recommended minimums — solo is allowed, just hard):`,
-  ];
+  const byRegion = new Map<string, TowerRow[]>();
   for (const t of towers) {
+    const list = byRegion.get(t.region) ?? [];
+    list.push(t);
+    byRegion.set(t.region, list);
+  }
+  const pages: TowerListPage[] = [];
+  for (const r of REGIONS) {
+    const ts = byRegion.get(r.id) ?? [];
+    if (ts.length > 0) pages.push({ regionId: r.id, regionName: r.name, towers: ts });
+  }
+  return { pages, total: towers.length };
+}
+
+/** Render one region page of the tower list (page clamped into range). */
+async function towerPageContent(
+  ctx: CommandContext,
+  userId: string,
+  wantedPage: number,
+): Promise<{ content: string; page: number; pageCount: number }> {
+  const { pages, total } = await towerListPages(ctx);
+  if (pages.length === 0) {
+    return { content: "No towers stand in this world yet — strange. Try again in a bit.", page: 0, pageCount: 0 };
+  }
+  const page = Math.min(Math.max(0, Math.floor(wantedPage) || 0), pages.length - 1);
+  const now = Date.now();
+  const region = pages[page]!;
+  const lines: string[] = [
+    `🗼 Towers — ${region.regionName} (page ${page + 1}/${pages.length} · ${total} known towers):`,
+  ];
+  for (const t of region.towers) {
     const cd = await towerCooldownRemainingMs(ctx.db, t.towerId, now);
     const progress = await getProgress(ctx.db, userId, t.towerId);
     lines.push(towerLine(t, cd, progress ? progress.floorReached : null));
   }
-  lines.push("Enter one with `uwu tower enter <name>` — or see one in detail with `uwu tower <name>`.");
-  return lines.join("\n");
+  lines.push("Use ◀ ▶ to flip regions · Enter one with `uwu tower enter <name>` — or see one in detail with `uwu tower <name>`.");
+  return { content: lines.join("\n"), page, pageCount: pages.length };
+}
+
+function towerListButtons(page: number, pageCount: number): ActionRowBuilder<ButtonBuilder>[] {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`selena:tower:list:${page - 1}`)
+        .setLabel("◀ Prev")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page <= 0),
+      new ButtonBuilder()
+        .setCustomId(`selena:tower:list:${page + 1}`)
+        .setLabel("Next ▶")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page >= pageCount - 1),
+    ),
+  ];
+}
+
+async function handleTowerListButton(inv: any, ctx: CommandContext): Promise<void> {
+  const parts = String(inv.customId ?? "").split(":");
+  const wanted = Number.parseInt(parts[3] ?? "0", 10);
+  const userId = String(inv.user?.id ?? "");
+  try {
+    const { content, page, pageCount } = await towerPageContent(ctx, userId, Number.isNaN(wanted) ? 0 : wanted);
+    await inv.update({ content, components: pageCount > 1 ? towerListButtons(page, pageCount) : [] });
+  } catch (e) {
+    try {
+      await inv.reply({ content: "Couldn't load that page — try `uwu tower` again.", ephemeral: true });
+    } catch {
+      // The interaction is already answered/expired; nothing more to do.
+    }
+  }
 }
 
 async function detailText(ctx: CommandContext, userId: string, tower: TowerRow): Promise<string> {
@@ -119,9 +197,14 @@ export const commands: Command[] = [
       const action = (inv.options.getString("action") ?? "").trim().toLowerCase();
       const target = (inv.options.getString("target") ?? "").trim();
 
-      // `uwu tower` with nothing after it: the list.
+      // `uwu tower` with nothing after it: the paginated list (page 1).
       if (!action) {
-        await runAction(inv, () => listText(ctx, inv.user.id));
+        try {
+          const { content, page, pageCount } = await towerPageContent(ctx, inv.user.id, 0);
+          await inv.reply({ content, components: pageCount > 1 ? towerListButtons(page, pageCount) : [] });
+        } catch (e) {
+          await replyError(inv, e instanceof Error ? e.message : "Something went wrong — try again in a bit.");
+        }
         return;
       }
 
@@ -227,6 +310,8 @@ async function findTowerProgress(
   return null;
 }
 
-export const buttonHandlers: Record<string, (...args: never[]) => Promise<void>> = {};
+export const buttonHandlers: Record<string, (...args: never[]) => Promise<void>> = {
+  "selena:tower": handleTowerListButton as (...args: never[]) => Promise<void>,
+};
 
 export const modalHandlers: Record<string, (...args: never[]) => Promise<void>> = {};

@@ -1325,6 +1325,21 @@ describe("zoo shows levels and fusion", () => {
     expect(text).toContain("0/400 XP"); // Lv 4 needs 100×4
   });
 
+  it("legacy count rows without instances show Lv 1 in the zoo list and detail", async () => {
+    // Caught before monster instances existed: count row, 0 instance rows.
+    const beetle = MONSTER_BY_ID.get(26)!;
+    await db
+      .prepare("INSERT INTO user_monsters (guild_id, user_id, monster_id, count, source, caught_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(GUILD, "user-1", beetle.id, 1, "hunt", Date.now());
+    expect(await getUserInstances(db, GUILD, "user-1", beetle.id)).toHaveLength(0);
+    const zoo = await run("uwu zoo");
+    expect(zoo.allText()).toContain("Stone Beetle ×1 · Lv 1");
+    const detail = await run("uwu zoo stone beetle");
+    const text = detail.allText();
+    expect(text).toContain("Stone Beetle (Common) · Lv 1");
+    expect(text).toContain("1. Lv 1 · HP");
+  });
+
   it("a hunt catch shows its wild level and pays level-scaled XP/gold", async () => {
     // Meadow encounters are Common at wild level 1–5: XP 12–20, gold 8–20.
     const msg = await run("uwu hunt");

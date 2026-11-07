@@ -612,9 +612,15 @@ export const commands: Command[] = [
           const xpNeed = inst.level >= 100 ? "MAX" : `${inst.xp}/${100 * inst.level} XP`;
           return `${i + 1}. Lv ${inst.level}${inst.fuseLevel > 0 ? ` +${inst.fuseLevel}` : ""} · HP ${s.hp} · ATK ${s.atk} · DEF ${s.def} · ${xpNeed}${fx.length > 0 ? ` · ${fx.join(", ")}` : ""}`;
         });
+        if (detailLines.length === 0) {
+          // Caught before monster instances existed (pre-Phase-2 count
+          // row, no instance row): the monster is Lv 1 until it earns XP.
+          const s = leveledStats(monster, 1, 0);
+          detailLines.push(`1. Lv 1 · HP ${s.hp} · ATK ${s.atk} · DEF ${s.def} · 0/100 XP`);
+        }
         await inv.reply({
           content:
-            `${monsterLine(monster, best?.level, best?.fuseLevel)} ×${entry.count}\n` +
+            `${monsterLine(monster, best?.level ?? 1, best?.fuseLevel ?? 0)} ×${entry.count}\n` +
             `Type ${monster.type} · ${monsterStatsLine(monster, best?.level ?? 1, best?.fuseLevel ?? 0)}\n` +
             `Found in: ${area.name} · Caught via ${entry.source}\n` +
             `${detailLines.join("\n")}`,
@@ -640,7 +646,9 @@ export const commands: Command[] = [
         lines.push(`— ${tier} —`);
         for (const o of group) {
           const best = bestByMonster.get(o.monster.id);
-          const tag = best ? ` · Lv ${best.level}${best.fuseLevel > 0 ? ` +${best.fuseLevel}` : ""}` : "";
+          // No instance row (caught before instances existed) means Lv 1 —
+          // every monster in the zoo shows a level, never a bare name.
+          const tag = ` · Lv ${best?.level ?? 1}${best && best.fuseLevel > 0 ? ` +${best.fuseLevel}` : ""}`;
           lines.push(`${monsterEmoji(o.monster)} ${o.monster.name} ×${o.count}${tag}`);
         }
       }

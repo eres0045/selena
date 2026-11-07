@@ -33,7 +33,7 @@ import {
   towerCooldownRemainingMs,
   type TowerRow,
 } from "../src/lib/towers.js";
-import { commands as towerCommands } from "../src/commands/towers.js";
+import { commands as towerCommands, buttonHandlers as towerButtonHandlers } from "../src/commands/towers.js";
 
 const GUILD = "guild-1";
 const ALICE = "user-alice";
@@ -408,5 +408,76 @@ describe("Main tower secrecy", () => {
 describe("recommended party sizes", () => {
   it("Small 2, Big 4, Main 6", () => {
     expect(RECOMMENDED_PARTY).toEqual({ small: 2, big: 4, main: 6 });
+  });
+});
+
+describe("tower list pagination (live bug: 29-tower list exceeded 2,000 chars)", () => {
+  /** Tower names listed on one page's content (compact rows only — the header also starts with 🗼). */
+  function namesOnPage(content: string): string[] {
+    return content
+      .split("\n")
+      .filter((l) => l.startsWith("🗼 ") && (l.includes(" · S · ") || l.includes(" · B · ")))
+      .map((l) => l.slice(3).split(" · ")[0]!);
+  }
+
+  function nextButtonId(payload: unknown): string | null {
+    const comps = (payload as { components?: { toJSON: () => { components: { custom_id: string; label: string; disabled?: boolean }[] } }[] }).components;
+    if (!comps) return null;
+    for (const row of comps) {
+      for (const b of row.toJSON().components) {
+        if (b.label === "Next ▶" && !b.disabled) return b.custom_id;
+      }
+    }
+    return null;
+  }
+
+  it("every region page fits under 2,000 characters and all 29 visible towers are reachable", async () => {
+    const seeded = await seedTowers(db);
+    const main = seeded.find((t) => t.type === "main")!;
+    const visible = await listVisibleTowers(db);
+    expect(visible).toHaveLength(29);
+
+    // Page 1 from the bare command.
+    const first = await runCommand({});
+    const firstPayload = first.firstReplyPayload() as { content: string; components?: unknown };
+    const firstContent = String(firstPayload.content);
+    expect(firstContent.length).toBeLessThan(2000);
+    expect(firstPayload.components).toBeDefined();
+
+    // Flip through every page with the Next button, collecting names.
+    const seen = new Set(namesOnPage(firstContent));
+    const pageContents = [firstContent];
+    let customId = nextButtonId(firstPayload);
+    const updates: { content: string; components?: unknown }[] = [];
+    let guard = 0;
+    while (customId && guard < 10) {
+      guard++;
+      updates.length = 0;
+      const handler = towerButtonHandlers["selena:tower"]!;
+      await handler(
+        {
+          customId,
+          user: { id: ALICE },
+          update: async (p: { content: string; components?: unknown }) => {
+            updates.push(p);
+          },
+          reply: async () => {},
+        } as never,
+        { db, guildId: GUILD } as never,
+      );
+      expect(updates).toHaveLength(1);
+      const content = String(updates[0]!.content);
+      expect(content.length).toBeLessThan(2000);
+      pageContents.push(content);
+      for (const n of namesOnPage(content)) seen.add(n);
+      customId = nextButtonId(updates[0]);
+    }
+    expect(pageContents.length).toBeGreaterThan(1);
+    expect(seen.size).toBe(29);
+    for (const t of visible) expect(seen.has(t.name)).toBe(true);
+    for (const c of pageContents) {
+      expect(c).not.toContain(main.name);
+      expect(c).not.toContain("tower-main");
+    }
   });
 });
