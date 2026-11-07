@@ -1,6 +1,5 @@
 import {
   ActionRowBuilder,
-  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   type APIEmbed,
@@ -9,8 +8,7 @@ import type { Command, CommandContext, CommandInvocation } from "../lib/command.
 import { emoji } from "../lib/emoji.js";
 import { errorEmbed, fmt, pointsEmbed } from "../lib/command.js";
 import { getBalance } from "../lib/economy.js";
-import { CARD_SUITS } from "../lib/cards.js";
-import { composeHandStrip, type StripCard } from "../lib/handstrip.js";
+import { CARD_SUITS, prettyCard } from "../lib/cards.js";
 import {
   blackjackGames,
   blackjackValue,
@@ -35,22 +33,7 @@ import {
   type BlackjackGame,
 } from "../lib/casino.js";
 import { secureFloat } from "../lib/rng.js";
-import {
-  VISUAL_SUSPENSE,
-  coinflipFlipPath,
-  coinflipLandedPath,
-  composeCoinflipResult,
-  composeRouletteResult,
-  composeScratch,
-  composeScratchResult,
-  composeSlotsResult,
-  composeSlotsSettled,
-  rouletteSpinPath,
-  rouletteWheelPath,
-  sleep,
-  slotsSpinPath,
-  tryReadAsset,
-} from "../lib/visualgames.js";
+import { VISUAL_SUSPENSE, sleep } from "../lib/visualgames.js";
 
 type Inv = CommandInvocation;
 
@@ -98,10 +81,10 @@ export function bjOutcomeOf(settled: { outcome: string }): BjOutcome {
 }
 
 /**
- * The blackjack embed carries NO description and NO fields: embed text
- * always renders ABOVE the image and reads badly. The hands — with their
- * labels and totals — live in the strip image itself, and the bet/result
- * line lives in the FOOTER (below the image).
+ * OwO-style tiny blackjack: NO attached images (Discord stretches
+ * every attachment to message width on mobile). The hands are plain
+ * text — "K♠ Q♥ (20)" — with the dealer's hole card hidden as "?"
+ * while the hand is live. The bet/result line stays in the footer.
  */
 function bjEmbed(
   game: BlackjackGame,
@@ -109,7 +92,13 @@ function bjEmbed(
   balance: number,
 ): ReturnType<typeof pointsEmbed> {
   const title = opts.over ? "🃏 Blackjack — Finished" : "🃏 Blackjack";
-  return pointsEmbed(title, "")
+  const player = blackjackValue(game.playerHand);
+  const dealer = blackjackValue(game.dealerHand);
+  const dealerShown = opts.over
+    ? `${game.dealerHand.map(prettyCard).join(" ")} (${dealer})`
+    : game.dealerHand.map((c, i) => (i === 0 ? prettyCard(c) : "?")).join(" ");
+  const playerShown = `${game.playerHand.map(prettyCard).join(" ")} (${player})`;
+  return pointsEmbed(title, `Dealer: ${dealerShown}\nYou: ${playerShown}`)
     .setColor(BJ_COLORS[opts.outcome])
     .setFooter({
       text: `Bet ${fmt(game.bet)} · ${opts.footerLine} · Balance ${fmt(balance)} gold`,
@@ -117,14 +106,9 @@ function bjEmbed(
 }
 
 /**
- * One compact OwO-style embed for a blackjack game state: a single small
- * strip image (dealer row on top, player row below, ~100px per card,
- * ~700px-wide file, transparent background) with the newly dealt cards
- * flipping — each row labelled in-image ("DEALER 17" / "YOU 15", "?" for
- * the dealer's total while the hole card is hidden). The dealer's hole
- * card stays face-down until the hand is over. When a card has no
- * rendered flip GIF (or a label no sprite) the strip cannot be built
- * and the reply falls back to the text-only embed.
+ * One compact OwO-style embed for a blackjack game state: text hands
+ * only, no strip image. The dealer's hole card stays "?" until the
+ * hand is over.
  */
 async function bjReplyPayload(
   game: BlackjackGame,
@@ -132,98 +116,29 @@ async function bjReplyPayload(
   ctx: CommandContext,
 ): Promise<{
   embeds: APIEmbed[];
-  files: AttachmentBuilder[];
 }> {
   const balance = (await getBalance(ctx.db, game.guildId, game.userId)).points;
-  const embed = bjEmbed(game, opts, balance);
-  const player = blackjackValue(game.playerHand);
-  const dealer = blackjackValue(game.dealerHand);
-  const freshDeal = !opts.over && game.playerHand.length === 2;
-  const dealerRow: StripCard[] = game.dealerHand.map((code, i) => ({
-    code,
-    faceDown: !opts.over && i === 1,
-    animate: !opts.over && i === 0 && freshDeal,
-  }));
-  const playerRow: StripCard[] = game.playerHand.map((code, i) => ({
-    code,
-    animate: !opts.over && (freshDeal || i === game.playerHand.length - 1),
-  }));
-  const strip = await composeHandStrip(
-    [dealerRow, playerRow],
-    [
-      { title: "DEALER", value: opts.over ? String(dealer) : "?" },
-      { title: "YOU", value: String(player) },
-    ],
-  );
-  if (!strip) return { embeds: [embed.toJSON()], files: [] };
-  embed.setImage("attachment://hand.gif");
-  return {
-    embeds: [embed.toJSON()],
-    files: [new AttachmentBuilder(strip.buffer, { name: "hand.gif" })],
-  };
+  return { embeds: [bjEmbed(game, opts, balance).toJSON()] };
 }
 
 /**
- * ONE continuous motion (Ronit: the animation must not cut/glitch at
- * the end and then show the result — it has to look like the thing
- * actually landed). The caller defers FIRST (before composing, so the
- * ~1s composition never eats the 3s ack window), then this sends ONE
- * play-once GIF that IS the result — the coin tosses and lands on the
- * real face, the reels stop on the real symbols, the ball settles in
- * the real pocket, the foil peels to the real symbols — and freezes
- * there. ~2.4s later it edits the SAME reply and changes ONLY the
- * text: the settled edit carries NO `files` key at all (Discord keeps
- * the attachment already on the message; the embed still points at
- * attachment://game.gif). Passing `files: []` would REMOVE the
- * attachment — so the settled edit must omit `files` entirely.
+ * OwO-style tiny flow: the caller defers FIRST, then this edits the
+ * SAME message twice — a text-only "playing" line, a short suspense
+ * beat, then the settled text. No attached images anywhere (Discord
+ * stretches every attachment to message width on mobile, so a game
+ * picture always looks huge). The settled text always shows the REAL
+ * server-drawn result, never a different one. (The old GIF flows —
+ * playSingleGif / playVisual / attachPayload — are gone; the
+ * composition helpers and asset files stay on disk unused.)
  */
-async function playSingleGif(
+async function playTiny(
   inv: Inv,
-  gif: Buffer,
   suspenseEmbed: ReturnType<typeof pointsEmbed>,
   settledEmbed: ReturnType<typeof pointsEmbed>,
 ): Promise<void> {
-  suspenseEmbed.setImage("attachment://game.gif");
-  settledEmbed.setImage("attachment://game.gif");
-  await inv.editReply({
-    embeds: [suspenseEmbed.toJSON()],
-    files: [new AttachmentBuilder(gif, { name: "game.gif" })],
-  });
+  await inv.editReply({ embeds: [suspenseEmbed.toJSON()] });
   await sleep(VISUAL_SUSPENSE.ms);
   await inv.editReply({ embeds: [settledEmbed.toJSON()] });
-}
-
-/**
- * FALLBACK two-image flow (only when the runtime composition fails):
- * the generic suspense GIF, then an edit to the settled image + result.
- * The caller already deferred (before composing) — this never defers.
- * When the spin asset is missing (spin === null) the suspense is
- * skipped and the settled reply goes out directly, so a missing file
- * can never break the game.
- */
-async function playVisual(
-  inv: Inv,
-  spin: { embeds: APIEmbed[]; files: AttachmentBuilder[] } | null,
-  settled: { embeds: APIEmbed[]; files: AttachmentBuilder[] },
-): Promise<void> {
-  if (spin) {
-    await inv.editReply(spin);
-    await sleep(VISUAL_SUSPENSE.ms);
-  }
-  await inv.editReply(settled);
-}
-
-/** Embed + image payload, or the text-only payload when image is null. */
-function attachPayload(
-  embed: ReturnType<typeof pointsEmbed>,
-  image: { buffer: Buffer; name: string } | null,
-): { embeds: APIEmbed[]; files: AttachmentBuilder[] } {
-  if (!image) return { embeds: [embed.toJSON()], files: [] };
-  embed.setImage(`attachment://${image.name}`);
-  return {
-    embeds: [embed.toJSON()],
-    files: [new AttachmentBuilder(image.buffer, { name: image.name })],
-  };
 }
 
 /**
@@ -270,7 +185,7 @@ export const commands: Command[] = [
         spin.multiplier > 0
           ? `You won **${fmt(winAmount)} gold** (${spin.multiplier}x)!`
           : "No match — better luck next spin.";
-      const settledEmbed = pointsEmbed(emoji("slots") + " Slots", outcome)
+      const settledEmbed = pointsEmbed(emoji("slots") + " Slots", `${spin.symbols.join(" | ")}\n\n${outcome}`)
         .addFields(
           { name: "Bet", value: fmt(bet), inline: true },
           { name: "Multiplier", value: `${spin.multiplier}x`, inline: true },
@@ -281,27 +196,10 @@ export const commands: Command[] = [
       const spinEmbed = pointsEmbed(emoji("slots") + " Slots", "Spinning…")
         .addFields({ name: "Bet", value: fmt(bet), inline: true })
         .setColor(BJ_COLORS.playing);
-      // Defer BEFORE composing: the runtime GIF takes ~1s and the ack
-      // window is 3s. Then one continuous motion (the reels stop on
-      // the real symbols and freeze); the settle edit changes only
-      // the text. Falls back to the two-image flow when composing
-      // fails — the game never breaks on a missing asset.
+      // Tiny OwO-style flow: text-only "Spinning…", a suspense beat,
+      // then the same message edited to the real drawn symbols.
       await inv.deferReply();
-      const gif = await composeSlotsResult(spin.symbols).catch(() => null);
-      if (gif) {
-        await playSingleGif(inv, gif, spinEmbed, settledEmbed);
-        return;
-      }
-      // The settled strip shows the REAL result symbols (never a canned
-      // 7-7-7); the text symbols stay only as the no-asset fallback.
-      const settledStrip = await composeSlotsSettled(spin.symbols);
-      if (!settledStrip) settledEmbed.setDescription(`${spin.symbols.join(" | ")}\n\n${outcome}`);
-      const spinBuf = tryReadAsset(slotsSpinPath());
-      await playVisual(
-        inv,
-        spinBuf ? attachPayload(spinEmbed, { buffer: spinBuf, name: "spin.gif" }) : null,
-        attachPayload(settledEmbed, settledStrip ? { buffer: settledStrip, name: "settled.gif" } : null),
-      );
+      await playTiny(inv, spinEmbed, settledEmbed);
     },
   },
   {
@@ -385,27 +283,10 @@ export const commands: Command[] = [
           { name: "You bet on", value: `**${result.betOn}**`, inline: true },
         )
         .setColor(BJ_COLORS.playing);
-      // Defer BEFORE composing: the runtime GIF takes ~1s and the ack
-      // window is 3s. Then one continuous motion (the ball rolls into
-      // the real pocket and stops); the settle edit changes only the
-      // text. Falls back to the two-image flow when composing fails.
+      // Tiny OwO-style flow: text-only "Spinning…", a suspense beat,
+      // then the same message edited to the real rolled number.
       await inv.deferReply();
-      const gif = await composeRouletteResult(result.roll).catch(() => null);
-      if (gif) {
-        await playSingleGif(inv, gif, spinEmbed, settledEmbed);
-        return;
-      }
-      // Settled wheel: the ball sits on the ACTUAL winning pocket.
-      const wheelBuf = tryReadAsset(rouletteWheelPath(result.roll));
-      const spinBuf = tryReadAsset(rouletteSpinPath());
-      await playVisual(
-        inv,
-        spinBuf ? attachPayload(spinEmbed, { buffer: spinBuf, name: "spin.gif" }) : null,
-        attachPayload(
-          settledEmbed,
-          wheelBuf ? { buffer: wheelBuf, name: `wheel-${String(result.roll).padStart(2, "0")}.png` } : null,
-        ),
-      );
+      await playTiny(inv, spinEmbed, settledEmbed);
     },
   },
   {
@@ -433,7 +314,8 @@ export const commands: Command[] = [
       const outcome = result.win
         ? `${emoji("party")} You won **${fmt(winAmount)} gold** (1.9x)!`
         : "Wrong call — you lost this flip.";
-      const settledEmbed = pointsEmbed(emoji("coin") + " Coinflip", `You called **${guess}**. The coin landed **${result.result}**.\n\n${outcome}`)
+      const faceEmoji = result.result === "heads" ? "🪙" : "⭐";
+      const settledEmbed = pointsEmbed(emoji("coin") + " Coinflip", `You called **${guess}**. The coin landed **${result.result}** ${faceEmoji}.\n\n${outcome}`)
         .addFields(
           { name: "Bet", value: fmt(bet), inline: true },
           { name: "Balance", value: fmt(balance), inline: true },
@@ -446,26 +328,10 @@ export const commands: Command[] = [
           { name: "You called", value: `**${guess}**`, inline: true },
         )
         .setColor(BJ_COLORS.playing);
-      // Defer BEFORE composing: the runtime GIF takes ~1s and the ack
-      // window is 3s. Then one continuous motion (the toss lands on
-      // the real face and freezes); the settle edit changes only the
-      // text. Falls back to the two-image flow when composing fails.
+      // Tiny OwO-style flow: text-only "Flipping…", a suspense beat,
+      // then the same message edited to the real landed face.
       await inv.deferReply();
-      const gif = await composeCoinflipResult(result.result).catch(() => null);
-      if (gif) {
-        await playSingleGif(inv, gif, spinEmbed, settledEmbed);
-        return;
-      }
-      // The coin spins, then LANDS on the actual result face (heads = the
-      // $ face, tails = the star disc — same canvas, so the edit feels
-      // like the coin just stops).
-      const landedBuf = tryReadAsset(coinflipLandedPath(result.result));
-      const spinBuf = tryReadAsset(coinflipFlipPath());
-      await playVisual(
-        inv,
-        spinBuf ? attachPayload(spinEmbed, { buffer: spinBuf, name: "flip.gif" }) : null,
-        attachPayload(settledEmbed, landedBuf ? { buffer: landedBuf, name: `${result.result}.png` } : null),
-      );
+      await playTiny(inv, spinEmbed, settledEmbed);
     },
   },
   {
@@ -512,32 +378,21 @@ export const commands: Command[] = [
       }
       const cardCode = `${highLowRankName(card)}${cardSuit}`;
       const nextCode = `${highLowRankName(next)}${nextSuit}`;
-      // One compact embed: no description above the image (it reads
-      // badly) — the two cards are labelled in-image ("FIRST 12" /
-      // "NEXT 10", two rows so each card has its own label) and the
-      // bet/guess/result line sits in the footer, below the image.
-      // Outcome colours match OwO: green on a win, red on a loss, gray
-      // on a push.
+      // One compact embed, text only: the two real drawn cards as
+      // "Q♥ (12)" lines, the outcome in the description, the
+      // bet/guess/balance line in the footer. Outcome colours match
+      // OwO: green on a win, red on a loss, gray on a push.
       const hlColor =
         result.outcome === "win" ? BJ_COLORS.win : result.outcome === "push" ? BJ_COLORS.push : BJ_COLORS.lose;
-      const embed = pointsEmbed("🔼🔽 High / Low", "")
+      const embed = pointsEmbed(
+        "🔼🔽 High / Low",
+        `FIRST: ${prettyCard(cardCode)} (${card})\nNEXT: ${prettyCard(nextCode)} (${next})\n\n${outcome}`,
+      )
         .setColor(hlColor)
         .setFooter({
-          text: `Bet ${fmt(bet)} · You guessed ${guess} · ${outcome} · Balance ${fmt(balance)} gold`,
+          text: `Bet ${fmt(bet)} · You guessed ${guess} · Balance ${fmt(balance)} gold`,
         });
-      const strip = await composeHandStrip(
-        [[{ code: cardCode }], [{ code: nextCode, animate: true }]],
-        [
-          { title: "FIRST", value: String(card) },
-          { title: "NEXT", value: String(next) },
-        ],
-      );
-      const files: AttachmentBuilder[] = [];
-      if (strip) {
-        embed.setImage("attachment://hand.gif");
-        files.push(new AttachmentBuilder(strip.buffer, { name: "hand.gif" }));
-      }
-      await inv.editReply({ embeds: [embed.toJSON()], files });
+      await inv.editReply({ embeds: [embed.toJSON()] });
     },
   },
   {
@@ -563,39 +418,9 @@ export const commands: Command[] = [
           : result.multiplier === 1
             ? `Two matching — your **${fmt(bet)} gold** are returned.`
             : "No match — better luck next card.";
-      // Defer BEFORE composing: the runtime GIF takes ~1s and the ack
-      // window is 3s. Then one continuous motion (the foil peels to
-      // the real symbols and holds); the settle edit changes only
-      // the text. Falls back to the two-image flow when composing
-      // fails — the game never breaks on a missing asset.
-      await inv.deferReply();
-      const gif = await composeScratchResult(result.symbols).catch(() => null);
-      if (gif) {
-        const settledEmbed = pointsEmbed("🎫 Scratch Card", outcome)
-          .addFields(
-            { name: "Bet", value: fmt(bet), inline: true },
-            { name: "Multiplier", value: `${result.multiplier}x`, inline: true },
-            { name: "Balance", value: fmt(balance), inline: true },
-          )
-          .setFooter({ text: "Odds: 3 matching 5x · 2 matching 1x · house edge 12.5%. Gold only, no real money." })
-          .setColor(
-            result.multiplier === 5 ? BJ_COLORS.win : result.multiplier === 1 ? BJ_COLORS.push : BJ_COLORS.lose,
-          );
-        const spinEmbed = pointsEmbed("🎫 Scratch Card", "Scratching…")
-          .addFields({ name: "Bet", value: fmt(bet), inline: true })
-          .setColor(BJ_COLORS.playing);
-        await playSingleGif(inv, gif, spinEmbed, settledEmbed);
-        return;
-      }
-      // Visual reveal: three covered foil tiles first, then the same
-      // three tiles revealed with the real drawn symbols. The text
-      // symbols stay only as the no-asset fallback.
-      const revealedStrip = await composeScratch(result.symbols);
-      const coveredStrip = await composeScratch(null);
-      const settledEmbed = pointsEmbed(
-        "🎫 Scratch Card",
-        revealedStrip ? outcome : `${result.symbols.join("  ")}\n\n${outcome}`,
-      )
+      // Tiny OwO-style flow: text-only "Scratching…", a suspense beat,
+      // then the same message edited to the real drawn symbols.
+      const settledEmbed = pointsEmbed("🎫 Scratch Card", `${result.symbols.join("  ")}\n\n${outcome}`)
         .addFields(
           { name: "Bet", value: fmt(bet), inline: true },
           { name: "Multiplier", value: `${result.multiplier}x`, inline: true },
@@ -608,11 +433,8 @@ export const commands: Command[] = [
       const spinEmbed = pointsEmbed("🎫 Scratch Card", "Scratching…")
         .addFields({ name: "Bet", value: fmt(bet), inline: true })
         .setColor(BJ_COLORS.playing);
-      await playVisual(
-        inv,
-        coveredStrip ? attachPayload(spinEmbed, { buffer: coveredStrip, name: "covered.gif" }) : null,
-        attachPayload(settledEmbed, revealedStrip ? { buffer: revealedStrip, name: "revealed.gif" } : null),
-      );
+      await inv.deferReply();
+      await playTiny(inv, spinEmbed, settledEmbed);
     },
   },
 ];
@@ -642,8 +464,7 @@ async function handleBlackjackButton(inv: any, ctx: CommandContext): Promise<voi
     return;
   }
 
-  // Acknowledge immediately: composing the strip image takes a moment and
-  // the button ack must not wait on it.
+  // Acknowledge immediately: the button ack must not wait on the DB.
   await inv.deferUpdate();
 
   const settleAndShow = async (note: string): Promise<void> => {
