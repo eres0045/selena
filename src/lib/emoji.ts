@@ -28,7 +28,7 @@ export type EmojiName =
  * (Unicode fallback).
  */
 export const EMOJI_IDS: Record<EmojiName, string> = {
-  coin: "1568505483176837240",
+  coin: "1568509688340025394",
   slots: "1568506467093454888",
   roulette: "1568506546621784175",
   trophy: "1568506606566510702",
