@@ -337,7 +337,7 @@ function triviaEmbed(game: TriviaGame, reveal: boolean, pickedIndex?: number): E
     ? game.answeredBy
       ? `Answered by <@${game.answeredBy}>. Correct answer: ${String.fromCharCode(65 + q.answerIndex)}.`
       : `Correct answer: ${String.fromCharCode(65 + q.answerIndex)}.`
-    : `You have ${TRIVIA_TIME_LIMIT_MS / 1000} seconds — first answer counts! Worth ${TRIVIA_POINTS} points.`;
+    : `You have ${TRIVIA_TIME_LIMIT_MS / 1000} seconds — first answer counts! Worth ${TRIVIA_POINTS} gold.`;
   return selenaEmbed(`🧠 Trivia`, `${q.question}\n\n${lines.join("\n")}\n\n${footer}`);
 }
 
@@ -391,7 +391,7 @@ async function handleTrivia(interaction: any, ctx: CommandContext): Promise<void
       })
       .join("\n")}\n\n${
       correct
-        ? `${emoji("party")} <@${interaction.user.id}> got it right and earned **${TRIVIA_POINTS} points**!`
+        ? `${emoji("party")} <@${interaction.user.id}> got it right and earned **${TRIVIA_POINTS} gold**!`
         : `❌ <@${interaction.user.id}> got it wrong. The correct answer was **${String.fromCharCode(65 + game.question.answerIndex)}**.`
     }`,
   );
@@ -611,7 +611,7 @@ export const commands: Command[] = [
     },
   },
   {
-    data: slash("trivia", "Answer a timed trivia question — first correct answer earns points."),
+    data: slash("trivia", "Answer a timed trivia question — first correct answer earns gold."),
     async execute(interaction, _ctx) {
       const question = pickTriviaQuestion();
       const game: TriviaGame = {

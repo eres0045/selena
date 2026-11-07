@@ -75,7 +75,7 @@ function buildCmd(name: string, description: string, configure: (b: SlashCommand
 async function readBet(interaction: Interaction): Promise<number | null> {
   const bet = interaction.options.getInteger("bet");
   if (bet === null || !Number.isInteger(bet) || bet <= 0) {
-    await replyError(interaction, "Bet must be a positive whole number of points.");
+    await replyError(interaction, "Bet must be a positive whole number of gold.");
     return null;
   }
   return bet;
@@ -125,7 +125,7 @@ function bjEmbed(
   return pointsEmbed(title, "")
     .setColor(BJ_COLORS[opts.outcome])
     .setFooter({
-      text: `Bet ${fmt(game.bet)} · ${opts.footerLine} · Balance ${fmt(balance)} points`,
+      text: `Bet ${fmt(game.bet)} · ${opts.footerLine} · Balance ${fmt(balance)} gold`,
     });
 }
 
@@ -254,7 +254,7 @@ async function checkBalance(
   if (bet > balance) {
     await replyError(
       interaction,
-      `Insufficient points. You have ${fmt(balance)} points, but bet ${fmt(bet)}.`,
+      `Insufficient gold. You have ${fmt(balance)} gold, but bet ${fmt(bet)}.`,
     );
     return false;
   }
@@ -267,7 +267,7 @@ export const commands: Command[] = [
       "slots",
       "Spin the 3-reel slot machine. Jackpot 7️⃣7️⃣7️⃣ pays 50x, any 3-of-a-kind 10x, a pair 2x.",
       (b) => {
-        b.addIntegerOption((o) => o.setName("bet").setDescription("Points to bet").setRequired(true).setMinValue(1));
+        b.addIntegerOption((o) => o.setName("bet").setDescription("Gold to bet").setRequired(true).setMinValue(1));
       },
     ),
     async execute(interaction, ctx) {
@@ -284,7 +284,7 @@ export const commands: Command[] = [
       const balance = (await getBalance(ctx.db, ctx.guildId, interaction.user.id)).points;
       const outcome =
         spin.multiplier > 0
-          ? `You won **${fmt(winAmount)} points** (${spin.multiplier}x)!`
+          ? `You won **${fmt(winAmount)} gold** (${spin.multiplier}x)!`
           : "No match — better luck next spin.";
       const settledEmbed = pointsEmbed(emoji("slots") + " Slots", outcome)
         .addFields(
@@ -292,7 +292,7 @@ export const commands: Command[] = [
           { name: "Multiplier", value: `${spin.multiplier}x`, inline: true },
           { name: "Balance", value: fmt(balance), inline: true },
         )
-        .setFooter({ text: "Odds: jackpot 7️⃣7️⃣7️⃣ 50x · 3-of-a-kind 10x · pair 2x · house edge ~10.9%. Points only, no real money." })
+        .setFooter({ text: "Odds: jackpot 7️⃣7️⃣7️⃣ 50x · 3-of-a-kind 10x · pair 2x · house edge ~10.9%. Gold only, no real money." })
         .setColor(spin.multiplier > 0 ? BJ_COLORS.win : BJ_COLORS.lose);
       const spinEmbed = pointsEmbed(emoji("slots") + " Slots", "Spinning…")
         .addFields({ name: "Bet", value: fmt(bet), inline: true })
@@ -322,7 +322,7 @@ export const commands: Command[] = [
   },
   {
     data: buildCmd("blackjack", "Play blackjack against the dealer. Dealer stands on 17. Blackjack pays 3:2.", (b) => {
-      b.addIntegerOption((o) => o.setName("bet").setDescription("Points to bet").setRequired(true).setMinValue(1));
+      b.addIntegerOption((o) => o.setName("bet").setDescription("Gold to bet").setRequired(true).setMinValue(1));
     }),
     async execute(interaction, ctx) {
       const bet = await readBet(interaction);
@@ -344,8 +344,8 @@ export const commands: Command[] = [
         endBlackjackGame(game.id);
         const footerLine =
           settled.outcome === "player_blackjack"
-            ? `${emoji("party")} Blackjack! You won ${fmt(winAmount)} points (3:2).`
-            : `Both you and the dealer have blackjack — push, your ${fmt(bet)} points are returned.`;
+            ? `${emoji("party")} Blackjack! You won ${fmt(winAmount)} gold (3:2).`
+            : `Both you and the dealer have blackjack — push, your ${fmt(bet)} gold are returned.`;
         await interaction.editReply(
           await bjReplyPayload(game, { over: true, outcome: bjOutcomeOf(settled), footerLine }, ctx),
         );
@@ -366,7 +366,7 @@ export const commands: Command[] = [
       "roulette",
       "Bet on the European roulette wheel. Red/black/even/odd pay 2x, a single number pays 36x.",
       (b) => {
-        b.addIntegerOption((o) => o.setName("bet").setDescription("Points to bet").setRequired(true).setMinValue(1));
+        b.addIntegerOption((o) => o.setName("bet").setDescription("Gold to bet").setRequired(true).setMinValue(1));
         b.addStringOption((o) =>
           o.setName("bet-on").setDescription("red, black, even, odd, or a number 0-36").setRequired(true),
         );
@@ -390,7 +390,7 @@ export const commands: Command[] = [
       if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "roulette win");
       const balance = (await getBalance(ctx.db, ctx.guildId, interaction.user.id)).points;
       const outcome = result.win
-        ? `${emoji("party")} You won **${fmt(winAmount)} points** (${result.multiplier}x)!`
+        ? `${emoji("party")} You won **${fmt(winAmount)} gold** (${result.multiplier}x)!`
         : "You lost this spin.";
       const settledEmbed = pointsEmbed(emoji("roulette") + " Roulette", `The ball landed on **${result.roll} ${result.color}**.\nYou bet on **${result.betOn}**.\n\n${outcome}`)
         .addFields(
@@ -398,7 +398,7 @@ export const commands: Command[] = [
           { name: "Multiplier", value: `${result.multiplier}x`, inline: true },
           { name: "Balance", value: fmt(balance), inline: true },
         )
-        .setFooter({ text: "European wheel (single zero) · even-money 2x · single number 36x · house edge 2.70%. Points only, no real money." })
+        .setFooter({ text: "European wheel (single zero) · even-money 2x · single number 36x · house edge 2.70%. Gold only, no real money." })
         .setColor(result.win ? BJ_COLORS.win : BJ_COLORS.lose);
       const spinEmbed = pointsEmbed(emoji("roulette") + " Roulette", "Spinning…")
         .addFields(
@@ -431,7 +431,7 @@ export const commands: Command[] = [
   },
   {
     data: buildCmd("coinflip", "Flip a coin. Call it right and win 1.9x your bet.", (b) => {
-      b.addIntegerOption((o) => o.setName("bet").setDescription("Points to bet").setRequired(true).setMinValue(1));
+      b.addIntegerOption((o) => o.setName("bet").setDescription("Gold to bet").setRequired(true).setMinValue(1));
       b.addStringOption((o) =>
         o
           .setName("guess")
@@ -458,14 +458,14 @@ export const commands: Command[] = [
       if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "coinflip win");
       const balance = (await getBalance(ctx.db, ctx.guildId, interaction.user.id)).points;
       const outcome = result.win
-        ? `${emoji("party")} You won **${fmt(winAmount)} points** (1.9x)!`
+        ? `${emoji("party")} You won **${fmt(winAmount)} gold** (1.9x)!`
         : "Wrong call — you lost this flip.";
       const settledEmbed = pointsEmbed(emoji("coin") + " Coinflip", `You called **${guess}**. The coin landed **${result.result}**.\n\n${outcome}`)
         .addFields(
           { name: "Bet", value: fmt(bet), inline: true },
           { name: "Balance", value: fmt(balance), inline: true },
         )
-        .setFooter({ text: "50/50 flip · win pays 1.9x · house edge 5%. Points only, no real money." })
+        .setFooter({ text: "50/50 flip · win pays 1.9x · house edge 5%. Gold only, no real money." })
         .setColor(result.win ? BJ_COLORS.win : BJ_COLORS.lose);
       const spinEmbed = pointsEmbed(emoji("coin") + " Coinflip", "Flipping…")
         .addFields(
@@ -500,7 +500,7 @@ export const commands: Command[] = [
       "highlow",
       "Guess whether the next card is higher or lower. Win pays 1.9x, a tie pushes your bet back.",
       (b) => {
-        b.addIntegerOption((o) => o.setName("bet").setDescription("Points to bet").setRequired(true).setMinValue(1));
+        b.addIntegerOption((o) => o.setName("bet").setDescription("Gold to bet").setRequired(true).setMinValue(1));
         b.addStringOption((o) =>
           o
             .setName("guess")
@@ -536,9 +536,9 @@ export const commands: Command[] = [
       const balance = (await getBalance(ctx.db, ctx.guildId, interaction.user.id)).points;
       const outcome =
         result.outcome === "win"
-          ? `You won ${fmt(winAmount)} points (1.9x)!`
+          ? `You won ${fmt(winAmount)} gold (1.9x)!`
           : result.outcome === "push"
-            ? `Tie — your ${fmt(bet)} points are returned.`
+            ? `Tie — your ${fmt(bet)} gold are returned.`
             : "Wrong guess — you lost this round.";
       // Display suits are random (the draw is rank-only); the two codes
       // must differ so the same physical card never shows twice.
@@ -560,7 +560,7 @@ export const commands: Command[] = [
       const embed = pointsEmbed("🔼🔽 High / Low", "")
         .setColor(hlColor)
         .setFooter({
-          text: `Bet ${fmt(bet)} · You guessed ${guess} · ${outcome} · Balance ${fmt(balance)} points`,
+          text: `Bet ${fmt(bet)} · You guessed ${guess} · ${outcome} · Balance ${fmt(balance)} gold`,
         });
       const strip = await composeHandStrip(
         [[{ code: cardCode }], [{ code: nextCode, animate: true }]],
@@ -582,7 +582,7 @@ export const commands: Command[] = [
       "scratch",
       "Scratch a card: reveal 3 symbols. 3 matching pay 5x, 2 matching pay your bet back.",
       (b) => {
-        b.addIntegerOption((o) => o.setName("bet").setDescription("Points to bet").setRequired(true).setMinValue(1));
+        b.addIntegerOption((o) => o.setName("bet").setDescription("Gold to bet").setRequired(true).setMinValue(1));
       },
     ),
     async execute(interaction, ctx) {
@@ -599,9 +599,9 @@ export const commands: Command[] = [
       const balance = (await getBalance(ctx.db, ctx.guildId, interaction.user.id)).points;
       const outcome =
         result.multiplier === 5
-          ? `${emoji("party")} Three of a kind! You won **${fmt(winAmount)} points** (5x)!`
+          ? `${emoji("party")} Three of a kind! You won **${fmt(winAmount)} gold** (5x)!`
           : result.multiplier === 1
-            ? `Two matching — your **${fmt(bet)} points** are returned.`
+            ? `Two matching — your **${fmt(bet)} gold** are returned.`
             : "No match — better luck next card.";
       // Defer BEFORE composing: the runtime GIF takes ~1s and the ack
       // window is 3s. Then one continuous motion (the foil peels to
@@ -617,7 +617,7 @@ export const commands: Command[] = [
             { name: "Multiplier", value: `${result.multiplier}x`, inline: true },
             { name: "Balance", value: fmt(balance), inline: true },
           )
-          .setFooter({ text: "Odds: 3 matching 5x · 2 matching 1x · house edge 12.5%. Points only, no real money." })
+          .setFooter({ text: "Odds: 3 matching 5x · 2 matching 1x · house edge 12.5%. Gold only, no real money." })
           .setColor(
             result.multiplier === 5 ? BJ_COLORS.win : result.multiplier === 1 ? BJ_COLORS.push : BJ_COLORS.lose,
           );
@@ -641,7 +641,7 @@ export const commands: Command[] = [
           { name: "Multiplier", value: `${result.multiplier}x`, inline: true },
           { name: "Balance", value: fmt(balance), inline: true },
         )
-        .setFooter({ text: "Odds: 3 matching 5x · 2 matching 1x · house edge 12.5%. Points only, no real money." })
+        .setFooter({ text: "Odds: 3 matching 5x · 2 matching 1x · house edge 12.5%. Gold only, no real money." })
         .setColor(
           result.multiplier === 5 ? BJ_COLORS.win : result.multiplier === 1 ? BJ_COLORS.push : BJ_COLORS.lose,
         );
@@ -693,12 +693,12 @@ async function handleBlackjackButton(interaction: any, ctx: CommandContext): Pro
     endBlackjackGame(game.id);
     const resultNote =
       settled.outcome === "player_blackjack"
-        ? `${emoji("party")} Blackjack! You won ${fmt(winAmount)} points (3:2).`
+        ? `${emoji("party")} Blackjack! You won ${fmt(winAmount)} gold (3:2).`
         : settled.outcome === "win"
-          ? `You won ${fmt(winAmount)} points!`
+          ? `You won ${fmt(winAmount)} gold!`
           : settled.outcome === "push"
-            ? `Push — your ${fmt(game.bet)} points are returned.`
-            : `You lost ${fmt(game.bet)} points.`;
+            ? `Push — your ${fmt(game.bet)} gold are returned.`
+            : `You lost ${fmt(game.bet)} gold.`;
     await interaction.editReply({
       ...(await bjReplyPayload(
         game,

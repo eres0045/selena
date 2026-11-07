@@ -357,6 +357,6 @@ describe("/profile command", () => {
     const fake = await run("profile", { user: { id: "u9", username: "Ghost" } });
     const text = replyText(fake);
     expect(text).toContain("Ghost");
-    expect(text).toMatch(/Points: 0/);
+    expect(text).toMatch(/Gold: 0/);
   });
 });

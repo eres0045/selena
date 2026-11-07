@@ -53,7 +53,7 @@ export async function addPoints(db: SelenaDb, guildId: string, userId: string, d
     result = await db
       .prepare("UPDATE users SET points = points + ? WHERE guild_id = ? AND user_id = ? AND points + ? >= 0")
       .run(delta, guildId, userId, delta);
-    if (result.changes !== 1) throw new Error("Insufficient points");
+    if (result.changes !== 1) throw new Error("Insufficient gold");
   } else {
     result = await db
       .prepare("UPDATE users SET points = points + ? WHERE guild_id = ? AND user_id = ?")
@@ -80,7 +80,7 @@ export async function transferPoints(
     return { ok: false, error: "Amount must be a positive whole number." };
   }
   if (fromId === toId) {
-    return { ok: false, error: "You cannot give points to yourself." };
+    return { ok: false, error: "You cannot give gold to yourself." };
   }
   await ensureUser(db, guildId, fromId);
   await ensureUser(db, guildId, toId);
@@ -91,7 +91,7 @@ export async function transferPoints(
     .prepare("UPDATE users SET points = points + ? WHERE guild_id = ? AND user_id = ? AND points >= ?")
     .run(-amount, guildId, fromId, amount);
   if (debit.changes !== 1) {
-    return { ok: false, error: "Insufficient points." };
+    return { ok: false, error: "Insufficient gold." };
   }
   await db.prepare("UPDATE users SET points = points + ? WHERE guild_id = ? AND user_id = ?").run(amount, guildId, toId);
   await logLedger(db, guildId, fromId, -amount, `give to ${toId}`);

@@ -140,8 +140,8 @@ export const commands: Command[] = [
             inline: false,
           },
           {
-            name: "Top points",
-            value: topPoints.length ? topPoints.map((u, i) => `${i + 1}. <@${u.user_id}> — ${fmt(u.points)} pts`).join("\n") : "No points yet.",
+            name: "Top gold",
+            value: topPoints.length ? topPoints.map((u, i) => `${i + 1}. <@${u.user_id}> — ${fmt(u.points)} gold`).join("\n") : "No gold yet.",
             inline: false,
           },
         );

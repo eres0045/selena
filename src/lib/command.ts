@@ -30,7 +30,7 @@ export function errorEmbed(message: string): EmbedBuilder {
 }
 
 export function pointsEmbed(title: string, description: string): EmbedBuilder {
-  return selenaEmbed(title, description).setFooter({ text: "uwu points are fun-only — no real money." });
+  return selenaEmbed(title, description).setFooter({ text: "uwu gold is fun-only — no real money." });
 }
 
 /** Format an integer with thousands separators. */

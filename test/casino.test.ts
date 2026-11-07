@@ -401,7 +401,7 @@ describe("/blackjack command", () => {
     expect(payload.embeds?.[0]?.description).toBeFalsy();
     expect(payload.embeds?.[0]?.fields).toBeUndefined();
     expect(payload.embeds?.[0]?.footer?.text).toMatch(/Bet 100 · /);
-    expect(payload.embeds?.[0]?.footer?.text).toMatch(/Balance [\d,]+ points/);
+    expect(payload.embeds?.[0]?.footer?.text).toMatch(/Balance [\d,]+ gold/);
   });
 });
 
@@ -652,7 +652,7 @@ describe("/highlow command", () => {
     expect(payload.embeds?.[0]?.description).toBeFalsy();
     expect(payload.embeds?.[0]?.fields).toBeUndefined();
     expect(payload.embeds?.[0]?.footer?.text).toMatch(/Bet 100 · You guessed higher · /);
-    expect(payload.embeds?.[0]?.footer?.text).toMatch(/Balance [\d,]+ points/);
+    expect(payload.embeds?.[0]?.footer?.text).toMatch(/Balance [\d,]+ gold/);
   });
 
   it("error path: bet of 0 is rejected", async () => {

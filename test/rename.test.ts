@@ -43,8 +43,9 @@ describe("uwu rename (user-visible strings)", () => {
 
   it("the points footer names uwu, not Selena", () => {
     const footer = pointsEmbed("Title", "Body").toJSON().footer?.text ?? "";
-    expect(footer).toBe("uwu points are fun-only — no real money.");
+    expect(footer).toBe("uwu gold is fun-only — no real money.");
     expect(footer).not.toContain("Selena");
+    expect(footer).not.toContain("points");
   });
 
   it("the dare list says 'I love uwu' and has no Selena", () => {

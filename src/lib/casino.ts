@@ -44,7 +44,7 @@ export async function placeBet(
   reason = "bet",
 ): Promise<{ ok: boolean; balance?: number; error?: string }> {
   if (!Number.isInteger(amount) || amount <= 0) {
-    return { ok: false, error: "Bet must be a positive whole number of points." };
+    return { ok: false, error: "Bet must be a positive whole number of gold." };
   }
   // Ensure the user row exists so a missing row reads as "insufficient",
   // not as a crash.
@@ -55,7 +55,7 @@ export async function placeBet(
     .prepare("UPDATE users SET points = points + ? WHERE guild_id = ? AND user_id = ? AND points >= ?")
     .run(-amount, guildId, userId, amount);
   if (result.changes !== 1) {
-    return { ok: false, error: "Insufficient points." };
+    return { ok: false, error: "Insufficient gold." };
   }
   await db.prepare(
     "INSERT INTO point_ledger (guild_id, user_id, delta, reason, created_at) VALUES (?, ?, ?, ?, ?)",

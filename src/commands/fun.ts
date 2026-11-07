@@ -230,7 +230,7 @@ export const commands: Command[] = [
     },
   },
   {
-    data: slash("profile", "Show a member's profile card (points, XP, level, rank).", (b) => {
+    data: slash("profile", "Show a member's profile card (gold, XP, level, rank).", (b) => {
       b.addUserOption((o) => o.setName("user").setDescription("Whose profile (defaults to you)").setRequired(false));
     }),
     async execute(interaction, ctx) {
@@ -238,7 +238,7 @@ export const commands: Command[] = [
       const profile = await getProfileData(ctx.db, ctx.guildId, target.id);
       const embed = selenaEmbed(`👤 ${target.username}'s Profile`)
         .addFields(
-          { name: "Points", value: fmt(profile.points), inline: true },
+          { name: "Gold", value: fmt(profile.points), inline: true },
           { name: "XP", value: fmt(profile.xp), inline: true },
           { name: "Level", value: String(profile.level), inline: true },
           { name: "Server Rank", value: `#${profile.rank} of ${profile.totalRanked}`, inline: true },
