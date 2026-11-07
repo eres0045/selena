@@ -492,6 +492,9 @@ CREATE TABLE IF NOT EXISTS user_location (
   travel_ends_at BIGINT,
   travel_origin TEXT,
   travel_channel_id TEXT,
+  travel_guild_id TEXT,
+  travel_started_at BIGINT,
+  last_autohunt_at BIGINT,
   auto_hunt INTEGER NOT NULL DEFAULT 0,
   auto_hunt_seconds INTEGER NOT NULL DEFAULT 0,
   auto_hunt_charged INTEGER NOT NULL DEFAULT 0,
@@ -657,7 +660,8 @@ CREATE TABLE IF NOT EXISTS rare_logs (
   item_ref TEXT NOT NULL,
   tier TEXT NOT NULL,
   source TEXT NOT NULL,
-  caught_at BIGINT NOT NULL
+  caught_at BIGINT NOT NULL,
+  posted INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS battle_challenges (
