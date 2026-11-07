@@ -183,6 +183,35 @@ export async function recordQuestProgress(
   }
 }
 
+/**
+ * Backfill: did the user claim their daily gold during the UTC quest
+ * day? The daily claim is recorded in `users.last_daily` (per guild)
+ * even when the quest system did not exist yet, so a claim made before
+ * the quests deployed still counts — the daily quest is otherwise
+ * UNCOMPLETABLE that day (24h cooldown, no re-claim until tomorrow).
+ * Quests are global, so the latest claim across ALL guilds is what
+ * matters. Compute-on-read only: nothing is written here, so a
+ * progress row recorded by the claim hook can never be double-counted.
+ *
+ * Daily is the only quest that gets this treatment: every other quest
+ * action is repeatable today (hunt/roll/catch/battle/casino/explore/
+ * bg buy/fuse/tower/about can all be done again), so a pre-deploy
+ * action never blocks those quests. Only the 24h-gated daily claim
+ * can strand a player with a 0/1 they cannot fix.
+ */
+export async function claimedDailyToday(
+  db: SelenaDb,
+  userId: string,
+  date: Date = new Date(),
+): Promise<boolean> {
+  const row = (await db
+    .prepare("SELECT MAX(last_daily) AS last_daily FROM users WHERE user_id = ?")
+    .get(userId)) as { last_daily: number | null } | undefined;
+  const last = row?.last_daily == null ? null : Number(row.last_daily);
+  if (last === null || !Number.isFinite(last)) return false;
+  return questDateKey(new Date(last)) === questDateKey(date);
+}
+
 /** Today's quest log for a user: the shared 3 quests + their progress + claimed flags. */
 export async function getQuestLog(
   db: SelenaDb,
@@ -199,6 +228,16 @@ export async function getQuestLog(
     .all(userId, dateKey);
   const progress = new Map(progressRows.map((r) => [String(r.quest_id), Number(r.progress)]));
   const claimed = new Set(claimedRows.map((r) => String(r.quest_id)));
+  // Backfill (see claimedDailyToday): a daily claim from before the
+  // quest system existed still completes today's daily quest. Only
+  // fills the gap when no progress row covers it — a recorded row is
+  // the source of truth and is never inflated.
+  const dailyDef = defs.find((d) => d.kind === "daily");
+  if (dailyDef && (progress.get(dailyDef.id) ?? 0) < dailyDef.target) {
+    if (await claimedDailyToday(db, userId, date)) {
+      progress.set(dailyDef.id, dailyDef.target);
+    }
+  }
   return {
     date: dateKey,
     quests: defs.map((d) => entry(d, progress.get(d.id) ?? 0, claimed.has(d.id))),

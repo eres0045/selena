@@ -197,6 +197,98 @@ describe("quests lib — progress and claims", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Lib: daily-claim backfill (2026-11-07 quest fairness fix)
+//
+// A daily claimed BEFORE the quest system deployed still counts: the
+// claim is already stored in users.last_daily, and the 24h cooldown
+// means the player cannot re-claim today — without the backfill the
+// daily quest would be uncompletable for them. DAY's set includes
+// daily_1 (catch_legendary, daily_1, fuse_1).
+// ---------------------------------------------------------------------------
+
+describe("quests lib — daily backfill", () => {
+  let db: SelenaDb;
+
+  beforeEach(async () => {
+    db = getTestDb();
+  });
+
+  /** Stamp a daily claim directly (bypasses the quest hook — the pre-deploy case). */
+  async function setLastDaily(userId: string, guildId: string, when: Date): Promise<void> {
+    await db.prepare("INSERT OR IGNORE INTO users (guild_id, user_id) VALUES (?, ?)").run(guildId, userId);
+    await db
+      .prepare("UPDATE users SET last_daily = ? WHERE guild_id = ? AND user_id = ?")
+      .run(when.getTime(), guildId, userId);
+  }
+
+  function dailyEntry(log: { quests: { def: { id: string }; progress: number; completed: boolean }[] }) {
+    return log.quests.find((q) => q.def.id === "daily_1")!;
+  }
+
+  it("a daily claimed before the quest system existed shows 1/1", async () => {
+    // Claimed 08:00 UTC today, no quest progress row at all (the hook never ran).
+    await setLastDaily("user-1", GUILD, new Date("2026-11-07T08:00:00Z"));
+    const log = await getQuestLog(db, "user-1", DAY);
+    const daily = dailyEntry(log);
+    expect(daily.progress).toBe(1);
+    expect(daily.completed).toBe(true);
+    // The other quests are untouched by the backfill.
+    expect(log.quests.filter((q) => q.def.id !== "daily_1").every((q) => q.progress === 0)).toBe(true);
+  });
+
+  it("a daily claimed via the hook shows 1/1 once, not 2/1", async () => {
+    // Both the stored claim AND a hook-recorded progress row exist.
+    await setLastDaily("user-1", GUILD, new Date("2026-11-07T08:00:00Z"));
+    await recordQuestProgress(db, "user-1", ["daily"], 1, DAY);
+    const log = await getQuestLog(db, "user-1", DAY);
+    expect(dailyEntry(log).progress).toBe(1);
+    expect(dailyEntry(log).completed).toBe(true);
+  });
+
+  it("a user who has not claimed shows 0/1", async () => {
+    const log = await getQuestLog(db, "brand-new", DAY);
+    expect(dailyEntry(log).progress).toBe(0);
+    expect(dailyEntry(log).completed).toBe(false);
+  });
+
+  it("a daily claimed yesterday does not complete today's quest", async () => {
+    await setLastDaily("user-1", GUILD, new Date("2026-11-06T23:00:00Z"));
+    const log = await getQuestLog(db, "user-1", DAY);
+    expect(dailyEntry(log).progress).toBe(0);
+    expect(dailyEntry(log).completed).toBe(false);
+  });
+
+  it("a daily claimed in another guild still counts (quests are global)", async () => {
+    await setLastDaily("user-1", "guild-2", new Date("2026-11-07T08:00:00Z"));
+    const log = await getQuestLog(db, "user-1", DAY);
+    expect(dailyEntry(log).progress).toBe(1);
+  });
+
+  it("a backfilled daily quest claims exactly 500 gold, once", async () => {
+    await setLastDaily("user-1", GUILD, new Date("2026-11-07T08:00:00Z"));
+    const before = (await getBalance(db, GUILD, "user-1")).points;
+    const res = await claimQuests(db, GUILD, "user-1", DAY);
+    expect(res.claimed.map((q) => q.def.id)).toEqual(["daily_1"]);
+    expect(res.totalGold).toBe(500);
+    expect(res.totalGems).toBe(0);
+    expect((await getBalance(db, GUILD, "user-1")).points).toBe(before + 500);
+    // Second claim pays nothing — the backfill never double-pays.
+    const res2 = await claimQuests(db, GUILD, "user-1", DAY);
+    expect(res2.claimed).toHaveLength(0);
+    expect(res2.totalGold).toBe(0);
+    expect((await getBalance(db, GUILD, "user-1")).points).toBe(before + 500);
+  });
+
+  it("next-day reset still works after a backfilled claim", async () => {
+    await setLastDaily("user-1", GUILD, new Date("2026-11-07T08:00:00Z"));
+    await claimQuests(db, GUILD, "user-1", DAY);
+    const next = new Date("2026-11-08T12:00:00Z");
+    const log = await getQuestLog(db, "user-1", next);
+    expect(log.quests.every((q) => q.progress === 0 && !q.claimed)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Lib: formatting + embed
 // ---------------------------------------------------------------------------
 
