@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { GatewayIntentBits } from "discord.js";
 import { buildClient, runDueTasks, shouldLogin, start, startHealthServer } from "../src/index.js";
 import { allButtonHandlers, allCommands, allModalHandlers } from "../src/commands/index.js";
-import { getTestDb } from "../src/lib/db.js";
+import { getTestDb } from "./testDb.js";
 
 describe("shouldLogin", () => {
   it("is false without a token", async () => {

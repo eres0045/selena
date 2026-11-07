@@ -9,8 +9,11 @@ Usage:
 Output: assets/cards/flips/<CODE>.gif, e.g. AS.gif, 10H.gif, KD.gif.
 The GIFs are the source of the animated cards Selena attaches to
 /blackjack and /highlow replies (Discord cannot render the HTML itself).
-Captures run at 4x resolution (600px wide) so the later downscale to
-the ~28px cards stays crisp ("4k" sharp, not blurry). Screenshots use
+Captures run at 4x resolution (600px wide) by default, or 8x (1200px
+wide) with --scale 8, so the later downscale to the ~40px cards stays
+crisp ("4k" sharp, not blurry). 8x is the sharpness pick for v6:
+Ronit wants visibly crisp cards, and the extra source detail survives
+the 30x downscale better. Screenshots use
 omit_background, so the card's rounded corners are TRANSPARENT — no
 green felt box around the card. After capturing, run
 scripts/resize_flips.py to shrink them.
@@ -53,7 +56,12 @@ SUIT_NAMES = {"S": "spades", "H": "hearts", "D": "diamonds", "C": "clubs"}
 
 CARD_WIDTH_PX = 150
 CAPTURE_SCALE = 4       # device_scale_factor: screenshots come out at
-                        # 600x840 so the downscale to ~28px stays sharp
+                        # 600x840 so the downscale to ~40px stays sharp.
+                        # --scale 8 captures at 1200x1680 for maximum
+                        # sharpness (v6: Ronit wants visibly crisp,
+                        # 4K-level cards — 8x gives the downscale far
+                        # more detail to work with). Capture cost grows
+                        # with scale; 8x takes ~2x as long as 4x.
 FRAMES = 12            # _setAngle steps, back (180deg) -> face (0deg).
                         # The steps follow the flip's own easing
                         # (cubic-bezier(.45,.05,.25,1) from
@@ -126,13 +134,16 @@ def capture_codes(page, codes: list[str], outdir: Path) -> None:
         # The centre-x tolerance is 20px at 600px capture scale: a pure
         # rotateY under the scene's 1400px perspective shifts the card's
         # projected centre by up to ~9px either way mid-flip (the near
-        # edge is magnified) — that is the real 3D flip, and at the ~28px
-        # ship size it is under half a pixel either way, invisible.
+        # edge is magnified) — that is the real 3D flip, and at the ~40px
+        # ship size it is under a pixel either way, invisible.
         # What must NOT happen is the old lift/tilt drift or deck
         # bleed-through.
         stats = [_opaque_stats(im) for im in imgs]
         centres = [s[0] for s in stats]
-        assert max(centres) - min(centres) <= 20.0, (
+        # Tolerance scales with capture width: the perspective drift is
+        # ~9px at 600px capture scale, ~18px at 1200px (8x).
+        centre_tol = 5.0 * CAPTURE_SCALE
+        assert max(centres) - min(centres) <= centre_tol, (
             f"{code}: card wobbles, centres {['%.1f' % c for c in centres]}"
         )
         assert abs(centres[0] - w / 2) <= 2.0, f"{code}: not centred: {centres[0]:.1f} vs {w / 2}"
@@ -153,11 +164,15 @@ def capture_codes(page, codes: list[str], outdir: Path) -> None:
 
 
 def main() -> None:
+    global CAPTURE_SCALE
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", help="capture a single code, e.g. AS")
     ap.add_argument("--codes", help="capture a comma-separated list, e.g. 7H,8H,9H")
+    ap.add_argument("--scale", type=int, default=4,
+                    help="capture scale (device_scale_factor); 4 = 600x840, 8 = 1200x1680")
     ap.add_argument("--out", default=str(OUT))
     args = ap.parse_args()
+    CAPTURE_SCALE = args.scale
     codes = (
         [args.only]
         if args.only

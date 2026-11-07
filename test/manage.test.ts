@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { getTestDb, type SelenaDb } from "../src/lib/db.js";
+import { type SelenaDb } from "../src/lib/db.js";
+import { getTestDb } from "./testDb.js";
 import { FakeButton, FakeChatInput, FakeModalSubmit } from "../src/lib/testkit.js";
 import type { CommandContext } from "../src/lib/command.js";
 import * as lib from "../src/lib/manage.js";

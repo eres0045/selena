@@ -12,7 +12,8 @@ vi.mock("node:sqlite", () => {
 
 import type { ChatInputCommandInteraction } from "discord.js";
 import { FakeButton, FakeChatInput } from "../src/lib/testkit.js";
-import { getTestDb, type SelenaDb } from "../src/lib/db.js";
+import { type SelenaDb } from "../src/lib/db.js";
+import { getTestDb } from "./testDb.js";
 import { mulberry32 } from "../src/lib/rng.js";
 import {
   GENERAL_QUESTIONS,

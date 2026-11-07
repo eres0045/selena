@@ -31,9 +31,9 @@ function gifHasTransparency(buf: Buffer): boolean {
 const LOOP_EXT = Buffer.from("NETSCAPE2.0");
 
 describe("composeHandStrip (OwO-style compact strips)", () => {
-  it("uses ~28px cards in a half-size (~280px) strip file", () => {
-    expect(STRIP_CARD_W).toBe(28);
-    expect(STRIP_CARD_H).toBe(39);
+  it("uses ~40px cards in a (~280px) strip file", () => {
+    expect(STRIP_CARD_W).toBe(40);
+    expect(STRIP_CARD_H).toBe(56);
     expect(STRIP_STEP).toBeGreaterThan(STRIP_CARD_W); // gap, not overlap
     expect(STRIP_MIN_WIDTH).toBe(280);
   });
@@ -64,11 +64,11 @@ describe("composeHandStrip (OwO-style compact strips)", () => {
     // Padding around the centred hand is transparent…
     expect(frame[(0 * width + 0) * 4 + 3]).toBe(0);
     // …and so is a card's own rounded corner: the first dealer card
-    // starts at x0 = (280 - (28 + 34)) / 2 = 109, y = 0.
+    // starts at x0 = (280 - (40 + 46)) / 2 = 97, y = 0.
     const x0 = Math.floor((STRIP_MIN_WIDTH - (STRIP_CARD_W + STRIP_STEP)) / 2);
     expect(frame[(0 * width + x0) * 4 + 3]).toBe(0);
     // …while the card centre is opaque.
-    expect(frame[(19 * width + (x0 + 14)) * 4 + 3]).toBe(255);
+    expect(frame[(28 * width + (x0 + 20)) * 4 + 3]).toBe(255);
   });
 
   it("animates the newly dealt card and keeps the others still", async () => {

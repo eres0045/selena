@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getTestDb } from "../src/lib/db.js";
+import { getTestDb } from "./testDb.js";
 import { FakeChatInput } from "../src/lib/testkit.js";
 import { awardXp, levelFromXp, rankCard, resetXpCooldowns, xpForLevel } from "../src/lib/levels.js";
 import { checkStarboard, containsBannedWord, containsLink, isSpam } from "../src/lib/automod.js";

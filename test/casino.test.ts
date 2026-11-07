@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { getTestDb, type SelenaDb } from "../src/lib/db.js";
+import { type SelenaDb } from "../src/lib/db.js";
+import { getTestDb } from "./testDb.js";
 import { FakeButton, FakeChatInput } from "../src/lib/testkit.js";
 import { addPoints, getBalance } from "../src/lib/economy.js";
 import {

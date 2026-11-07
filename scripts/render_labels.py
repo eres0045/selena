@@ -13,9 +13,9 @@ Words are whole sprites (fixed strings); totals are composed at reply
 time from the digit glyphs 0-9 plus "?" (digit-q.gif).
 
 Output: assets/cards/labels/word-<lower>.gif, digit-<ch>.gif
-  (digit "?" is digit-q.gif). Word sprites are 14px tall, digits 17px
-  (sized for the ~28px cards: the word is half a card wide in height,
-  so the labels stay readable at the small size).
+  (digit "?" is digit-q.gif). Word sprites are 16px tall, digits 19px
+  (sized for the ~40px cards: the word is just over a quarter of a
+  card tall, so the labels stay readable at phone size).
 
 Usage: python3 scripts/render_labels.py
 """
@@ -32,10 +32,10 @@ OUT = ROOT / "assets" / "cards" / "labels"
 
 FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 SCALE = 4  # render at 4x, Lanczos-downscale to display size
-WORD_FONT_PX = 11  # display size; cap height ~8px (cards are ~28px now)
-DIGIT_FONT_PX = 13  # display size; cap height ~9px
-WORD_H = 14  # fixed sprite height (display px)
-DIGIT_H = 17
+WORD_FONT_PX = 13  # display size; cap height ~9px (cards are ~40px now)
+DIGIT_FONT_PX = 15  # display size; cap height ~11px
+WORD_H = 16  # fixed sprite height (display px)
+DIGIT_H = 19
 STROKE_PX = 1  # dark outline, display px (reads on light theme too)
 WHITE = (255, 255, 255, 255)
 DARK = (32, 34, 37, 255)  # Discord-ish dark, for the outline

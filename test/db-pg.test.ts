@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { newDb } from "pg-mem";
 import pg, { type Pool } from "pg";
-import { getTestDb, translateSql, SelenaDb, SCHEMA } from "../src/lib/db.js";
+import { translateSql, SelenaDb, SCHEMA } from "../src/lib/db.js";
+import { getTestDb } from "./testDb.js";
 import { addPoints, getBalance } from "../src/lib/economy.js";
 import { awardXp, getUserXp } from "../src/lib/levels.js";
 

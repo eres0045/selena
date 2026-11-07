@@ -1,4 +1,3 @@
-import { newDb } from "pg-mem";
 import pg, { Pool, type PoolClient, types as pgTypes } from "pg";
 
 /**
@@ -468,18 +467,9 @@ export function resetDbForTests(): void {
   }
 }
 
-/**
- * In-memory Postgres (pg-mem) with the full schema, for tests. No network,
- * no Supabase needed. NOTE: pg-mem does not implement transaction rollback
- * (BEGIN/ROLLBACK are accepted but rows are not restored), so rollback
- * behaviour is covered by a fake-pool test in test/db-pg.test.ts, not
- * against pg-mem.
- */
-export function getTestDb(): SelenaDb {
-  resetDbForTests();
-  const mem = newDb();
-  const pgMem = mem.adapters.createPg() as unknown as { Pool: new () => Pool };
-  const pool = new pgMem.Pool();
-  db = new SelenaDb(pool);
-  return db;
+/** Install a test-built instance as the shared one (used by test/testDb.ts). */
+export function setDbForTests(instance: SelenaDb): void {
+  db = instance;
 }
+
+

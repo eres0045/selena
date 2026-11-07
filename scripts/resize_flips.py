@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
-"""Shrink the rendered flip GIFs to the cards the bot ships (~28px wide).
+"""Shrink the rendered flip GIFs to the cards the bot ships (~40px wide).
 
-Reads assets/cards/flips/<CODE>.gif (600x840 at 4x capture, 12 frames)
-and rewrites each in place at 28x39 with a high-quality Lanczos
-downscale, so the cards stay crisp instead of blurry, plus a mild
-unsharp on the colour channels only (alpha untouched) to restore the
-edge crispness the 21x downscale softens. Transparency is preserved
+Reads assets/cards/flips/<CODE>.gif (1200x1680 at 8x capture, 12 frames)
+and rewrites each in place at 40x56 with a high-quality Lanczos
+downscale, so the cards stay crisp instead of blurry, plus an unsharp
+pass on the colour channels only (alpha untouched) to restore the
+edge crispness the 30x downscale softens. Transparency is preserved
 (the card's rounded corners stay transparent — no felt box), and the
 GIFs play ONCE (no loop extension) with disposal 2 — they stop on the
 face and never smear mid-flip (see scripts/gifutil.py).
 
-Why 28px: Ronit wants the whole thing half the size of the 50px
-version. The strip file stays ~280px wide so Discord displays the
-cards at about half the v4 size, and the 4x capture (600x840 -> 28x39)
-keeps the small cards sharp.
+Why 8x + strong unsharp: Ronit wants visibly crisp, 4K-level cards.
+The 8x source (1200x1680) gives the 30x downscale far more detail to
+average than 4x did, and a stronger unsharp (radius 1.2, 100%) keeps
+rank/pip edges tight at 40px. Compared by eye at 3x/6x zoom: 8x+100
+is visibly crisper than 4x+60 on face cards and pips, with no halo;
+pushing to 150% adds nothing and starts to fringe. GIF total stays
+~1.6 MB across all 52.
 
-Usage: python3 scripts/resize_flips.py [--width 28]
+Usage: python3 scripts/resize_flips.py [--width 40]
 """
 import argparse
 import sys
@@ -28,6 +31,14 @@ from gifutil import save_play_once_gif
 
 ROOT = Path(__file__).resolve().parent.parent
 FLIPS = ROOT / "assets" / "cards" / "flips"
+
+# Unsharp pass after the downscale (colour channels only, alpha
+# untouched): radius 1.2, 100% — the v6 sharpness pick. Compared by eye
+# at 3x/6x zoom against 4x+60% (softer) and 8x+150% (no better, starts
+# to fringe); 8x+100% is visibly the crispest with no halo.
+UNSHARP_RADIUS = 1.2
+UNSHARP_PERCENT = 100
+UNSHARP_THRESHOLD = 2
 
 
 def resize_gif(path: Path, width: int) -> tuple[int, int, int, int]:
@@ -42,11 +53,15 @@ def resize_gif(path: Path, width: int) -> tuple[int, int, int, int]:
     small: list[Image.Image] = []
     for f in frames:
         down = f.resize((width, height), Image.LANCZOS)
-        # Mild unsharp on the colour channels only: restores edge
-        # crispness after the 21x downscale. Alpha is left alone so no
-        # halo appears around the card's transparent edges.
+        # Unsharp on the colour channels only: restores edge crispness
+        # after the 30x downscale. Alpha is left alone so no halo
+        # appears around the card's transparent edges.
         rgb = down.convert("RGB").filter(
-            ImageFilter.UnsharpMask(radius=1.0, percent=60, threshold=2)
+            ImageFilter.UnsharpMask(
+                radius=UNSHARP_RADIUS,
+                percent=UNSHARP_PERCENT,
+                threshold=UNSHARP_THRESHOLD,
+            )
         )
         rgb.putalpha(down.getchannel("A"))
         small.append(rgb)
@@ -57,7 +72,7 @@ def resize_gif(path: Path, width: int) -> tuple[int, int, int, int]:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--width", type=int, default=28)
+    ap.add_argument("--width", type=int, default=40)
     args = ap.parse_args()
     total = 0
     for path in sorted(FLIPS.glob("*.gif")):
