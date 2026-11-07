@@ -52,6 +52,8 @@ export class FakeChatInput {
   readonly options: FakeOptions;
   readonly user: { id: string; username: string };
   readonly guildId: string;
+  /** Guild the command ran in (discord.js exposes interaction.guild with ownerId). */
+  readonly guild: { ownerId: string } | null;
   readonly memberPermissions: Set<string>;
   readonly memberRoleIds: string[];
   readonly replies: FakeReply[] = [];
@@ -64,6 +66,8 @@ export class FakeChatInput {
     userId?: string;
     username?: string;
     guildId?: string;
+    /** Server owner id — sets `guild.ownerId` like the real interaction. */
+    guildOwnerId?: string;
     permissions?: string[];
     roles?: string[];
   }) {
@@ -71,6 +75,7 @@ export class FakeChatInput {
     this.options = new FakeOptions(opts.options ?? {});
     this.user = { id: opts.userId ?? "user-1", username: opts.username ?? "tester" };
     this.guildId = opts.guildId ?? "guild-1";
+    this.guild = opts.guildOwnerId ? { ownerId: opts.guildOwnerId } : null;
     this.memberPermissions = new Set(opts.permissions ?? []);
     this.memberRoleIds = opts.roles ?? [];
   }
