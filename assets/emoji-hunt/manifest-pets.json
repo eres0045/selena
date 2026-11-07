@@ -1,0 +1,222 @@
+[
+  {
+    "roster_name": "Pocket Slime",
+    "category": "pet",
+    "tier": "common",
+    "file": "pets/pocket_slime.gif",
+    "source_url": "https://emoji.gg/emoji/89807-jumping-slime",
+    "licence": "emoji.gg user upload \u2014 Basic licence (free use; user is not charged for access)",
+    "bytes": 15227,
+    "frames": 8,
+    "animated": true
+  },
+  {
+    "roster_name": "Mini Moth",
+    "category": "pet",
+    "tier": "common",
+    "file": "pets/mini_moth.gif",
+    "source_url": "https://emoji.gg/emoji/36588-tinybutterfly",
+    "licence": "emoji.gg user upload \u2014 Basic licence (free use; user is not charged for access)",
+    "bytes": 12794,
+    "frames": 8,
+    "animated": true
+  },
+  {
+    "roster_name": "Pebble Crablet",
+    "category": "pet",
+    "tier": "common",
+    "file": "pets/pebble_crablet.gif",
+    "source_url": "https://emoji.gg/emoji/5229-crab",
+    "licence": "emoji.gg user upload \u2014 Basic licence (free use; user is not charged for access)",
+    "bytes": 10738,
+    "frames": 4,
+    "animated": true
+  },
+  {
+    "roster_name": "Sprout Buddy",
+    "category": "pet",
+    "tier": "common",
+    "file": "pets/sprout_buddy.gif",
+    "source_url": "https://emoji.gg/emoji/41073-sprout",
+    "licence": "emoji.gg user upload \u2014 Basic licence (free use; user is not charged for access)",
+    "bytes": 1534,
+    "frames": 3,
+    "animated": true
+  },
+  {
+    "roster_name": "Dewdrop",
+    "category": "pet",
+    "tier": "common",
+    "file": "pets/dewdrop.gif",
+    "source_url": "https://emoji.gg/emoji/653039-dropletheart",
+    "licence": "emoji.gg user upload \u2014 Basic licence (free use; user is not charged for access)",
+    "bytes": 33884,
+    "frames": 11,
+    "animated": true
+  },
+  {
+    "roster_name": "Ember Mouse",
+    "category": "pet",
+    "tier": "common",
+    "file": "pets/ember_mouse.gif",
+    "source_url": "https://emoji.gg/emoji/65812-mouseeatsramen",
+    "licence": "emoji.gg user upload \u2014 Basic licence (free use; user is not charged for access)",
+    "bytes": 183637,
+    "frames": 58,
+    "animated": true
+  },
+  {
+    "roster_name": "Flame Fox Pup",
+    "category": "pet",
+    "tier": "uncommon",
+    "file": "pets/flame_fox_pup.gif",
+    "source_url": "https://emoji.gg/emoji/76815-foxwag",
+    "licence": "emoji.gg user upload \u2014 Basic licence (free use; user is not charged for access)",
+    "bytes": 19197,
+    "frames": 14,
+    "animated": true
+  },
+  {
+    "roster_name": "Frost Bunny",
+    "category": "pet",
+    "tier": "uncommon",
+    "file": "pets/frost_bunny.gif",
+    "source_url": "https://emoji.gg/emoji/127931-whiteplushbunnyblink",
+    "licence": "emoji.gg user upload \u2014 Basic licence (free use; user is not charged for access)",
+    "bytes": 12364,
+    "frames": 32,
+    "animated": true
+  },
+  {
+    "roster_name": "Storm Chick",
+    "category": "pet",
+    "tier": "uncommon",
+    "file": "pets/storm_chick.gif",
+    "source_url": "https://emoji.gg/emoji/755936-chickwave",
+    "licence": "emoji.gg user upload \u2014 Basic licence (free use; user is not charged for access)",
+    "bytes": 81687,
+    "frames": 17,
+    "animated": true
+  },
+  {
+    "roster_name": "Shadow Kitten",
+    "category": "pet",
+    "tier": "uncommon",
+    "file": "pets/shadow_kitten.gif",
+    "source_url": "https://emoji.gg/emoji/32744-black-kitten",
+    "licence": "emoji.gg user upload \u2014 Basic licence (free use; user is not charged for access)",
+    "bytes": 121504,
+    "frames": 120,
+    "animated": true
+  },
+  {
+    "roster_name": "Tide Turtle",
+    "category": "pet",
+    "tier": "uncommon",
+    "file": "pets/tide_turtle.gif",
+    "source_url": "https://emoji.gg/emoji/950799-pixelartseaturtle",
+    "licence": "emoji.gg user upload \u2014 Basic licence (free use; user is not charged for access)",
+    "bytes": 68250,
+    "frames": 39,
+    "animated": true
+  },
+  {
+    "roster_name": "Crystal Fox",
+    "category": "pet",
+    "tier": "rare",
+    "file": "pets/crystal_fox.gif",
+    "source_url": "https://emoji.gg/emoji/33555-fox",
+    "licence": "emoji.gg user upload \u2014 Basic licence (free use; user is not charged for access)",
+    "bytes": 251866,
+    "frames": 45,
+    "animated": true
+  },
+  {
+    "roster_name": "Ember Phoenix Chick",
+    "category": "pet",
+    "tier": "rare",
+    "file": "pets/ember_phoenix_chick.gif",
+    "source_url": "https://emoji.gg/emoji/768331-red-phoenix",
+    "licence": "emoji.gg user upload \u2014 Basic licence (free use; user is not charged for access)",
+    "bytes": 13277,
+    "frames": 35,
+    "animated": true
+  },
+  {
+    "roster_name": "Moon Moth",
+    "category": "pet",
+    "tier": "rare",
+    "file": "pets/moon_moth.gif",
+    "source_url": "https://emoji.gg/emoji/9808-purplebutterflyholo",
+    "licence": "emoji.gg user upload \u2014 Basic licence (free use; user is not charged for access)",
+    "bytes": 130640,
+    "frames": 62,
+    "animated": true
+  },
+  {
+    "roster_name": "Thunder Pup",
+    "category": "pet",
+    "tier": "rare",
+    "file": "pets/thunder_pup.gif",
+    "source_url": "https://emoji.gg/emoji/146294-puppydogtailwag",
+    "licence": "emoji.gg user upload \u2014 Basic licence (free use; user is not charged for access)",
+    "bytes": 6172,
+    "frames": 4,
+    "animated": true
+  },
+  {
+    "roster_name": "Mini Dragon",
+    "category": "pet",
+    "tier": "epic",
+    "file": "pets/mini_dragon.gif",
+    "source_url": "https://emoji.gg/emoji/80781-babydragon",
+    "licence": "emoji.gg user upload \u2014 Basic licence (free use; user is not charged for access)",
+    "bytes": 5065,
+    "frames": 16,
+    "animated": true
+  },
+  {
+    "roster_name": "Star Sprite",
+    "category": "pet",
+    "tier": "epic",
+    "file": "pets/star_sprite.gif",
+    "source_url": "https://emoji.gg/emoji/458771-purplespritefairy",
+    "licence": "emoji.gg user upload \u2014 Basic licence (free use; user is not charged for access)",
+    "bytes": 123784,
+    "frames": 127,
+    "animated": true
+  },
+  {
+    "roster_name": "Solar Pup",
+    "category": "pet",
+    "tier": "legendary",
+    "file": "pets/solar_pup.gif",
+    "source_url": "https://emoji.gg/emoji/226925-goldenpuppybark",
+    "licence": "emoji.gg user upload \u2014 Basic licence (free use; user is not charged for access)",
+    "bytes": 11828,
+    "frames": 6,
+    "animated": true
+  },
+  {
+    "roster_name": "Lunar Cat",
+    "category": "pet",
+    "tier": "legendary",
+    "file": "pets/lunar_cat.gif",
+    "source_url": "https://emoji.gg/emoji/68511-catmoon",
+    "licence": "emoji.gg user upload \u2014 Basic licence (free use; user is not charged for access)",
+    "bytes": 5371,
+    "frames": 8,
+    "animated": true
+  },
+  {
+    "roster_name": "Void Wisp",
+    "category": "pet",
+    "tier": "mythic",
+    "file": "pets/void_wisp.gif",
+    "source_url": "https://emoji.gg/emoji/3868-black-ghost",
+    "licence": "emoji.gg user upload \u2014 Basic licence (free use; user is not charged for access)",
+    "bytes": 1245,
+    "frames": 10,
+    "animated": true
+  }
+]
