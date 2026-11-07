@@ -39,8 +39,9 @@ Monster sell prices (exact, from `TIERS.sellPrice` in `src/lib/hunt.ts`):
   sacrificing monsters.
 - **Gems ARE a live currency** (`user_wallet` table, `src/lib/market.ts`):
   `uwu gems` shows the balance and how to earn them; `uwu bal` shows gems
-  on the same one-liner. **Earned from:** crate drops and tower final-boss
-  clears (Small 5 / Big 15 / Main 50 gems). **Spent on:** rare shop items
+  on the same one-liner. **Earned from:** crate drops, tower final-boss
+  clears (Small 5 / Big 15 / Main 50 gems), and **daily quest rewards**
+  (§4.11). **Spent on:** rare shop items
   — the Evolution Stone costs 30 gems (the shop's only gem-priced item).
 - A `gem` custom emoji exists (animated, fallback 💎) as a generic economy
   emoji; no hunt command uses it.
@@ -329,13 +330,49 @@ caps — Mythic 3, UwU 1 — **are** live; see
 - **Pity is Epic EXACTLY** — fixed in Phase 2 (the old code leaked ~20% of
   pity rolls into Legendary+). Proven by a 500-seed test.
 
+## 4.11 Daily quests — LIVE
+
+Commands `uwu quests` (alias `q`), `uwu quests claim`, plus the 🎁 Claim
+button on the quest log (`src/commands/quests.ts`, `src/lib/quests.ts`).
+Tables: `user_quest_progress`, `user_quest_claims` (both keyed by user +
+UTC date + quest id; appended to `SCHEMA` in `src/lib/db.ts` at merge).
+
+- **Daily + global: the same 3 quests for everyone, on every server.**
+  The set is picked deterministically from a 16-quest pool, seeded by the
+  UTC date (FNV-1a → mulberry32 — the same date-seed pattern as the shop
+  stock, §4.3), so every process picks the same 3. Each user tracks their
+  **own** progress against the shared set; progress and claims are global
+  per user (follow you across servers, like the profile).
+- **Reset at midnight UTC** (same as the shop refresh). The log embed
+  shows a countdown ("Next quests in Xh Ym"). A new day starts fresh:
+  no progress or claims carry over.
+- **Rewards are gold + gems only — no new currency.** Easy quests pay
+  500 gold; medium 1,000–2,000 gold; hard 2,500–5,000 gold + gems (up to
+  5 gems). Gold is paid in the guild the claim ran in (gold is
+  guild-scoped); gems are global (`user_wallet`).
+- **Claims pay once per quest per day, in one transaction.** `uwu quests
+  claim` (or the Claim button) claims every completed-but-unclaimed quest;
+  a second claim pays nothing. The button updates the quest message in
+  place — claimed quests show ✅ Claimed on the refreshed embed.
+- **No reroll, no lock in v1** — a shared global set makes per-user reroll
+  wrong, so there is none. Progress is recorded by the action handlers
+  themselves (hunt catch, roll, battle win, casino win, explore discovery,
+  background purchase, daily claim, fuse, tower floor clear, About Me set)
+  via `recordQuestProgress` — best-effort, wrapped in try/catch so a quest
+  failure never breaks the action. (Fixed 2026-11-07 during the build:
+  the first version capped progress with `MIN(...)`, which is an aggregate
+  in Postgres — the scalar form `LEAST(...)` is used instead; see
+  §6.7 finding 16, now closed.)
+
 ## Verified
 
-- **Tests:** `npm test` 2026-11-07 — 627/627 passed (22 files), including
+- **Tests:** `npm test` 2026-11-07 — 755/755 passed (29 files), including
   `test/market.test.ts` (38), `test/towers.test.ts` (31),
   `test/towerDiscovery.test.ts` (22), `test/guilds.test.ts` (37+3),
   `test/battle.test.ts` (47), `test/hunt.test.ts` (76),
-  `test/feeds.test.ts` (20), `test/world.test.ts` (25).
+  `test/feeds.test.ts` (20), `test/world.test.ts` (25). Quests
+  (2026-11-07): `test/quests.test.ts` 22/22 (lib, commands, Claim
+  button) + `test/questHooks.test.ts` 27/27 (all 10 progress hooks).
 - **Code read:** `src/lib/market.ts`, `src/commands/market.ts`,
   `src/lib/towers.ts`, `src/commands/towers.ts`, `src/lib/guilds.ts`,
   `src/commands/guilds.ts`, `src/lib/battle.ts`, `src/commands/battle.ts`,

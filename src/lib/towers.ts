@@ -14,6 +14,7 @@ import {
   type TeamMemberInput,
 } from "./battle.js";
 import type { SelenaDb } from "./db.js";
+import { recordQuestProgress } from "./quests.js";
 
 /**
  * Towers (Phase 2, design docs/hunt-world-phase2-design.md §4 + §9).
@@ -1060,6 +1061,12 @@ export async function climbFloor(
       if (res?.leveledUp) levelUps.push(`🌟 ${m.monster.name} reached Lv ${res.newLevel}!`);
     }
     await addPoints(tx, input.guildId, input.userId, gold, `tower floor ${floor}`);
+    // Quest progress (best-effort — caught, so it never fails the settle).
+    try {
+      await recordQuestProgress(tx, input.userId, ["tower_floor"]);
+    } catch (e) {
+      console.error("uwu: quest progress failed:", e instanceof Error ? e.message : e);
+    }
     if (crateTier) await grantCrate(tx, input.userId, crateTier);
     if (cleared) {
       for (const [material, qty] of CLEAR_MATERIALS[tower.type]) {

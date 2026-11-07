@@ -132,7 +132,7 @@ describe("tokenizeArgs", () => {
 
 describe("resolveCommand / alias table", () => {
   it("resolves every command by name", () => {
-    expect(allCommands.length).toBe(61);
+    expect(allCommands.length).toBe(62);
     for (const cmd of allCommands) {
       expect(resolveCommand(cmd.name)).toBe(cmd);
     }
@@ -148,6 +148,8 @@ describe("resolveCommand / alias table", () => {
     expect(resolveCommand("h")?.name).toBe("help");
     expect(resolveCommand("lbxp")?.name).toBe("leaderboard-xp");
     expect(resolveCommand("rr")?.name).toBe("reactionrole");
+    expect(resolveCommand("q")?.name).toBe("quests");
+    expect(resolveCommand("quests")?.name).toBe("quests");
   });
 
   it("has no alias collisions and every command has a name, description and aliases", () => {

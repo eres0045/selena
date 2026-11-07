@@ -10,6 +10,7 @@ import {
   powerBudgetOf,
 } from "./monsterLevels.js";
 import type { SelenaDb } from "./db.js";
+import { recordQuestProgress } from "./quests.js";
 
 /**
  * 1v1 monster battles (Phase 2, design docs/hunt-world-phase2-design.md §5).
@@ -992,6 +993,13 @@ export async function settleBattle(
         "ON CONFLICT (user_id) DO UPDATE SET streak = EXCLUDED.streak";
       await tx.prepare(upsert).run(input.aId, aStreak);
       await tx.prepare(upsert).run(input.bId, bStreak);
+      // Quest progress (best-effort — a quest failure must never fail
+      // the settle, so it is caught inside the transaction).
+      try {
+        await recordQuestProgress(tx, input.winner === "A" ? input.aId : input.bId, ["battle_win"]);
+      } catch (e) {
+        console.error("uwu: quest progress failed:", e instanceof Error ? e.message : e);
+      }
     }
     return { aLeveledUp: a.leveledUp, bLeveledUp: b.leveledUp, aStreak, bStreak };
   });

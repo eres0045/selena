@@ -720,6 +720,26 @@ CREATE TABLE IF NOT EXISTS user_backgrounds (
   purchased_at BIGINT NOT NULL,
   PRIMARY KEY (user_id, bg_id)
 );
+
+-- Daily global quests (2026-11-07). Quest progress is GLOBAL
+-- (keyed by user_id alone, like the profile and the world): the 3
+-- quests are the same for everyone each UTC day; each user tracks
+-- their own progress against them. Claims pay once per quest per day.
+CREATE TABLE IF NOT EXISTS user_quest_progress (
+  user_id TEXT NOT NULL,
+  date TEXT NOT NULL,
+  quest_id TEXT NOT NULL,
+  progress INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, date, quest_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_quest_claims (
+  user_id TEXT NOT NULL,
+  date TEXT NOT NULL,
+  quest_id TEXT NOT NULL,
+  claimed_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, date, quest_id)
+);
 `;
 
 let db: SelenaDb | null = null;

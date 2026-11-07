@@ -36,6 +36,7 @@ import {
   type TowerRow,
 } from "../lib/towers.js";
 import { resolveCurrentArea } from "./world.js";
+import { recordQuestProgress } from "../lib/quests.js";
 
 /**
  * Towers (Phase 2, design docs/hunt-world-phase2-design.md §4).
@@ -434,6 +435,11 @@ export const commands: Command[] = [
         if (secureFloat() < EXPLORE_DISCOVERY_CHANCE) {
           const tower = undiscovered[Math.floor(secureFloat() * undiscovered.length)]!;
           await discoverTower(ctx.db, inv.user.id, tower.towerId, now);
+          try {
+            await recordQuestProgress(ctx.db, inv.user.id, ["explore_discover"]);
+          } catch (e) {
+            console.error("uwu: quest progress failed:", e instanceof Error ? e.message : e);
+          }
           return (
             `🔍 You found something! 🗼 ${tower.name} — a ${towerSizeLabel(tower)} tower, ` +
             `${tower.floors} floors, in ${areaName} · enter at level ${tower.levelReq}+. ` +

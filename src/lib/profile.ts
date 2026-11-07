@@ -1,6 +1,7 @@
 import type { SelenaDb } from "./db.js";
 import { addPoints, getBalance } from "./economy.js";
 import { DEFAULT_BG_ID, getBackground, listBackgrounds } from "./profileBgs.js";
+import { recordQuestProgress } from "./quests.js";
 
 /**
  * Profiles — About Me, profile backgrounds, global rank (Worker C).
@@ -65,6 +66,12 @@ export async function setAbout(
   await db
     .prepare("UPDATE user_profiles SET about = ? WHERE user_id = ?")
     .run(about, userId);
+  // Quest progress (best-effort — a quest failure never fails the set).
+  try {
+    await recordQuestProgress(db, userId, ["about"]);
+  } catch (e) {
+    console.error("uwu: quest progress failed:", e instanceof Error ? e.message : e);
+  }
   return { ok: true, about };
 }
 
@@ -116,6 +123,12 @@ export async function buyBackground(
       await tx
         .prepare("INSERT INTO user_backgrounds (user_id, bg_id, purchased_at) VALUES (?, ?, ?)")
         .run(userId, bg.id, nowMs);
+      // Quest progress (best-effort — caught, so it never fails the buy).
+      try {
+        await recordQuestProgress(tx, userId, ["bg_buy"]);
+      } catch (e) {
+        console.error("uwu: quest progress failed:", e instanceof Error ? e.message : e);
+      }
       const remaining = (await getBalance(tx, guildId, userId)).points;
       return { remainingGold: remaining };
     });

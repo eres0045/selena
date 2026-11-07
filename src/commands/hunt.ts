@@ -61,6 +61,8 @@ import {
 import { findWorldArea, wildLevelForArea } from "../lib/world.js";
 import { awardGuildXpBestEffort } from "../lib/guilds.js";
 import { secureFloat } from "../lib/rng.js";
+import { recordQuestProgress, type QuestKind } from "../lib/quests.js";
+import type { SelenaDb } from "../lib/db.js";
 
 /**
  * Hunt world — Phase 1 commands (design docs/hunt-world-design.md):
@@ -79,6 +81,28 @@ import { secureFloat } from "../lib/rng.js";
  */
 
 type Inv = CommandInvocation;
+
+/**
+ * Quest kinds a catch of this tier counts for (quests.ts pool):
+ * Common/Uncommon → catch; Rare/Epic → catch + catch_rare;
+ * Legendary/Mythic/UwU → catch + catch_rare + catch_legendary.
+ */
+export function questKindsForCatch(tier: Tier): QuestKind[] {
+  if (tier === "Legendary" || tier === "Mythic" || tier === "UwU") {
+    return ["catch", "catch_rare", "catch_legendary"];
+  }
+  if (tier === "Rare" || tier === "Epic") return ["catch", "catch_rare"];
+  return ["catch"];
+}
+
+/** Best-effort quest progress: a quest write must never break the action. */
+async function recordQuests(db: SelenaDb, userId: string, kinds: QuestKind[]): Promise<void> {
+  try {
+    await recordQuestProgress(db, userId, kinds);
+  } catch (e) {
+    console.error("uwu: quest progress failed:", e instanceof Error ? e.message : e);
+  }
+}
 
 async function replyError(inv: Inv, message: string): Promise<void> {
   await inv.reply({ embeds: [errorEmbed(message).toJSON()], ephemeral: true });
@@ -301,6 +325,7 @@ async function handleHuntButton(inv: any, ctx: CommandContext): Promise<void> {
   }
   // Guild XP (Phase 2 §3.2): 10 per hunt catch, best-effort — the catch
   // already succeeded, so this never throws into the reply.
+  await recordQuests(ctx.db, enc.userId, questKindsForCatch(awarded.monster.tier));
   await awardGuildXpBestEffort(ctx.db, enc.userId, 10);
   const capNote =
     awarded.downgradedFrom !== null && awarded.downgradedReason === "cap"
@@ -402,6 +427,7 @@ export const commands: Command[] = [
       const id = `${Date.now().toString(36)}-${Math.floor(secureFloat() * 1e9).toString(36)}`;
       storeEncounter({ id, guildId: ctx.guildId, userId: inv.user.id, monster, areaId: area.id, level, createdAt: now });
       await inv.reply({ content: huntText(area, monster, level), components: huntButtons(id) });
+      await recordQuests(ctx.db, inv.user.id, ["hunt"]);
     },
   },
   {
@@ -501,6 +527,10 @@ export const commands: Command[] = [
         throw e;
       }
       const newBal = await getBalance(ctx.db, ctx.guildId, inv.user.id);
+      // Quest progress: one roll + the catch kinds per monster pulled.
+      for (const p of pulls) {
+        await recordQuests(ctx.db, inv.user.id, ["roll", ...questKindsForCatch(p.monster.tier)]);
+      }
       // Guild XP (Phase 2 §3.2): 10 per roll pull, best-effort.
       await awardGuildXpBestEffort(ctx.db, inv.user.id, 10 * count);
       const lines = pulls.map((p, i) => {
@@ -574,6 +604,7 @@ export const commands: Command[] = [
         throw e;
       }
       const remaining = await getOwnedCount(ctx.db, ctx.guildId, inv.user.id, monster.id);
+      await recordQuests(ctx.db, inv.user.id, ["fuse"]);
       const stats = leveledStats(monster, fused.newLevel, fused.newFuseLevel);
       const effects = fusedEffects(monster, fused.newFuseLevel);
       await inv.reply({

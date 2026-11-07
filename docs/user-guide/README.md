@@ -12,9 +12,9 @@ the Zenith Esports server, playable in any server it is invited to.
 | [01-core.md](01-core.md) | Prefix router, help system, unknown-command replies, balance / daily / give / leaderboard, levels & rank | **LIVE** |
 | [02-casino.md](02-casino.md) | Slots, blackjack, roulette, coinflip, highlow, mines, scratch — rules, payouts, presentation | **LIVE** |
 | [03-hunt-world.md](03-hunt-world.md) | Hunt world Phase 1: hunt, roll/gacha, map, zoo, inv, sell, rarity tiers, caps, announcements, roster | **LIVE** |
-| [04-economy.md](04-economy.md) | Sell prices, sacrifice & gems (what actually exists), plus shop / auction / fusion / towers / guilds / battles / crates / announcements / logs | **LIVE** — Phase 2 built 2026-11-07 |
+| [04-economy.md](04-economy.md) | Sell prices, sacrifice & gems (what actually exists), plus shop / auction / fusion / towers / guilds / battles / crates / announcements / logs / daily quests | **LIVE** — Phase 2 built 2026-11-07 |
 | [05-phase2-design-index.md](05-phase2-design-index.md) | Full index of the Phase 2 design: world map, towers, guilds, battles, levels/fusion, spawn cooldowns, auction, shop, crates, announcements/logs | **LIVE** — built 2026-11-07, tests 593/593 |
-| [06-command-reference.md](06-command-reference.md) | Every command (all 57) in one table, plus games, moderation, utility, starboard, automod, timers | **LIVE** |
+| [06-command-reference.md](06-command-reference.md) | Every command (all 62) in one table, plus games, moderation, utility, starboard, automod, timers | **LIVE** |
 
 ## Reading the status labels
 

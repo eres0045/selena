@@ -1,4 +1,5 @@
 import type { SelenaDb } from "./db.js";
+import { recordQuestProgress } from "./quests.js";
 
 export const DAILY_AMOUNT = 100;
 export const DAILY_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24h
@@ -116,6 +117,12 @@ export async function claimDaily(
   }
   await db.prepare("UPDATE users SET last_daily = ? WHERE guild_id = ? AND user_id = ?").run(nowMs, guildId, userId);
   await addPoints(db, guildId, userId, DAILY_AMOUNT, "daily");
+  // Quest progress (best-effort — a quest failure never fails the claim).
+  try {
+    await recordQuestProgress(db, userId, ["daily"]);
+  } catch (e) {
+    console.error("uwu: quest progress failed:", e instanceof Error ? e.message : e);
+  }
   return { ok: true, amount: DAILY_AMOUNT, nextAvailableAt: nowMs + DAILY_COOLDOWN_MS };
 }
 

@@ -31,6 +31,7 @@ import * as feeds from "./feeds.js";
 import * as towers from "./towers.js";
 import * as market from "./market.js";
 import * as profile from "./profile.js";
+import * as quests from "./quests.js";
 
 /** Command modules that do not exist yet (empty when the registry is complete). */
 export const PENDING_MODULES: readonly string[] = [];
@@ -55,6 +56,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   towers: "Towers",
   market: "Market",
   profile: "Profile",
+  quests: "Quests",
 };
 
 interface CommandModule {
@@ -81,6 +83,7 @@ const MODULES: { key: string; module: CommandModule }[] = [
   { key: "towers", module: towers },
   { key: "market", module: market },
   { key: "profile", module: profile },
+  { key: "quests", module: quests },
 ];
 
 function toHelpGroup(key: string, cmds: Command[]): HelpGroup {

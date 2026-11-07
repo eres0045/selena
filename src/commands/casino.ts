@@ -44,8 +44,19 @@ import {
 } from "../lib/casino.js";
 import { secureFloat } from "../lib/rng.js";
 import { SLOT_SPIN, VISUAL_SUSPENSE, sleep } from "../lib/visualgames.js";
+import { recordQuestProgress, type QuestKind } from "../lib/quests.js";
+import type { SelenaDb } from "../lib/db.js";
 
 type Inv = CommandInvocation;
+
+/** Best-effort quest progress: a quest write must never break the game. */
+async function recordQuests(db: SelenaDb, userId: string, kinds: QuestKind[]): Promise<void> {
+  try {
+    await recordQuestProgress(db, userId, kinds);
+  } catch (e) {
+    console.error("uwu: quest progress failed:", e instanceof Error ? e.message : e);
+  }
+}
 
 async function replyError(inv: Inv, message: string): Promise<void> {
   await inv.reply({ content: message });
@@ -179,6 +190,7 @@ export const commands: Command[] = [
       const spin = slotsSpin(secureFloat);
       const winAmount = bet * spin.multiplier;
       if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, inv.user.id, winAmount, "slots win");
+      if (winAmount > 0) await recordQuests(ctx.db, inv.user.id, ["casino_win"]);
       const balance = (await getBalance(ctx.db, ctx.guildId, inv.user.id)).points;
       const outcome =
         spin.multiplier > 0
@@ -216,6 +228,11 @@ export const commands: Command[] = [
         const settled = settleBlackjack(game.playerHand, game.dealerHand);
         const winAmount = Math.floor(bet * settled.multiplier);
         if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, inv.user.id, winAmount, "blackjack win");
+        // A push returns the stake (multiplier 1) — only a real
+        // blackjack counts as a win for quests.
+        if (settled.outcome === "player_blackjack") {
+          await recordQuests(ctx.db, inv.user.id, ["casino_win"]);
+        }
         endBlackjackGame(game.id);
         const footerLine =
           settled.outcome === "player_blackjack"
@@ -261,6 +278,7 @@ export const commands: Command[] = [
       const result = rouletteOutcome(betOn, rouletteRoll());
       const winAmount = bet * result.multiplier;
       if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, inv.user.id, winAmount, "roulette win");
+      if (winAmount > 0) await recordQuests(ctx.db, inv.user.id, ["casino_win"]);
       const balance = (await getBalance(ctx.db, ctx.guildId, inv.user.id)).points;
       const outcome = result.win
         ? `${emoji("party")} You won **${fmt(winAmount)} gold** (${result.multiplier}x)!`
@@ -296,6 +314,7 @@ export const commands: Command[] = [
       const result = coinflipOutcome(guess, secureFloat());
       const winAmount = Math.floor(bet * result.multiplier);
       if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, inv.user.id, winAmount, "coinflip win");
+      if (result.win) await recordQuests(ctx.db, inv.user.id, ["casino_win", "coinflip_win"]);
       const balance = (await getBalance(ctx.db, ctx.guildId, inv.user.id)).points;
       const outcome = result.win
         ? `${emoji("party")} You won **${fmt(winAmount)} gold** (1.9x)!`
@@ -441,6 +460,10 @@ async function handleBlackjackButton(inv: any, ctx: CommandContext): Promise<voi
     const settled = settleBlackjack(game.playerHand, game.dealerHand);
     const winAmount = Math.floor(game.bet * settled.multiplier);
     if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, game.userId, winAmount, "blackjack win");
+    // A push returns the stake — only a real win counts for quests.
+    if (settled.outcome === "win" || settled.outcome === "player_blackjack") {
+      await recordQuests(ctx.db, game.userId, ["casino_win"]);
+    }
     endBlackjackGame(game.id);
     const resultNote =
       settled.outcome === "player_blackjack"
@@ -586,6 +609,7 @@ async function handleMinesButton(inv: any, ctx: CommandContext): Promise<void> {
   if (action === "cashout") {
     const cashOut = minesCashOut(game);
     if (cashOut > 0) await creditWin(ctx.db, ctx.guildId, game.userId, cashOut, "mines cashout");
+    if (cashOut > 0) await recordQuests(ctx.db, game.userId, ["casino_win"]);
     const mult = minesMultiplier(game.mines, game.safePicks).toFixed(2);
     endMinesGame(game.id);
     await inv.editReply({
@@ -617,6 +641,7 @@ async function handleMinesButton(inv: any, ctx: CommandContext): Promise<void> {
     // Board cleared — every safe tile revealed. Bank the max payout.
     const cashOut = minesCashOut(game);
     if (cashOut > 0) await creditWin(ctx.db, ctx.guildId, game.userId, cashOut, "mines cleared");
+    if (cashOut > 0) await recordQuests(ctx.db, game.userId, ["casino_win"]);
     endMinesGame(game.id);
     await inv.editReply({
       content: minesText(game, `🏆 You cleared the board! You won ${fmt(cashOut)} gold!`, "cleared"),
@@ -693,6 +718,7 @@ async function handleHighlowButton(inv: any, ctx: CommandContext): Promise<void>
   if (action === "cashout") {
     const cashOut = highlowCashOut(game);
     if (cashOut > 0) await creditWin(ctx.db, ctx.guildId, game.userId, cashOut, "highlow cashout");
+    if (cashOut > 0) await recordQuests(ctx.db, game.userId, ["casino_win"]);
     const mult = game.multiplier.toFixed(2);
     endHighlowGame(game.id);
     await inv.editReply({

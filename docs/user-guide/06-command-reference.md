@@ -1,8 +1,8 @@
-# 06 — Command reference (all 61) + misc live systems
+# 06 — Command reference (all 62) + misc live systems
 
 **Status: LIVE.** Every command below is implemented in `src/`, in the live
 registry (`src/commands/index.ts`), and deployed. Counted from the registry:
-**61 commands** across 14 modules.
+**62 commands** across 15 modules.
 
 ## 6.1 Full command table
 
@@ -82,6 +82,12 @@ registry (`src/commands/index.ts`), and deployed. Counted from the registry:
 | `profile` | `p` | `[bg <name>]` | Your profile card — an 800×500 animated GIF image attachment (level, global rank, XP bar, gold, gems, About Me, monsters caught, guild); `uwu profile bg <name>` equips a background you own |
 | `bg` | `background` | `<name>` | Equip a profile background you own, by name or id (prefix match works); the free Default always equips |
 | `about` | `aboutme` | `[text...]` | Set your About Me line (max 100 chars; @everyone/@here and Discord invite links are stripped); empty shows the current line |
+
+### Quests (1) — details in [04-economy.md §4.11](04-economy.md#411-daily-quests--live)
+
+| Command | Aliases | Args | Notes |
+|---|---|---|---|
+| `quests` | `q` | `[claim]` | Today's 3 daily quests (same for everyone, reset midnight UTC) as an embed with a 🎁 Claim button; `uwu quests claim` claims every completed quest (gold + gems, once each) |
 
 ### Announcements (4) — Phase 2
 
@@ -167,7 +173,7 @@ option is random. Tests prove the distribution covers all 4 slots.
   when the count grows further, and **no removal on reaction-remove**.
 - **Is it the only embed the bot sends? No.** Other embeds: the red
   `errorEmbed` ("That didn't work"), the help embed, the daily-reward embed,
-  and the Mythic/UwU catch embed. Within games/mod/utility, success replies
+  the quest log embed, and the Mythic/UwU catch embed. Within games/mod/utility, success replies
   are plain text and only errors are embeds.
 
 ## 6.4 Automod
@@ -236,7 +242,7 @@ docs might expect.
 6. **No min/max validation** for mute/timeout minutes, ban `delete-days`,
    modlog `limit`, or remind minutes.
 7. ~~**Help comment is stale** ("all 36 commands fit")~~ — **FIXED in
-   Phase 2** (comment now says 61; registry is 61).
+   Phase 2** (comment now says 62; registry is 62).
 8. **Starboard triggers on ANY reaction**, not just ⭐.
 9. **Automod's warn branch is unreachable** with current settings (all
    violations delete).
@@ -252,13 +258,25 @@ docs might expect.
     crates come from tower floors and the shop only.
 15. **Pity is Epic EXACTLY** (Phase 2 fix) — the old code leaked ~20% of
     pity rolls into Legendary+; the design doc always said Epic-only.
+16. **Quest progress recording — FIXED during the build** (found
+    2026-11-07 by the quests tests, fixed the same day): the first
+    version of `recordQuestProgress` capped progress with
+    `MIN(progress + ?, ?)` in its UPDATE, but `MIN` is an aggregate
+    in Postgres — there is no two-argument scalar `MIN` (the scalar form
+    is `LEAST`). Fixed to `LEAST(...)` in `src/lib/quests.ts`; the
+    increment test also moved to 2026-11-08 (all three of 2026-11-07's
+    quests have target 1, so an n=2 increment is correctly capped to 1).
+    `test/quests.test.ts` is 22/22 green.
 
 ## Verified
 
-- **Tests:** `npm test` 2026-11-07 — 679/679 passed (24 files), including
-  `test/games.test.ts`, `test/mod.test.ts`, `test/utility.test.ts`,
-  `test/boot.test.ts`, plus the Phase 2 test files and the new
-  `test/profile.test.ts` (39 tests: buy/equip/about/rank/shop-bg/real render).
+- **Tests:** `npx vitest run` 2026-11-07 — 755/755 passed (29 files),
+  including `test/games.test.ts`, `test/mod.test.ts`, `test/utility.test.ts`,
+  `test/boot.test.ts`, plus the Phase 2 test files, the new
+  `test/profile.test.ts` (39 tests: buy/equip/about/rank/shop-bg/real render),
+  and the new `test/quests.test.ts` (22/22) + `test/questHooks.test.ts`
+  (27/27, all 10 progress hooks).
+  `npx tsc --noEmit` clean.
 - **Code read:** `src/commands/games.ts`, `src/commands/mod.ts`,
   `src/commands/utility.ts`, `src/lib/games.ts`, `src/lib/trivia.ts`,
   `src/lib/automod.ts`, `src/index.ts`, plus `src/lib/db.ts`,
