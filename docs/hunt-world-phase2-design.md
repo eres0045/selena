@@ -141,7 +141,7 @@ One shared world across **all of Discord** (every server with the bot). The 4 Ph
 |---|---|
 | Total towers | **30** across the world |
 | Types | Small (10 floors) · Big (20 floors) · Main (50 floors) |
-| Party | **Party size depends on the tower** (Ron's rule): Small tower up to 2 players, Big tower up to 4, Main tower up to 6 (working defaults, unconfirmed — §12). Each player brings their monsters (battle team = top 3 per player, Phase 1 §2.3) |
+| Party | **Party size is a RECOMMENDED MINIMUM, not a cap** (Ron's rule): Small tower recommends 2 players, Big 4, Main 6 — but solo is allowed (hard) and larger parties are allowed too; it's the player's choice. Each player brings their monsters (battle team = top 3 per player, Phase 1 §2.3) |
 | Solo | Allowed, but needs the level requirement and is **hard** — needs strong pets/monsters (Phase 1 stat bands apply; solo players face the same floors with 3 monsters instead of up to 12) |
 | Floors | Each floor = a set of wild monsters to defeat (using Phase 1 stats + the 15 status effects). Mini-boss every **5th floor** (working default). Final boss on the top floor. |
 | Checkpoints | **Every floor.** Stop anytime, resume later, change party members between sessions. Progress is stored per player/party in Supabase (survives redeploys). |
@@ -178,7 +178,7 @@ Ron's message said "2 small tower with 10 floor and 2 big like 20 floor and one 
 
 ### 4.6 Tower commands (working defaults)
 
-`uwu towers` (list towers in your region with floors + cooldown status) · `uwu tower <name>` (detail: floors, requirements, cooldown timer) · `uwu party invite @user` (form a party — size depends on the tower: Small 2, Big 4, Main 6) · `uwu tower enter <name>` (start/resume a run from your checkpoint) · `uwu tower leave` (stop at a checkpoint; progress saved).
+`uwu towers` (list towers in your region with floors + cooldown status) · `uwu tower <name>` (detail: floors, requirements, cooldown timer) · `uwu party invite @user` (form a party — recommended minimum depends on the tower: Small 2, Big 4, Main 6; solo or larger parties allowed) · `uwu tower enter <name>` (start/resume a run from your checkpoint) · `uwu tower leave` (stop at a checkpoint; progress saved).
 
 ---
 
