@@ -364,7 +364,7 @@ After a high-tier monster is caught (by hunt, roll, or auto-hunt — **any** sou
 | Legendary | Crystal Crate | Big tower final boss, Main tower floors |
 | Mythic | Void Crate | Main tower final boss only |
 
-- **Opening a crate** (`uwu open <crate>` — working default command, unconfirmed): the crate is consumed and its contents are revealed in plain text. Contents are random within the crate's tier band — a Wooden Cache never contains Mythic loot; a Void Cache never contains Commons.
+- **Opening a crate** (`uwu open <crate>` — working default command, unconfirmed): the crate is consumed and its contents are revealed in plain text. Contents are random within the crate's tier band — a Wooden Crate never contains Mythic loot; a Void Crate never contains Commons.
 - Crate drop rates are unconfirmed (§10) — working default: a crate drops on ~10% of tower floor clears, ~5% of hunts, 100% from final bosses (one crate of the tower's tier).
 
 ### 9.3 Drops list (what can drop, and from where)
