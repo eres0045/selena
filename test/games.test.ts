@@ -378,7 +378,7 @@ describe("/tictactoe command", () => {
 
   it("errors with no opponent", async () => {
     const fake = await run("tictactoe", {});
-    expect(replyText(fake)).toMatch(/Something went wrong|opponent/i);
+    expect(replyText(fake)).toMatch(/That didn't work|opponent/i);
   });
 });
 
@@ -631,7 +631,7 @@ describe("/giveaway command", () => {
 
   it("errors with no prize", async () => {
     const fake = await run("giveaway", { duration: 60, winners: 1 });
-    expect(replyText(fake)).toMatch(/Something went wrong|prize/i);
+    expect(replyText(fake)).toMatch(/That didn't work|prize/i);
   });
 });
 
@@ -684,7 +684,7 @@ describe("/poll command", () => {
 
   it("errors with no question", async () => {
     const fake = await run("poll", { option1: "A", option2: "B" });
-    expect(replyText(fake)).toMatch(/Something went wrong|question/i);
+    expect(replyText(fake)).toMatch(/That didn't work|question/i);
   });
 });
 

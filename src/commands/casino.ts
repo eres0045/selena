@@ -410,7 +410,7 @@ export const commands: Command[] = [
   },
   {
     name: "coinflip",
-    description: "Flip a coin. Call it right and win 1.9x your bet.",
+    description: "Flip a coin — `uwu cf 10 heads`. Call it right and win 1.9x your bet.",
     aliases: ["cf", "flip", "coin"],
     args: [{ name: "bet", type: "integer", required: true }, { name: "guess", type: "string", required: true }],
     async execute(inv, ctx) {
@@ -418,7 +418,7 @@ export const commands: Command[] = [
       if (bet === null) return;
       const guess = inv.options.getString("guess");
       if (guess !== "heads" && guess !== "tails") {
-        await replyError(inv, "Guess must be heads or tails.");
+        await replyError(inv, "Heads or tails? Try `uwu cf 10 heads`.");
         return;
       }
       const placed = await placeBet(ctx.db, ctx.guildId, inv.user.id, bet, "coinflip");
@@ -470,7 +470,7 @@ export const commands: Command[] = [
   },
   {
     name: "highlow",
-    description: "Guess whether the next card is higher or lower. Win pays 1.9x, a tie pushes your bet back.",
+    description: "Guess whether the next card is higher or lower — `uwu hl 10 higher`. Win pays 1.9x, a tie pushes your bet back.",
     aliases: ["hl"],
     args: [{ name: "bet", type: "integer", required: true }, { name: "guess", type: "string", required: true }],
     async execute(inv, ctx) {
@@ -478,7 +478,7 @@ export const commands: Command[] = [
       if (bet === null) return;
       const guess = inv.options.getString("guess");
       if (guess !== "higher" && guess !== "lower") {
-        await replyError(inv, "Guess must be higher or lower.");
+        await replyError(inv, "Higher or lower? Try `uwu hl 10 higher`.");
         return;
       }
       if (!(await checkBalance(inv, ctx, bet))) return;

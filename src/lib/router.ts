@@ -379,7 +379,7 @@ export async function handlePrefixMessage(
   } catch (e) {
     console.error("uwu: prefix command error:", e instanceof Error ? e.message : e);
     try {
-      await inv.reply({ embeds: [errorEmbed("Something went wrong running that.")] });
+      await inv.reply({ embeds: [errorEmbed("Couldn't run that — try again in a bit.")] });
     } catch {
       /* already replied / no channel — nothing to do */
     }

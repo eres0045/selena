@@ -199,7 +199,7 @@ export async function start(): Promise<void> {
       console.error("Selena: interaction error:", e instanceof Error ? e.message : e);
       try {
         if (interaction.isRepliable()) {
-          await interaction.reply({ embeds: [errorEmbed("Something went wrong running that.")], ephemeral: true });
+          await interaction.reply({ embeds: [errorEmbed("Couldn't run that — try again in a bit.")], ephemeral: true });
         }
       } catch {
         /* already replied */

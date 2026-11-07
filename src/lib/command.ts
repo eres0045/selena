@@ -110,7 +110,7 @@ export function selenaEmbed(title: string, description?: string): EmbedBuilder {
 }
 
 export function errorEmbed(message: string): EmbedBuilder {
-  return new EmbedBuilder().setColor(0xef4444).setTitle("Something went wrong").setDescription(message);
+  return new EmbedBuilder().setColor(0xef4444).setTitle("That didn't work").setDescription(message);
 }
 
 export function pointsEmbed(title: string, description: string): EmbedBuilder {

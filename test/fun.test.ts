@@ -234,7 +234,7 @@ describe("/8ball command", () => {
 
   it("errors when no question is given", async () => {
     const fake = await run("8ball", {});
-    expect(replyText(fake)).toMatch(/Something went wrong|question/i);
+    expect(replyText(fake)).toMatch(/That didn't work|question/i);
   });
 });
 
@@ -271,7 +271,7 @@ describe("/ship command", () => {
 
   it("errors when a user is missing", async () => {
     const fake = await run("ship", { user1: { id: "u1", username: "Alice" } });
-    expect(replyText(fake)).toMatch(/Something went wrong|Pick two/i);
+    expect(replyText(fake)).toMatch(/That didn't work|Pick two/i);
   });
 });
 
@@ -283,7 +283,7 @@ describe("/rate command", () => {
 
   it("errors when nothing is given to rate", async () => {
     const fake = await run("rate", {});
-    expect(replyText(fake)).toMatch(/Something went wrong|what to rate/i);
+    expect(replyText(fake)).toMatch(/That didn't work|what to rate/i);
   });
 });
 
@@ -320,7 +320,7 @@ describe("/joke, /roast, /compliment, /wouldyourather, /truthordare commands", (
 
   it("/truthordare errors on an invalid kind", async () => {
     const fake = await run("truthordare", { kind: "spicy" });
-    expect(replyText(fake)).toMatch(/Something went wrong|truth.*dare.*random/i);
+    expect(replyText(fake)).toMatch(/That didn't work|truth.*dare.*random/i);
   });
 });
 
@@ -332,7 +332,7 @@ describe("/uwu command", () => {
 
   it("errors when no text is given", async () => {
     const fake = await run("uwu", {});
-    expect(replyText(fake)).toMatch(/Something went wrong|text/i);
+    expect(replyText(fake)).toMatch(/That didn't work|text/i);
   });
 });
 
