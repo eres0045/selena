@@ -4,16 +4,19 @@ user SEE the flip/spin/reveal, then the result').
 Blackjack/high-low are already visual (card flip strips) and are NOT
 touched. This script builds the assets for the other four games:
 
-  * coinflip — flip.gif: the $ coin spinning on a 700x360 canvas
-    (same squash-spin as the emoji coin, rebuilt big); heads.png /
-    tails.png: the landed faces on the same canvas. Both faces are
-    PIL-drawn (the emoji.gg $ face carries a faint stock watermark
-    that shows at 320px, so heads is a clean redrawn $ disc in the
-    same style; tails is a star-emboss disc).
+  * coinflip — flip.gif: a real TOSS, like a camera filming it — the
+    coin goes UP, gets BIG as it comes toward the viewer, comes DOWN
+    spinning fast, and the view zooms in close as it lands edge-on
+    (neutral — the face is revealed by the edit to heads/tails.png).
+    heads.png / tails.png: TIGHT CLOSE-UPS of the landed face, the
+    coin nearly filling the frame. Both faces are PIL-drawn (the
+    emoji.gg $ face carries a faint stock watermark that shows at
+    320px, so heads is a clean redrawn $ disc in the same style;
+    tails is a star-emboss disc).
   * slots — spin.gif: the machine with all three reels scrolling
     (seamless loop, never settles on a combination); machine.gif: the
     machine frame with TRANSPARENT reel windows; tiles/<key>.gif: one
-    150x170 reel tile per symbol (Twemoji art, CC-BY, + a PIL "7").
+    69x78 reel tile per symbol (Twemoji art, CC-BY, + a PIL "7").
     The settled strip is composed at reply time by src/lib/visualgames.ts
     from the real spin result — never a canned 7-7-7.
   * roulette — spin.gif: the 37-pocket European wheel spinning with the
@@ -35,6 +38,18 @@ Every asset has a TRANSPARENT background (the standing bg rule):
 nothing is shipped without compositing it on Discord dark (#313338)
 first — see verify_contact_sheet() at the end, which the author must
 VIEW before committing.
+
+SMALL BUT SHARP (Ronit 2026-11-07): the shipped files are SMALL
+(~240-320px wide) but rendered at 2x+ and Lanczos-downscaled with an
+unsharp pass — the same trick as the card strips. Slots/roulette/
+scratch are drawn at their original ~700px size (≈2.2x the ship
+size) and downscaled at save time; the coin is drawn at exactly 2x
+its ship size. If a visual can't stay readable small, prefer a
+tighter crop/zoom on the important part over a bigger image.
+
+Ship sizes (what Discord displays, what src/lib/visualgames.ts
+expects): coin 240x140, slots 320x210, roulette 300x240,
+scratch 320x120; slots tiles 69x78, scratch tiles 87x100.
 
 Usage: python3 scripts/render_visual_games.py
 Writes: assets/games/** (+ assets/games/verify/contact-sheet.png)
@@ -96,6 +111,32 @@ def hard_alpha(img: Image.Image, threshold: int = 128) -> Image.Image:
     return r
 
 
+def ship(img: Image.Image, size: tuple[int, int]) -> Image.Image:
+    """Downscale a 2x+ render to its ship size: Lanczos + unsharp on
+    RGB only (alpha is resized untouched, so no halo creeps in)."""
+    from PIL import ImageFilter
+
+    small = img.resize(size, Image.LANCZOS)
+    rgb = small.convert("RGB").filter(
+        ImageFilter.UnsharpMask(radius=2, percent=60, threshold=2))
+    out = rgb.convert("RGBA")
+    out.putalpha(small.getchannel("A"))
+    return out
+
+
+def ship_frames(frames: list[Image.Image], size: tuple[int, int]) -> list[Image.Image]:
+    return [ship(f, size) for f in frames]
+
+
+# Ship sizes: coin 240x140, slots 320x210, roulette 300x240, scratch 320x120.
+COIN_SHIP = (240, 140)
+SLOTS_SHIP = (320, 210)
+SLOTS_TILE_SHIP = (69, 78)
+ROULETTE_SHIP = (300, 240)
+SCRATCH_SHIP = (320, 120)
+SCRATCH_TILE_SHIP = (87, 100)
+
+
 def fetch_twemoji() -> dict[str, Path]:
     """Download the Twemoji PNGs we need (72x72, CC-BY 4.0). Cached in repo."""
     TWEMOJI_DIR.mkdir(parents=True, exist_ok=True)
@@ -141,12 +182,12 @@ def draw_twemoji_symbol(draw: ImageDraw.ImageDraw, img: Image.Image,
 # Coinflip — big spin + landed faces
 # ---------------------------------------------------------------------------
 
-COIN_W, COIN_H = 700, 360
-COIN_D = 320  # coin diameter in the frame
+COIN_W, COIN_H = 480, 280  # render canvas = exactly 2x the 240x140 ship size
 COIN_CX, COIN_CY = COIN_W // 2, COIN_H // 2
+COIN_CLOSE_D = 264  # landed close-up coin diameter (render px -> 132 shipped)
 
 
-def draw_heads_disc() -> Image.Image:
+def draw_heads_disc(d: int = COIN_CLOSE_D) -> Image.Image:
     """Heads: a clean PIL $ coin (same disc construction as tails).
 
     NOTE: the emoji.gg $ face (assets/emoji-animated/coin.gif) carries a
@@ -154,64 +195,89 @@ def draw_heads_disc() -> Image.Image:
     but plainly visible once the face is shown 320px big as the landed
     coin. So heads is drawn clean here instead of reusing that art; the
     disc matches the tails disc so both sides read as one coin.
+    All measurements scale with `d` (the disc is drawn at any size,
+    from the small mid-toss coin to the tight close-up).
     """
-    d = COIN_D
     img = Image.new("RGBA", (d, d), (0, 0, 0, 0))
     dr = ImageDraw.Draw(img)
     c = d // 2
-    dr.ellipse([0, 0, d - 1, d - 1], fill=(212, 175, 55), outline=(150, 110, 20), width=8)
-    dr.ellipse([14, 14, d - 15, d - 15], fill=(240, 200, 80), outline=(200, 160, 50), width=3)
-    dr.ellipse([28, 20, d - 29, d - 60], fill=(255, 220, 130))
+    rim = max(2, d // 40)
+    dr.ellipse([0, 0, d - 1, d - 1], fill=(212, 175, 55), outline=(150, 110, 20), width=rim)
+    inset = max(2, d // 23)
+    dr.ellipse([inset, inset, d - 1 - inset, d - 1 - inset], fill=(240, 200, 80),
+               outline=(200, 160, 50), width=max(1, d // 100))
+    dr.ellipse([d // 11, d // 16, d - 1 - d // 11, d - 1 - d // 5], fill=(255, 220, 130))
     # Embossed $: light highlight offset up-left, dark gold face on top.
-    font = ImageFont.truetype(FONT_BOLD, 210)
-    dr.text((c - 3, c - 4), "$", font=font, fill=(255, 225, 140), anchor="mm")
+    font = ImageFont.truetype(FONT_BOLD, int(d * 0.656))
+    dr.text((c - d // 100, c - d // 80), "$", font=font, fill=(255, 225, 140), anchor="mm")
     dr.text((c, c), "$", font=font, fill=(185, 145, 35), anchor="mm",
-            stroke_width=4, stroke_fill=(130, 95, 15))
+            stroke_width=max(1, d // 80), stroke_fill=(130, 95, 15))
     return hard_alpha(img)
 
 
-def draw_tails_disc() -> Image.Image:
+def draw_tails_disc(d: int = COIN_CLOSE_D) -> Image.Image:
     """Tails: a gold disc with a star emboss — unmistakable vs heads."""
-    d = COIN_D
     img = Image.new("RGBA", (d, d), (0, 0, 0, 0))
     dr = ImageDraw.Draw(img)
     c = d // 2
     # Disc: darker rim, bright face, subtle top-light.
-    dr.ellipse([0, 0, d - 1, d - 1], fill=(212, 175, 55), outline=(150, 110, 20), width=8)
-    dr.ellipse([14, 14, d - 15, d - 15], fill=(240, 200, 80), outline=(200, 160, 50), width=3)
-    dr.ellipse([28, 20, d - 29, d - 60], fill=(255, 220, 130))
+    rim = max(2, d // 40)
+    dr.ellipse([0, 0, d - 1, d - 1], fill=(212, 175, 55), outline=(150, 110, 20), width=rim)
+    inset = max(2, d // 23)
+    dr.ellipse([inset, inset, d - 1 - inset, d - 1 - inset], fill=(240, 200, 80),
+               outline=(200, 160, 50), width=max(1, d // 100))
+    dr.ellipse([d // 11, d // 16, d - 1 - d // 11, d - 1 - d // 5], fill=(255, 220, 130))
     # Star emboss: darker bronze star + a lighter star offset up-left.
-    star = _star_points(c - 2, c - 2, 100, 42)
+    star = _star_points(c - max(1, d // 160), c - max(1, d // 160),
+                        int(d * 0.3125), int(d * 0.131))
     dr.polygon(star, fill=(255, 225, 140))
-    star = _star_points(c, c, 100, 42)
+    star = _star_points(c, c, int(d * 0.3125), int(d * 0.131))
     dr.polygon(star, fill=(176, 138, 32), outline=(120, 90, 20))
     return hard_alpha(img)
 
 
 def build_coinflip(face: Image.Image) -> tuple[Path, Path, Path]:
+    """A real toss, like a camera filming it (Ronit 2026-11-07).
+
+    16 frames x 75ms = 1.2s per toss, looping through the ~2.4s
+    suspense: the coin rises from the bottom, gets BIG as it comes
+    toward the viewer, comes DOWN spinning fast, and the view zooms
+    in close as it lands — ending EDGE-ON (a thin gold sliver), so
+    the toss never leaks the result; the edit to heads/tails.png is
+    the tight close-up that shows what it landed on.
+    """
     out = GAMES / "coinflip"
     out.mkdir(parents=True, exist_ok=True)
-    # Landed faces on the shared 700x360 canvas.
+    # Landed faces: TIGHT CLOSE-UPS — the coin nearly fills the frame.
     heads = Image.new("RGBA", (COIN_W, COIN_H), (0, 0, 0, 0))
-    heads.alpha_composite(face, ((COIN_W - COIN_D) // 2, (COIN_H - COIN_D) // 2))
+    heads.alpha_composite(face, ((COIN_W - COIN_CLOSE_D) // 2,
+                                 (COIN_H - COIN_CLOSE_D) // 2))
     heads_path = out / "heads.png"
-    heads.save(heads_path)
+    ship(heads, COIN_SHIP).save(heads_path)
     tails_img = draw_tails_disc()
     tails = Image.new("RGBA", (COIN_W, COIN_H), (0, 0, 0, 0))
-    tails.alpha_composite(tails_img, ((COIN_W - COIN_D) // 2, (COIN_H - COIN_D) // 2))
+    tails.alpha_composite(tails_img, ((COIN_W - COIN_CLOSE_D) // 2,
+                                      (COIN_H - COIN_CLOSE_D) // 2))
     tails_path = out / "tails.png"
-    tails.save(tails_path)
-    # Spin: the same face, pure horizontal squash, 16 frames, looping.
+    ship(tails, COIN_SHIP).save(tails_path)
+    # Toss keyframes (render px, canvas 480x280): (centre-y, diameter).
+    keys = [
+        (210, 120), (180, 150), (145, 180), (110, 205), (80, 225), (60, 230),
+        (75, 215), (105, 195), (140, 175), (170, 160), (195, 150), (205, 150),
+        (195, 175), (175, 210), (155, 245), (140, 264),
+    ]
     frames: list[Image.Image] = []
-    for i in range(16):
-        phase = 2 * math.pi * i / 16
-        w = max(6, round(COIN_D * abs(math.cos(phase))))
-        squashed = hard_alpha(face.resize((w, COIN_D), Image.LANCZOS))
+    for i, (cy, d) in enumerate(keys):
+        phase = i * 1.9  # fast spin (~4.5 revolutions over the toss)
+        w = max(6, round(d * abs(math.cos(phase))))
+        if i >= 14:
+            w = 8  # lands edge-on: a thin gold sliver, face hidden
+        squashed = hard_alpha(face.resize((w, d), Image.LANCZOS))
         canvas = Image.new("RGBA", (COIN_W, COIN_H), (0, 0, 0, 0))
-        canvas.alpha_composite(squashed, ((COIN_W - w) // 2, (COIN_H - COIN_D) // 2))
+        canvas.alpha_composite(squashed, (COIN_CX - w // 2, int(cy) - d // 2))
         frames.append(canvas)
     flip_path = out / "flip.gif"
-    save_looping_gif(frames, flip_path, 40)
+    save_looping_gif(ship_frames(frames, COIN_SHIP), flip_path, 75)
     return flip_path, heads_path, tails_path
 
 
@@ -272,6 +338,7 @@ def build_slots(twemoji: dict[str, Path]) -> list[Path]:
     (out / "tiles").mkdir(parents=True, exist_ok=True)
     made: list[Path] = []
     # Symbol tiles: white window + symbol, exactly window-sized.
+    # Drawn big (150x170), shipped small (69x78) via the 2x trick.
     for sym in SLOT_ORDER:
         tile = Image.new("RGBA", (SLOT_WIN_W, SLOT_WIN_H), (0, 0, 0, 0))
         d = ImageDraw.Draw(tile)
@@ -279,7 +346,7 @@ def build_slots(twemoji: dict[str, Path]) -> list[Path]:
                             fill=(255, 255, 255, 255), outline=(20, 20, 30), width=3)
         draw_twemoji_symbol(d, tile, twemoji, sym, SLOT_WIN_W // 2, SLOT_WIN_H // 2, 120)
         p = out / "tiles" / f"{SLOT_KEYS[sym]}.gif"
-        save_transparent_gif([tile], p, 100)
+        save_transparent_gif([ship(tile, SLOTS_TILE_SHIP)], p, 100)
         made.append(p)
     # Machine frame: body + borders + payline, windows left transparent.
     frame = Image.new("RGBA", (SLOTS_W, SLOTS_H), (0, 0, 0, 0))
@@ -289,7 +356,7 @@ def build_slots(twemoji: dict[str, Path]) -> list[Path]:
         frame.paste((0, 0, 0, 0), (x, y, x + SLOT_WIN_W, y + SLOT_WIN_H))
     draw_reel_window_borders(d)
     p = out / "machine.gif"
-    save_transparent_gif([frame], p, 100)
+    save_transparent_gif([ship(frame, SLOTS_SHIP)], p, 100)
     made.append(p)
     # Spin: reels scrolling, seamless loop (16 frames x 85px = 1360 = 1 cycle).
     strip = reel_strip(twemoji)
@@ -307,7 +374,7 @@ def build_slots(twemoji: dict[str, Path]) -> list[Path]:
         draw_reel_window_borders(d)
         frames.append(img)
     p = out / "spin.gif"
-    save_looping_gif(frames, p, 80)
+    save_looping_gif(ship_frames(frames, SLOTS_SHIP), p, 80)
     made.append(p)
     return made
 
@@ -391,12 +458,12 @@ def build_roulette() -> list[Path]:
     out.mkdir(parents=True, exist_ok=True)
     made: list[Path] = []
     base = draw_wheel_base()
-    # Settled wheels, one per number.
+    # Settled wheels, one per number (drawn big, shipped 300x240).
     for n in range(37):
         img = base.copy()
         draw_ball(img, n)
         p = out / f"wheel-{n:02d}.png"
-        img.save(p)
+        ship(img, ROULETTE_SHIP).save(p)
         made.append(p)
     # Spin: wheel turning clockwise, ball orbiting the other way.
     frames: list[Image.Image] = []
@@ -414,20 +481,23 @@ def build_roulette() -> list[Path]:
                   outline=(120, 120, 120), width=2)
         frames.append(img)
     p = out / "spin.gif"
-    save_looping_gif(frames, p, 100)
+    save_looping_gif(ship_frames(frames, ROULETTE_SHIP), p, 100)
     made.append(p)
     return made
 
 
 def verify_wheels() -> None:
     """Every settled wheel must have its (white) ball on the right pocket:
-    the pocket index at the ball's angle must be the wheel's number."""
+    the pocket index at the ball's angle must be the wheel's number.
+    Samples the SHIPPED 300x240 PNGs, so the centres use ship-scale
+    geometry (centre 150,120; ball radius 99)."""
     out = GAMES / "roulette"
+    scx, scy, sball_r = 150, 120, 99
     for n in range(37):
         img = Image.open(out / f"wheel-{n:02d}.png").convert("RGBA")
         a = math.radians(pocket_center_angle(n))
-        bx = int(round(ROULETTE_CX + BALL_R * math.cos(a)))
-        by = int(round(ROULETTE_CY + BALL_R * math.sin(a)))
+        bx = int(round(scx + sball_r * math.cos(a)))
+        by = int(round(scy + sball_r * math.sin(a)))
         px = img.getpixel((bx, by))
         assert px[0] > 200 and px[1] > 200 and px[2] > 200 and px[3] == 255, \
             f"wheel-{n:02d}: ball centre pixel {px} is not white"
@@ -461,7 +531,7 @@ def build_scratch(twemoji: dict[str, Path]) -> list[Path]:
         draw_scratch_card(d, 0, 0)
         draw_twemoji_symbol(d, tile, twemoji, sym, SCRATCH_TW // 2, SCRATCH_TH // 2, 130)
         p = out / "tiles" / f"{SLOT_KEYS[sym]}.gif"
-        save_transparent_gif([tile], p, 100)
+        save_transparent_gif([ship(tile, SCRATCH_TILE_SHIP)], p, 100)
         made.append(p)
     # Covered foil tile: same card, silver foil + "?".
     tile = Image.new("RGBA", (SCRATCH_TW, SCRATCH_TH), (0, 0, 0, 0))
@@ -475,7 +545,7 @@ def build_scratch(twemoji: dict[str, Path]) -> list[Path]:
     d.text((SCRATCH_TW // 2, SCRATCH_TH // 2), "?", font=font,
            fill=(70, 70, 80), anchor="mm")
     p = out / "tiles" / "cover.gif"
-    save_transparent_gif([tile], p, 100)
+    save_transparent_gif([ship(tile, SCRATCH_TILE_SHIP)], p, 100)
     made.append(p)
     return made
 
@@ -485,10 +555,14 @@ def build_scratch(twemoji: dict[str, Path]) -> list[Path]:
 # ---------------------------------------------------------------------------
 
 def verify_contact_sheet() -> Path:
+    """Contact sheet at NATIVE ship sizes on Discord dark — the author
+    must VIEW this before committing. A visual that is unreadable here
+    at its real size is unreadable in Discord; judge the landed coin
+    ($ vs star), the slots/scratch symbols, and the roulette ball."""
     VERIFY.mkdir(parents=True, exist_ok=True)
     tiles: list[tuple[str, Image.Image]] = []
 
-    def add(name: str, path: Path, frames: list[int], size: tuple[int, int]) -> None:
+    def add(name: str, path: Path, frames: list[int]) -> None:
         im = Image.open(path)
         n = getattr(im, "n_frames", 1)
         for i in frames:
@@ -496,33 +570,77 @@ def verify_contact_sheet() -> Path:
             r = im.convert("RGBA")
             comp = Image.new("RGBA", r.size, DARK)
             comp.alpha_composite(r)
-            tiles.append((f"{name} f{i}", comp.convert("RGB").resize(size, Image.LANCZOS)))
+            tiles.append((f"{name} f{i}", comp.convert("RGB")))
 
-    add("coin flip", GAMES / "coinflip" / "flip.gif", [0, 4, 8, 12], (350, 180))
-    add("heads", GAMES / "coinflip" / "heads.png", [0], (350, 180))
-    add("tails", GAMES / "coinflip" / "tails.png", [0], (350, 180))
-    add("slots spin", GAMES / "slots" / "spin.gif", [0, 5, 10, 15], (350, 230))
-    add("machine", GAMES / "slots" / "machine.gif", [0], (350, 230))
-    add("wheel 0", GAMES / "roulette" / "wheel-00.png", [0], (350, 280))
-    add("wheel 17", GAMES / "roulette" / "wheel-17.png", [0], (350, 280))
-    add("wheel 32", GAMES / "roulette" / "wheel-32.png", [0], (350, 280))
-    add("wheel 36", GAMES / "roulette" / "wheel-36.png", [0], (350, 280))
-    add("roulette spin", GAMES / "roulette" / "spin.gif", [0, 4, 8], (350, 280))
-    add("scratch cover", GAMES / "scratch" / "tiles" / "cover.gif", [0], (350, 130))
-    add("scratch diamond", GAMES / "scratch" / "tiles" / "diamond.gif", [0], (350, 130))
-    add("scratch seven", GAMES / "scratch" / "tiles" / "seven.gif", [0], (350, 130))
+    def add_img(name: str, img: Image.Image) -> None:
+        comp = Image.new("RGBA", img.size, DARK)
+        comp.alpha_composite(img.convert("RGBA"))
+        tiles.append((name, comp.convert("RGB")))
+
+    # The toss: rise, big at the top, falling fast, edge-on landing.
+    add("toss f0 rise", GAMES / "coinflip" / "flip.gif", [0])
+    add("toss f5 top-big", GAMES / "coinflip" / "flip.gif", [5])
+    add("toss f10 falling", GAMES / "coinflip" / "flip.gif", [10])
+    add("toss f15 edge-on", GAMES / "coinflip" / "flip.gif", [15])
+    add("heads close-up", GAMES / "coinflip" / "heads.png", [0])
+    add("tails close-up", GAMES / "coinflip" / "tails.png", [0])
+    add("slots spin", GAMES / "slots" / "spin.gif", [0, 5, 10, 15])
+    add("machine", GAMES / "slots" / "machine.gif", [0])
+    # Settled slots strip, composed the same way the bot does it
+    # (machine frame + real tiles), at ship size.
+    strip = Image.new("RGBA", SLOTS_SHIP, (0, 0, 0, 0))
+    frame = Image.open(GAMES / "slots" / "machine.gif").convert("RGBA")
+    for (x, y), key in zip([(39, 55), (126, 55), (213, 55)],
+                           ["cherry", "lemon", "seven"]):
+        strip.alpha_composite(Image.open(GAMES / "slots" / "tiles" / f"{key}.gif").convert("RGBA"), (x, y))
+    strip.alpha_composite(frame)
+    add_img("slots settled 🍒🍋7", strip)
+    add("wheel 0", GAMES / "roulette" / "wheel-00.png", [0])
+    add("wheel 17", GAMES / "roulette" / "wheel-17.png", [0])
+    add("wheel 32", GAMES / "roulette" / "wheel-32.png", [0])
+    add("wheel 36", GAMES / "roulette" / "wheel-36.png", [0])
+    add("roulette spin", GAMES / "roulette" / "spin.gif", [0, 4, 8])
+    # 3x zoom on the ball of wheel-17 (is it findable at 300px?).
+    w17 = Image.open(GAMES / "roulette" / "wheel-17.png").convert("RGBA")
+    a = math.radians(pocket_center_angle(17))
+    bx = int(round(150 + 99 * math.cos(a)))
+    by = int(round(120 + 99 * math.sin(a)))
+    zoom = w17.crop((bx - 25, by - 25, bx + 25, by + 25)).resize((150, 150), Image.LANCZOS)
+    add_img("wheel-17 ball 3x", zoom)
+    add("scratch cover", GAMES / "scratch" / "tiles" / "cover.gif", [0])
+    add("scratch diamond", GAMES / "scratch" / "tiles" / "diamond.gif", [0])
+    add("scratch seven", GAMES / "scratch" / "tiles" / "seven.gif", [0])
+    # Settled scratch strip at ship size (diamond / star / cherry).
+    sstrip = Image.new("RGBA", SCRATCH_SHIP, (0, 0, 0, 0))
+    for (x, y), key in zip([(18, 9), (117, 9), (216, 9)],
+                           ["diamond", "star", "cherry"]):
+        sstrip.alpha_composite(
+            Image.open(GAMES / "scratch" / "tiles" / f"{key}.gif").convert("RGBA"), (x, y))
+    add_img("scratch settled 💎⭐🍒", sstrip)
 
     cols = 2
-    rows = (len(tiles) + cols - 1) // cols
-    cw, ch = 350, 230
-    sheet = Image.new("RGB", (cols * cw, rows * (ch + 22)), (20, 20, 20))
+    cw = 340
+    rows = []
+    row: list[tuple[str, Image.Image]] = []
+    for t in tiles:
+        row.append(t)
+        if len(row) == cols:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    total_h = sum(max(t[1].height for t in r) + 22 for r in rows)
+    sheet = Image.new("RGB", (cols * cw, total_h), (20, 20, 20))
     d = ImageDraw.Draw(sheet)
     font = ImageFont.truetype(FONT_BOLD, 14)
-    for i, (name, t) in enumerate(tiles):
-        x = (i % cols) * cw
-        y = (i // cols) * (ch + 22)
-        sheet.paste(t.resize((cw, ch)), (x, y))
-        d.text((x + 6, y + ch + 4), name, font=font, fill=(255, 255, 255))
+    y = 0
+    for r in rows:
+        rh = max(t[1].height for t in r)
+        for j, (name, t) in enumerate(r):
+            x = j * cw + (cw - t.width) // 2
+            sheet.paste(t, (x, y))
+            d.text((j * cw + 6, y + rh + 4), name, font=font, fill=(255, 255, 255))
+        y += rh + 22
     dest = VERIFY / "contact-sheet.png"
     sheet.save(dest)
     return dest

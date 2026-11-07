@@ -32,6 +32,24 @@ function gifFramePixels(buf: Buffer): { width: number; height: number; patch: Ui
   return { width: f.dims.width, height: f.dims.height, patch: f.patch };
 }
 
+/** Width of the opaque x-range of one GIF frame (0 when fully transparent). */
+function frameOpaqueWidth(buf: Buffer, index: number): number {
+  const gif = parseGIF(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer);
+  const frames = decompressFrames(gif, true);
+  const f = frames[index] as { dims: { width: number; height: number }; patch: Uint8ClampedArray };
+  let x0 = f.dims.width;
+  let x1 = -1;
+  for (let y = 0; y < f.dims.height; y++) {
+    for (let x = 0; x < f.dims.width; x++) {
+      if (f.patch[(y * f.dims.width + x) * 4 + 3] !== 0) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+      }
+    }
+  }
+  return x1 < 0 ? 0 : x1 - x0 + 1;
+}
+
 function pngSize(buf: Buffer): { width: number; height: number } {
   return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
 }
@@ -91,60 +109,86 @@ describe("roulette wheel order + ball angle", () => {
     expect(() => roulettePocketIndex(-1)).toThrow();
   });
 
-  it("a settled wheel PNG exists for every number, 700x560", () => {
+  it("a settled wheel PNG exists for every number, 300x240", () => {
     for (let n = 0; n <= 36; n++) {
       const p = rouletteWheelPath(n);
       expect(existsSync(p), `wheel-${String(n).padStart(2, "0")}.png`).toBe(true);
       const size = pngSize(readFileSync(p));
-      expect(size).toEqual({ width: 700, height: 560 });
+      expect(size).toEqual({ width: 300, height: 240 });
     }
   });
 });
 
 describe("coinflip faces", () => {
-  it("heads and tails are distinct 700x360 PNGs on the same canvas", () => {
+  it("heads and tails are distinct 240x140 PNG close-ups on the same canvas", () => {
     const heads = readFileSync(coinflipLandedPath("heads"));
     const tails = readFileSync(coinflipLandedPath("tails"));
-    expect(pngSize(heads)).toEqual({ width: 700, height: 360 });
-    expect(pngSize(tails)).toEqual({ width: 700, height: 360 });
+    expect(pngSize(heads)).toEqual({ width: 240, height: 140 });
+    expect(pngSize(tails)).toEqual({ width: 240, height: 140 });
     expect(heads.equals(tails)).toBe(false);
   });
 
-  it("the flip GIF is animated (16 frames) on the same 700x360 canvas", () => {
+  it("the toss GIF is animated (16 frames) on the same 240x140 canvas", () => {
     const buf = readFileSync(coinflipFlipPath());
     const info = gifInfo(buf);
-    expect(info).toEqual({ width: 700, height: 360, frames: 16 });
+    expect(info).toEqual({ width: 240, height: 140, frames: 16 });
+  });
+
+  it("the toss rises, looms big, and lands edge-on (never leaks the face)", () => {
+    const buf = readFileSync(coinflipFlipPath());
+    // Frame 0: small rising coin (~60px wide). Frame 5: big at the top
+    // (~115px wide). Frame 15: edge-on sliver, face hidden (<=10px).
+    expect(frameOpaqueWidth(buf, 0)).toBeGreaterThanOrEqual(40);
+    expect(frameOpaqueWidth(buf, 0)).toBeLessThanOrEqual(80);
+    expect(frameOpaqueWidth(buf, 5)).toBeGreaterThanOrEqual(80);
+    expect(frameOpaqueWidth(buf, 15)).toBeLessThanOrEqual(10);
   });
 });
 
 describe("spin GIFs", () => {
-  it("slots spin is animated (16 frames, 700x460)", () => {
+  it("slots spin is animated (16 frames, 320x210)", () => {
     const info = gifInfo(readFileSync(slotsSpinPath()));
-    expect(info).toEqual({ width: 700, height: 460, frames: 16 });
+    expect(info).toEqual({ width: 320, height: 210, frames: 16 });
   });
 
-  it("roulette spin is animated (12 frames, 700x560)", () => {
+  it("roulette spin is animated (12 frames, 300x240)", () => {
     const info = gifInfo(readFileSync(rouletteSpinPath()));
-    expect(info).toEqual({ width: 700, height: 560, frames: 12 });
+    expect(info).toEqual({ width: 300, height: 240, frames: 12 });
+  });
+});
+
+describe("small but sharp — no visual is wider than 320px", () => {
+  it("every shipped visual fits the small on-screen budget", async () => {
+    const widths = [
+      gifInfo(readFileSync(coinflipFlipPath())).width,
+      pngSize(readFileSync(coinflipLandedPath("heads"))).width,
+      pngSize(readFileSync(coinflipLandedPath("tails"))).width,
+      gifInfo(readFileSync(slotsSpinPath())).width,
+      gifInfo(readFileSync(rouletteSpinPath())).width,
+      pngSize(readFileSync(rouletteWheelPath(17))).width,
+      gifInfo((await composeSlotsSettled(["🍒", "🍋", "7️⃣"])) as Buffer).width,
+      gifInfo((await composeScratch(["💎", "⭐", "🍒"])) as Buffer).width,
+    ];
+    for (const w of widths) expect(w).toBeLessThanOrEqual(320);
   });
 });
 
 describe("composeSlotsSettled", () => {
-  it("returns a 700x460 GIF showing the real result symbols", async () => {
+  it("returns a 320x210 GIF showing the real result symbols", async () => {
     const buf = await composeSlotsSettled(["🍒", "🍒", "🍒"]);
     expect(buf).not.toBeNull();
     const info = gifInfo(buf as Buffer);
-    expect(info).toEqual({ width: 700, height: 460, frames: 1 });
-    // Window 1 (x 85-235, y 120-290) shows a cherry: red pixels present.
+    expect(info).toEqual({ width: 320, height: 210, frames: 1 });
+    // Window 1 (x 39-108, y 55-133) shows a cherry: red pixels present.
     const { width, patch } = gifFramePixels(buf as Buffer);
-    expect(hasPixel(patch, width, [120, 150, 200, 240], (r, g, b) => r > 150 && g < 110 && b < 110)).toBe(true);
+    expect(hasPixel(patch, width, [55, 75, 95, 115], (r, g, b) => r > 150 && g < 110 && b < 110)).toBe(true);
   });
 
   it("shows the 7 tile (red 7) when the result is 7-7-7", async () => {
     const buf = await composeSlotsSettled(["7️⃣", "7️⃣", "7️⃣"]);
     expect(buf).not.toBeNull();
     const { width, patch } = gifFramePixels(buf as Buffer);
-    expect(hasPixel(patch, width, [100, 140, 220, 260], (r, g, b) => r > 150 && g < 80 && b < 80)).toBe(true);
+    expect(hasPixel(patch, width, [50, 70, 100, 120], (r, g, b) => r > 150 && g < 80 && b < 80)).toBe(true);
   });
 
   it("returns null for an unknown symbol or the wrong symbol count", async () => {
@@ -154,18 +198,18 @@ describe("composeSlotsSettled", () => {
 });
 
 describe("composeScratch", () => {
-  it("covered strip (null) is a 700x260 GIF with three foil tiles", async () => {
+  it("covered strip (null) is a 320x120 GIF with three foil tiles", async () => {
     const buf = await composeScratch(null);
     expect(buf).not.toBeNull();
-    expect(gifInfo(buf as Buffer)).toEqual({ width: 700, height: 260, frames: 1 });
+    expect(gifInfo(buf as Buffer)).toEqual({ width: 320, height: 120, frames: 1 });
   });
 
   it("revealed strip shows the real drawn symbols (blue diamond)", async () => {
     const buf = await composeScratch(["💎", "💎", "💎"]);
     expect(buf).not.toBeNull();
     const { width, patch } = gifFramePixels(buf as Buffer);
-    // Tile 1 (x 40-230, y 20-240): the diamond is light blue.
-    expect(hasPixel(patch, width, [90, 90, 180, 170], (r, g, b) => b > 200 && r > 100 && r < 200)).toBe(true);
+    // Tile 1 (x 18-105, y 9-109): the diamond is light blue.
+    expect(hasPixel(patch, width, [40, 40, 85, 80], (r, g, b) => b > 200 && r > 100 && r < 200)).toBe(true);
   });
 
   it("returns null for an unknown symbol", async () => {

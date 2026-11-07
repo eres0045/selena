@@ -14,9 +14,11 @@ import { decodeGifFrames } from "./handstrip.js";
  * then EDITS that same reply ~2.4s later to the settled visual + the
  * result. The user watches the flip/spin, then sees it land.
  *
- *   * /coinflip — flip.gif (the $ coin spinning) -> heads.png/tails.png
- *     (the landed face, same canvas so the edit feels like the coin
- *     just stops). Tails is a star-emboss disc, unmistakable at a glance.
+ *   * /coinflip — flip.gif (a real TOSS: the coin rises, gets big as
+ *     it comes toward the viewer, falls spinning fast, and lands
+ *     edge-on — the toss never leaks the result) -> heads.png/tails.png
+ *     (TIGHT CLOSE-UPS of the landed face). Tails is a star-emboss
+ *     disc, unmistakable at a glance.
  *   * /slots — spin.gif (reels scrolling, never settles on a combination)
  *     -> a strip composed at reply time from the REAL result symbols
  *     (machine frame + symbol tiles; never a canned 7-7-7).
@@ -24,6 +26,11 @@ import { decodeGifFrames } from "./handstrip.js";
  *     (the 37-pocket European wheel with the ball on the ACTUAL number).
  *   * /scratch — three covered foil tiles ("?") -> the same three tiles
  *     revealed with the real drawn symbols.
+ *
+ * SMALL BUT SHARP: the shipped files are small (~240-320px wide, so
+ * they take little space on screen) but rendered at 2x+ and
+ * Lanczos-downscaled with an unsharp pass — the card-strip trick —
+ * so they stay crisp, not blurry.
  *
  * Assets live in assets/games/ (built by scripts/render_visual_games.py).
  * Every visual has a TRANSPARENT background (the standing bg rule) and
@@ -58,12 +65,12 @@ export function tryReadAsset(path: string): Buffer | null {
 // Coinflip
 // ---------------------------------------------------------------------------
 
-/** The spinning $ coin (16 frames, loops while the user watches). */
+/** The toss: the $ coin rising, looming, falling, landing edge-on. */
 export function coinflipFlipPath(): string {
   return resolve(gamesAssetDir(), "coinflip", "flip.gif");
 }
 
-/** The landed face on the same 700x360 canvas as the spin. */
+/** The landed face: a tight close-up on the same 240x140 canvas as the toss. */
 export function coinflipLandedPath(result: "heads" | "tails"): string {
   return resolve(gamesAssetDir(), "coinflip", result === "heads" ? "heads.png" : "tails.png");
 }
@@ -119,16 +126,16 @@ export function rouletteSpinPath(): string {
 // Slots — settled strip composed at reply time from the real result
 // ---------------------------------------------------------------------------
 
-export const SLOTS_W = 700;
-export const SLOTS_H = 460;
+export const SLOTS_W = 320;
+export const SLOTS_H = 210;
 /** (x, y) of each reel window in the machine frame (see the script). */
 export const SLOT_WINDOWS: ReadonlyArray<readonly [number, number]> = [
-  [85, 120],
-  [275, 120],
-  [465, 120],
+  [39, 55],
+  [126, 55],
+  [213, 55],
 ];
-export const SLOT_TILE_W = 150;
-export const SLOT_TILE_H = 170;
+export const SLOT_TILE_W = 69;
+export const SLOT_TILE_H = 78;
 
 /** Slot emoji -> reel tile file (mirrors SLOT_SYMBOLS in lib/casino.ts). */
 export const SLOT_TILE_KEYS: Record<string, string> = {
@@ -158,16 +165,16 @@ export function slotsTilePath(key: string): string {
 // Scratch — covered / revealed tile strips
 // ---------------------------------------------------------------------------
 
-export const SCRATCH_W = 700;
-export const SCRATCH_H = 260;
+export const SCRATCH_W = 320;
+export const SCRATCH_H = 120;
 /** (x, y) of each tile in the scratch strip (see the script). */
 export const SCRATCH_TILES: ReadonlyArray<readonly [number, number]> = [
-  [40, 20],
-  [255, 20],
-  [470, 20],
+  [18, 9],
+  [117, 9],
+  [216, 9],
 ];
-export const SCRATCH_TILE_W = 190;
-export const SCRATCH_TILE_H = 220;
+export const SCRATCH_TILE_W = 87;
+export const SCRATCH_TILE_H = 100;
 
 /** Scratch emoji -> tile file (mirrors SCRATCH_SYMBOLS in lib/casino.ts). */
 export const SCRATCH_TILE_KEYS: Record<string, string> = {
