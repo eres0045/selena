@@ -83,15 +83,14 @@ function alphaAt(pixels: Buffer, width: number, x: number, y: number): number {
 }
 
 describe("tiny-emoji helpers", () => {
-  it("coinflip faces: Unicode fallbacks render while the IDs are blank", () => {
-    // heads/tails are NOT uploaded yet — the PNGs are in
-    // assets/emoji-animated/ waiting for upload. Until the IDs are
-    // filled in src/lib/emoji.ts, the fallbacks show. (When the IDs
-    // ARE filled, update this test to expect the <a:heads:id> markup.)
-    expect(EMOJI_IDS.heads).toBe("");
-    expect(EMOJI_IDS.tails).toBe("");
-    expect(coinflipFaceEmoji("heads")).toBe("🪙");
-    expect(coinflipFaceEmoji("tails")).toBe("⭐");
+  it("coinflip faces: static custom emoji now that the IDs are filled", () => {
+    // heads/tails uploaded 2026-11-07 as STATIC server emoji — the
+    // markup is <:name:id> (no `a:` prefix; that is for animated
+    // emoji only and would not render on a static one).
+    expect(EMOJI_IDS.heads).toBe("1568526877256192050");
+    expect(EMOJI_IDS.tails).toBe("1568526956025356328");
+    expect(coinflipFaceEmoji("heads")).toBe("<:heads:1568526877256192050>");
+    expect(coinflipFaceEmoji("tails")).toBe("<:tails:1568526956025356328>");
     expect(coinflipFaceEmoji("heads")).not.toBe(coinflipFaceEmoji("tails"));
   });
 

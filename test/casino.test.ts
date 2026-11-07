@@ -557,9 +557,10 @@ describe("visual games: suspense -> reveal flow (tiny emoji, NO images)", () => 
     const settledDesc = embedOf(settled!.payload)?.description ?? "";
     const landed = /landed \*\*(heads|tails)\*\*/.exec(settledDesc)?.[1];
     expect(landed).toMatch(/^(heads|tails)$/);
-    // The landed face emoji sits in the text (custom <a:heads:id> once
-    // uploaded, 🪙 / ⭐ fallback until then).
-    expect(settledDesc).toMatch(landed === "heads" ? /🪙|<a:heads:\d+>/ : /⭐|<a:tails:\d+>/);
+    // The landed face emoji sits in the text (static custom <:heads:id>
+    // / <:tails:id> now that they are uploaded; 🪙 / ⭐ fallback when
+    // the IDs are blank).
+    expect(settledDesc).toMatch(landed === "heads" ? /🪙|<a?:heads:\d+>/ : /⭐|<a?:tails:\d+>/);
     expectNoImages(settled!.payload);
   });
 
