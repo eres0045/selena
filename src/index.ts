@@ -5,8 +5,6 @@ import {
   Events,
   GatewayIntentBits,
   Partials,
-  REST,
-  Routes,
 } from "discord.js";
 import { getDb, type SelenaDb } from "./lib/db.js";
 import { emoji } from "./lib/emoji.js";
@@ -15,7 +13,8 @@ import { errorEmbed, selenaEmbed } from "./lib/command.js";
 import { awardXp } from "./lib/levels.js";
 import { checkMessage, checkStarboard, DEFAULT_BANNED_WORDS } from "./lib/automod.js";
 import { getReactionRole } from "./commands/mod.js";
-import { allButtonHandlers, allCommands, allModalHandlers } from "./commands/index.js";
+import { allButtonHandlers, allModalHandlers } from "./commands/index.js";
+import { clearApplicationCommands, handlePrefixMessage, type PrefixMessageLike } from "./lib/router.js";
 
 /**
  * Selena entrypoint. Routing + timers live here; the actual logic lives in
@@ -158,40 +157,30 @@ export async function start(): Promise<void> {
   console.log("Selena: database connected (schema ready).");
   const client = buildClient();
 
-  // --- slash command registration (guild-scoped when GUILD_ID is set,
-  // else global). The application id is only known after login, so the
-  // registration runs in the ready handler. ---
+  // --- clear slash commands on every startup ---
+  // There are no slash commands anymore: the bot answers `uwu <command>`
+  // text commands instead. On ready, clear ALL application commands —
+  // global AND the guild's — so the "/" picker stays empty. This is
+  // idempotent: setting an empty set twice is a no-op.
   client.once(Events.ClientReady, async (readyClient) => {
     console.log(`Selena: logged in as ${readyClient.user.tag}.`);
     try {
-      const rest = new REST({ version: "10" }).setToken(token);
-      const body = allCommands.map((c) => c.data.toJSON());
-      const guildId = process.env.GUILD_ID;
-      if (guildId) {
-        await rest.put(Routes.applicationGuildCommands(readyClient.user.id, guildId), { body });
-        console.log(`Selena: registered ${body.length} guild slash commands.`);
-      } else {
-        await rest.put(Routes.applicationCommands(readyClient.user.id), { body });
-        console.log(`Selena: registered ${body.length} global slash commands.`);
-      }
+      const remaining = await clearApplicationCommands(readyClient, process.env.GUILD_ID);
+      console.log(
+        `Selena: slash commands cleared — ${remaining.global ?? "?"} global, ${remaining.guild ?? "?"} guild remaining (expected 0 / 0).`,
+      );
     } catch (e) {
-      console.error("Selena: command registration failed:", e instanceof Error ? e.message : e);
+      console.error("Selena: failed to clear slash commands:", e instanceof Error ? e.message : e);
     }
   });
 
-  // --- interaction routing ---
+  // --- interaction routing (buttons + modals only) ---
+  // Slash (ChatInput) commands are gone — see messageCreate below for the
+  // `uwu` text prefix. Component interactions are not slash commands, so
+  // the button/modal handlers stay exactly as they were.
   client.on(Events.InteractionCreate, async (interaction) => {
     const ctx = { db, guildId: interaction.guildId ?? process.env.GUILD_ID ?? "unknown" };
     try {
-      if (interaction.isChatInputCommand()) {
-        const command = allCommands.find((c) => c.data.name === interaction.commandName);
-        if (!command) {
-          await interaction.reply({ embeds: [errorEmbed(`Unknown command: ${interaction.commandName}`)], ephemeral: true });
-          return;
-        }
-        await command.execute(interaction, ctx);
-        return;
-      }
       if (interaction.isButton()) {
         // customIds are `selena:<feature>:<action>:...` — route on the
         // first TWO segments, e.g. "selena:bj".
@@ -218,11 +207,19 @@ export async function start(): Promise<void> {
     }
   });
 
-  // --- messageCreate: XP + auto-mod ---
+  // --- messageCreate: `uwu` prefix commands, then XP + auto-mod ---
   const recentByUser = new Map<string, number[]>();
   client.on(Events.MessageCreate, async (message) => {
     try {
-      if (message.author.bot || !message.guildId) return;
+      if (message.author.bot || message.webhookId || !message.guildId) return;
+      // Prefix commands first: a handled `uwu ...` message gets no XP
+      // and no auto-mod verdict (it is a command, not chat). The cast is
+      // only about discord.js's narrow reply-option types: the router
+      // takes a deliberately loose payload (commands pass both
+      // EmbedBuilders and .toJSON() embeds) and strips interaction-only
+      // keys before sending.
+      const handled = await handlePrefixMessage(message as unknown as PrefixMessageLike, { db, guildId: message.guildId });
+      if (handled) return;
       const guildId = message.guildId;
       const now = Date.now();
       const key = `${guildId}:${message.author.id}`;

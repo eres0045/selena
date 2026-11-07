@@ -36,7 +36,7 @@ async function seed(userId: string, points: number): Promise<void> {
 }
 
 function findCommand(name: string) {
-  const cmd = casinoCommands.find((c) => c.data.name === name);
+  const cmd = casinoCommands.find((c) => c.name === name);
   if (!cmd) throw new Error(`command not found: ${name}`);
   return cmd;
 }

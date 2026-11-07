@@ -2,7 +2,6 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  SlashCommandBuilder,
   type EmbedBuilder,
 } from "discord.js";
 import {
@@ -11,6 +10,7 @@ import {
   selenaEmbed,
   type Command,
   type CommandContext,
+  type CommandInvocation,
 } from "../lib/command.js";
 import { emoji } from "../lib/emoji.js";
 import {
@@ -56,7 +56,7 @@ import { isTriviaAnswerCorrect, pickTriviaQuestion } from "../lib/trivia.js";
  * Button handlers are exported keyed by customId prefix so the bot runtime
  * (index.ts, owned by another worker) can route on prefix.
  *
- * NOTE (runtime): /giveaway auto-draw on expiry needs a timer in index.ts
+ * NOTE (runtime): uwu giveaway auto-draw on expiry needs a timer in index.ts
  * that, when a giveaway's ends_at passes, reads giveaway_entries, calls
  * pickWinners(), marks the giveaway ended, and announces the winners.
  * That timer is deliberately NOT built here — index.ts belongs to another
@@ -64,10 +64,10 @@ import { isTriviaAnswerCorrect, pickTriviaQuestion } from "../lib/trivia.js";
  * complete and ready for it.
  */
 
-type AnyInteraction = Parameters<Command["execute"]>[0];
+type AnyInv = CommandInvocation;
 
-async function replyError(interaction: AnyInteraction, message: string): Promise<void> {
-  await interaction.reply({ embeds: [errorEmbed(message)], ephemeral: true });
+async function replyError(inv: AnyInv, message: string): Promise<void> {
+  await inv.reply({ embeds: [errorEmbed(message)], ephemeral: true });
 }
 
 function truncateLabel(text: string, max = 80): string {
@@ -118,31 +118,31 @@ function tttComponents(game: TttGame): ActionRowBuilder<ButtonBuilder>[] {
   return rows;
 }
 
-async function handleTtt(interaction: any, _ctx: CommandContext): Promise<void> {
-  const parts = String(interaction.customId).split(":");
+async function handleTtt(inv: any, _ctx: CommandContext): Promise<void> {
+  const parts = String(inv.customId).split(":");
   const game = tttGames.get(parts[2] ?? "");
   const cell = Number(parts[3]);
   if (!game) {
-    await interaction.reply({ content: "This tic-tac-toe game has ended or no longer exists.", ephemeral: true });
+    await inv.reply({ content: "This tic-tac-toe game has ended or no longer exists.", ephemeral: true });
     return;
   }
   const symbol: TttPlayer | null =
-    interaction.user.id === game.playerX ? "X" : interaction.user.id === game.playerO ? "O" : null;
+    inv.user.id === game.playerX ? "X" : inv.user.id === game.playerO ? "O" : null;
   if (!symbol) {
-    await interaction.reply({ content: "Only the two players in this game can click.", ephemeral: true });
+    await inv.reply({ content: "Only the two players in this game can click.", ephemeral: true });
     return;
   }
   if (game.status !== "active") {
-    await interaction.reply({ content: "This game is already over.", ephemeral: true });
+    await inv.reply({ content: "This game is already over.", ephemeral: true });
     return;
   }
   if (game.turn !== symbol) {
-    await interaction.reply({ content: "It's not your turn yet.", ephemeral: true });
+    await inv.reply({ content: "It's not your turn yet.", ephemeral: true });
     return;
   }
   const next = tttApplyMove(game.board, cell, symbol);
   if (!next) {
-    await interaction.reply({ content: "That square is already taken.", ephemeral: true });
+    await inv.reply({ content: "That square is already taken.", ephemeral: true });
     return;
   }
   game.board = next;
@@ -156,7 +156,7 @@ async function handleTtt(interaction: any, _ctx: CommandContext): Promise<void> 
   } else {
     game.turn = symbol === "X" ? "O" : "X";
   }
-  await interaction.update({ embeds: [tttEmbed(game)], components: tttComponents(game) });
+  await inv.update({ embeds: [tttEmbed(game)], components: tttComponents(game) });
 }
 
 // ---------------------------------------------------------------------------
@@ -196,31 +196,31 @@ function c4Components(game: C4Game): ActionRowBuilder<ButtonBuilder>[] {
   return [row];
 }
 
-async function handleC4(interaction: any, _ctx: CommandContext): Promise<void> {
-  const parts = String(interaction.customId).split(":");
+async function handleC4(inv: any, _ctx: CommandContext): Promise<void> {
+  const parts = String(inv.customId).split(":");
   const game = c4Games.get(parts[2] ?? "");
   const col = Number(parts[3]);
   if (!game) {
-    await interaction.reply({ content: "This Connect 4 game has ended or no longer exists.", ephemeral: true });
+    await inv.reply({ content: "This Connect 4 game has ended or no longer exists.", ephemeral: true });
     return;
   }
   const symbol: C4Player | null =
-    interaction.user.id === game.playerR ? "R" : interaction.user.id === game.playerY ? "Y" : null;
+    inv.user.id === game.playerR ? "R" : inv.user.id === game.playerY ? "Y" : null;
   if (!symbol) {
-    await interaction.reply({ content: "Only the two players in this game can click.", ephemeral: true });
+    await inv.reply({ content: "Only the two players in this game can click.", ephemeral: true });
     return;
   }
   if (game.status !== "active") {
-    await interaction.reply({ content: "This game is already over.", ephemeral: true });
+    await inv.reply({ content: "This game is already over.", ephemeral: true });
     return;
   }
   if (game.turn !== symbol) {
-    await interaction.reply({ content: "It's not your turn yet.", ephemeral: true });
+    await inv.reply({ content: "It's not your turn yet.", ephemeral: true });
     return;
   }
   const dropped = c4Drop(game.board, col, symbol);
   if (!dropped) {
-    await interaction.reply({ content: "That column is full — pick another one.", ephemeral: true });
+    await inv.reply({ content: "That column is full — pick another one.", ephemeral: true });
     return;
   }
   game.board = dropped.board;
@@ -234,7 +234,7 @@ async function handleC4(interaction: any, _ctx: CommandContext): Promise<void> {
   } else {
     game.turn = symbol === "R" ? "Y" : "R";
   }
-  await interaction.update({ embeds: [c4Embed(game)], components: c4Components(game) });
+  await inv.update({ embeds: [c4Embed(game)], components: c4Components(game) });
 }
 
 // ---------------------------------------------------------------------------
@@ -284,38 +284,38 @@ function rpsComponents(game: RpsGame): ActionRowBuilder<ButtonBuilder>[] {
   return [row];
 }
 
-async function handleRps(interaction: any, _ctx: CommandContext): Promise<void> {
-  const parts = String(interaction.customId).split(":");
+async function handleRps(inv: any, _ctx: CommandContext): Promise<void> {
+  const parts = String(inv.customId).split(":");
   const game = rpsGames.get(parts[2] ?? "");
   const choice = parts[3] as RpsChoice;
   if (!game) {
-    await interaction.reply({ content: "This rock-paper-scissors game has ended or no longer exists.", ephemeral: true });
+    await inv.reply({ content: "This rock-paper-scissors game has ended or no longer exists.", ephemeral: true });
     return;
   }
   if (!["rock", "paper", "scissors"].includes(choice)) {
-    await interaction.reply({ content: "Invalid choice.", ephemeral: true });
+    await inv.reply({ content: "Invalid choice.", ephemeral: true });
     return;
   }
   if (game.status !== "active") {
-    await interaction.reply({ content: "This game is already over.", ephemeral: true });
+    await inv.reply({ content: "This game is already over.", ephemeral: true });
     return;
   }
-  const isPlayer = interaction.user.id === game.challengerId || interaction.user.id === game.opponentId;
+  const isPlayer = inv.user.id === game.challengerId || inv.user.id === game.opponentId;
   if (!isPlayer) {
-    await interaction.reply({ content: "Only the two players in this game can click.", ephemeral: true });
+    await inv.reply({ content: "Only the two players in this game can click.", ephemeral: true });
     return;
   }
-  if (game.picks[interaction.user.id]) {
-    await interaction.reply({ content: "You already picked — waiting for your opponent.", ephemeral: true });
+  if (game.picks[inv.user.id]) {
+    await inv.reply({ content: "You already picked — waiting for your opponent.", ephemeral: true });
     return;
   }
-  game.picks[interaction.user.id] = choice;
+  game.picks[inv.user.id] = choice;
   if (game.picks[game.challengerId] && game.picks[game.opponentId]) {
     const outcome = rpsOutcome(game.picks[game.challengerId]!, game.picks[game.opponentId]!);
     game.status = "done";
     game.winnerId = outcome === "draw" ? null : outcome === "win" ? game.challengerId : game.opponentId;
   }
-  await interaction.update({ embeds: [rpsEmbed(game)], components: rpsComponents(game) });
+  await inv.update({ embeds: [rpsEmbed(game)], components: rpsComponents(game) });
 }
 
 // ---------------------------------------------------------------------------
@@ -356,31 +356,31 @@ function triviaComponentsFor(game: TriviaGame, disabled: boolean): ActionRowBuil
   return [row];
 }
 
-async function handleTrivia(interaction: any, ctx: CommandContext): Promise<void> {
-  const parts = String(interaction.customId).split(":");
+async function handleTrivia(inv: any, ctx: CommandContext): Promise<void> {
+  const parts = String(inv.customId).split(":");
   const game = triviaGames.get(parts[2] ?? "");
   const idx = Number(parts[3]);
   if (!game) {
-    await interaction.reply({ content: "This trivia question has expired.", ephemeral: true });
+    await inv.reply({ content: "This trivia question has expired.", ephemeral: true });
     return;
   }
   if (Date.now() > game.expiresAt) {
     triviaGames.delete(game.id);
-    await interaction.reply({ content: "Time's up! This trivia question has expired.", ephemeral: true });
+    await inv.reply({ content: "Time's up! This trivia question has expired.", ephemeral: true });
     return;
   }
   if (game.answeredBy) {
-    await interaction.reply({ content: "This question was already answered.", ephemeral: true });
+    await inv.reply({ content: "This question was already answered.", ephemeral: true });
     return;
   }
   if (!Number.isInteger(idx) || idx < 0 || idx > 3) {
-    await interaction.reply({ content: "Invalid answer.", ephemeral: true });
+    await inv.reply({ content: "Invalid answer.", ephemeral: true });
     return;
   }
   const correct = isTriviaAnswerCorrect(game.question, idx);
-  game.answeredBy = interaction.user.id;
+  game.answeredBy = inv.user.id;
   if (correct) {
-    await awardPoints(ctx.db, ctx.guildId, interaction.user.id, TRIVIA_POINTS, "trivia");
+    await awardPoints(ctx.db, ctx.guildId, inv.user.id, TRIVIA_POINTS, "trivia");
   }
   const embed = triviaEmbed(game, true, idx).setDescription(
     `${game.question.question}\n\n${game.question.options
@@ -391,43 +391,43 @@ async function handleTrivia(interaction: any, ctx: CommandContext): Promise<void
       })
       .join("\n")}\n\n${
       correct
-        ? `${emoji("party")} <@${interaction.user.id}> got it right and earned **${TRIVIA_POINTS} gold**!`
-        : `❌ <@${interaction.user.id}> got it wrong. The correct answer was **${String.fromCharCode(65 + game.question.answerIndex)}**.`
+        ? `${emoji("party")} <@${inv.user.id}> got it right and earned **${TRIVIA_POINTS} gold**!`
+        : `❌ <@${inv.user.id}> got it wrong. The correct answer was **${String.fromCharCode(65 + game.question.answerIndex)}**.`
     }`,
   );
-  await interaction.update({ embeds: [embed], components: triviaComponentsFor(game, true) });
+  await inv.update({ embeds: [embed], components: triviaComponentsFor(game, true) });
 }
 
 // ---------------------------------------------------------------------------
 // Giveaway
 // ---------------------------------------------------------------------------
 
-async function handleGiveaway(interaction: any, ctx: CommandContext): Promise<void> {
-  const parts = String(interaction.customId).split(":");
+async function handleGiveaway(inv: any, ctx: CommandContext): Promise<void> {
+  const parts = String(inv.customId).split(":");
   const giveawayId = Number(parts[3]);
   if (!Number.isInteger(giveawayId)) {
-    await interaction.reply({ content: "Invalid giveaway.", ephemeral: true });
+    await inv.reply({ content: "Invalid giveaway.", ephemeral: true });
     return;
   }
   const row = await ctx.db
     .prepare("SELECT id, ended FROM giveaways WHERE id = ?")
     .get(giveawayId) as { id: number; ended: number } | undefined;
   if (!row) {
-    await interaction.reply({ content: "That giveaway no longer exists.", ephemeral: true });
+    await inv.reply({ content: "That giveaway no longer exists.", ephemeral: true });
     return;
   }
   if (row.ended) {
-    await interaction.reply({ content: "That giveaway has already ended.", ephemeral: true });
+    await inv.reply({ content: "That giveaway has already ended.", ephemeral: true });
     return;
   }
   const res = await ctx.db
     .prepare("INSERT OR IGNORE INTO giveaway_entries (giveaway_id, user_id) VALUES (?, ?)")
-    .run(giveawayId, interaction.user.id);
+    .run(giveawayId, inv.user.id);
   if (res.changes === 0) {
-    await interaction.reply({ content: "You're already entered in this giveaway. " + emoji("party"), ephemeral: true });
+    await inv.reply({ content: "You're already entered in this giveaway. " + emoji("party"), ephemeral: true });
     return;
   }
-  await interaction.reply({ content: "You're in! Good luck. " + emoji("party"), ephemeral: true });
+  await inv.reply({ content: "You're in! Good luck. " + emoji("party"), ephemeral: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -461,34 +461,34 @@ function pollComponents(pollId: number, options: string[], counts: number[]): Ac
   return [row];
 }
 
-async function handlePoll(interaction: any, ctx: CommandContext): Promise<void> {
-  const parts = String(interaction.customId).split(":");
+async function handlePoll(inv: any, ctx: CommandContext): Promise<void> {
+  const parts = String(inv.customId).split(":");
   const pollId = Number(parts[2]);
   const idx = Number(parts[3]);
   const row = await ctx.db
     .prepare("SELECT id, question, options_json FROM polls WHERE id = ?")
     .get(pollId) as { id: number; question: string; options_json: string } | undefined;
   if (!row) {
-    await interaction.reply({ content: "That poll no longer exists.", ephemeral: true });
+    await inv.reply({ content: "That poll no longer exists.", ephemeral: true });
     return;
   }
   let options: string[];
   try {
     options = JSON.parse(row.options_json) as string[];
   } catch {
-    await interaction.reply({ content: "That poll is broken (bad options data).", ephemeral: true });
+    await inv.reply({ content: "That poll is broken (bad options data).", ephemeral: true });
     return;
   }
   if (!Number.isInteger(idx) || idx < 0 || idx >= options.length) {
-    await interaction.reply({ content: "Invalid poll option.", ephemeral: true });
+    await inv.reply({ content: "Invalid poll option.", ephemeral: true });
     return;
   }
-  await recordPollVote(ctx.db, pollId, interaction.user.id, idx);
+  await recordPollVote(ctx.db, pollId, inv.user.id, idx);
   const counts = await getPollCounts(ctx.db, pollId, options.length);
-  await interaction.update({ embeds: [pollEmbed(row.question, options, counts)], components: pollComponents(pollId, options, counts) });
+  await inv.update({ embeds: [pollEmbed(row.question, options, counts)], components: pollComponents(pollId, options, counts) });
 }
 
-export const buttonHandlers: Record<string, (interaction: any, ctx: CommandContext) => Promise<void>> = {
+export const buttonHandlers: Record<string, (inv: any, ctx: CommandContext) => Promise<void>> = {
   "selena:ttt": handleTtt,
   "selena:c4": handleC4,
   "selena:rps": handleRps,
@@ -501,153 +501,139 @@ export const buttonHandlers: Record<string, (interaction: any, ctx: CommandConte
 // Slash commands
 // ---------------------------------------------------------------------------
 
-function requireOpponent(interaction: AnyInteraction): { id: string; username: string } | null {
-  return interaction.options.getUser("opponent");
-}
-
-/**
- * Build a SlashCommandBuilder with statement-style calls. Chaining
- * .add*Option() narrows the type to SlashCommandOptionsOnlyBuilder, which
- * the scaffold's Command interface (data: SlashCommandBuilder) rejects;
- * calling the adders as statements keeps the wide SlashCommandBuilder type.
- */
-function slash(
-  name: string,
-  description: string,
-  configure?: (b: SlashCommandBuilder) => void,
-): SlashCommandBuilder {
-  const b = new SlashCommandBuilder();
-  b.setName(name);
-  b.setDescription(description);
-  configure?.(b);
-  return b;
+function requireOpponent(inv: AnyInv): { id: string; username: string } | null {
+  return inv.options.getUser("opponent");
 }
 
 export const commands: Command[] = [
   {
-    data: slash("tictactoe", "Challenge a member to tic-tac-toe.", (b) => {
-      b.addUserOption((o) => o.setName("opponent").setDescription("Who to play against").setRequired(true));
-    }),
-    async execute(interaction, _ctx) {
-      const opponent = requireOpponent(interaction);
+    name: "tictactoe",
+    description: "Challenge a member to tic-tac-toe.",
+    aliases: ["ttt", "tic"],
+    args: [{ name: "opponent", type: "user", required: true }],
+    async execute(inv, _ctx) {
+      const opponent = requireOpponent(inv);
       if (!opponent) {
-        await replyError(interaction, "Pick an opponent to play against!");
+        await replyError(inv, "Pick an opponent to play against!");
         return;
       }
-      if (opponent.id === interaction.user.id) {
-        await replyError(interaction, "You can't play tic-tac-toe against yourself!");
+      if (opponent.id === inv.user.id) {
+        await replyError(inv, "You can't play tic-tac-toe against yourself!");
         return;
       }
       const game: TttGame = {
         id: newGameId("ttt"),
-        guildId: interaction.guildId ?? "",
-        playerX: interaction.user.id,
+        guildId: inv.guildId ?? "",
+        playerX: inv.user.id,
         playerO: opponent.id,
-        playerXName: interaction.user.username,
+        playerXName: inv.user.username,
         playerOName: opponent.username,
         board: emptyTttBoard(),
         turn: "X",
         status: "active",
       };
       tttGames.set(game.id, game);
-      await interaction.reply({ embeds: [tttEmbed(game)], components: tttComponents(game) });
+      await inv.reply({ embeds: [tttEmbed(game)], components: tttComponents(game) });
     },
   },
   {
-    data: slash("connect4", "Challenge a member to Connect 4.", (b) => {
-      b.addUserOption((o) => o.setName("opponent").setDescription("Who to play against").setRequired(true));
-    }),
-    async execute(interaction, _ctx) {
-      const opponent = requireOpponent(interaction);
+    name: "connect4",
+    description: "Challenge a member to Connect 4.",
+    aliases: ["c4", "connectfour"],
+    args: [{ name: "opponent", type: "user", required: true }],
+    async execute(inv, _ctx) {
+      const opponent = requireOpponent(inv);
       if (!opponent) {
-        await replyError(interaction, "Pick an opponent to play against!");
+        await replyError(inv, "Pick an opponent to play against!");
         return;
       }
-      if (opponent.id === interaction.user.id) {
-        await replyError(interaction, "You can't play Connect 4 against yourself!");
+      if (opponent.id === inv.user.id) {
+        await replyError(inv, "You can't play Connect 4 against yourself!");
         return;
       }
       const game: C4Game = {
         id: newGameId("c4"),
-        guildId: interaction.guildId ?? "",
-        playerR: interaction.user.id,
+        guildId: inv.guildId ?? "",
+        playerR: inv.user.id,
         playerY: opponent.id,
-        playerRName: interaction.user.username,
+        playerRName: inv.user.username,
         playerYName: opponent.username,
         board: emptyC4Board(),
         turn: "R",
         status: "active",
       };
       c4Games.set(game.id, game);
-      await interaction.reply({ embeds: [c4Embed(game)], components: c4Components(game) });
+      await inv.reply({ embeds: [c4Embed(game)], components: c4Components(game) });
     },
   },
   {
-    data: slash("rps", "Challenge a member to rock-paper-scissors (best of 1).", (b) => {
-      b.addUserOption((o) => o.setName("opponent").setDescription("Who to play against").setRequired(true));
-    }),
-    async execute(interaction, _ctx) {
-      const opponent = requireOpponent(interaction);
+    name: "rps",
+    description: "Challenge a member to rock-paper-scissors (best of 1).",
+    aliases: ["rockpaperscissors", "rock"],
+    args: [{ name: "opponent", type: "user", required: true }],
+    async execute(inv, _ctx) {
+      const opponent = requireOpponent(inv);
       if (!opponent) {
-        await replyError(interaction, "Pick an opponent to play against!");
+        await replyError(inv, "Pick an opponent to play against!");
         return;
       }
-      if (opponent.id === interaction.user.id) {
-        await replyError(interaction, "You can't play rock-paper-scissors against yourself!");
+      if (opponent.id === inv.user.id) {
+        await replyError(inv, "You can't play rock-paper-scissors against yourself!");
         return;
       }
       const game: RpsGame = {
         id: newGameId("rps"),
-        guildId: interaction.guildId ?? "",
-        challengerId: interaction.user.id,
+        guildId: inv.guildId ?? "",
+        challengerId: inv.user.id,
         opponentId: opponent.id,
-        challengerName: interaction.user.username,
+        challengerName: inv.user.username,
         opponentName: opponent.username,
         picks: {},
         status: "active",
       };
       rpsGames.set(game.id, game);
-      await interaction.reply({ embeds: [rpsEmbed(game)], components: rpsComponents(game) });
+      await inv.reply({ embeds: [rpsEmbed(game)], components: rpsComponents(game) });
     },
   },
   {
-    data: slash("trivia", "Answer a timed trivia question — first correct answer earns gold."),
-    async execute(interaction, _ctx) {
+    name: "trivia",
+    description: "Answer a timed trivia question — first correct answer earns gold.",
+    aliases: ["quiz"],
+    async execute(inv, _ctx) {
       const question = pickTriviaQuestion();
       const game: TriviaGame = {
         id: newGameId("triv"),
-        guildId: interaction.guildId ?? "",
+        guildId: inv.guildId ?? "",
         question,
         answeredBy: null,
         expiresAt: Date.now() + TRIVIA_TIME_LIMIT_MS,
       };
       triviaGames.set(game.id, game);
-      await interaction.reply({ embeds: [triviaEmbed(game, false)], components: triviaComponentsFor(game, false) });
+      await inv.reply({ embeds: [triviaEmbed(game, false)], components: triviaComponentsFor(game, false) });
     },
   },
   {
-    data: slash("wordchain", "Play word chain: each word must start with the last letter of the previous word.", (b) => {
-      b.addStringOption((o) =>
-        o.setName("word").setDescription("Your word (omit to start a new game)").setRequired(false),
-      );
-    }),
-    async execute(interaction, _ctx) {
-      const guildId = interaction.guildId ?? "";
-      const word = interaction.options.getString("word");
+    name: "wordchain",
+    description: "Play word chain: each word must start with the last letter of the previous word.",
+    aliases: ["wc", "word"],
+    args: [{ name: "word", type: "string" }],
+    async execute(inv, _ctx) {
+      const guildId = inv.guildId ?? "";
+      const word = inv.options.getString("word");
       if (!word) {
         if (wordChainGames.has(guildId)) {
           await replyError(
-            interaction,
-            "A word chain is already running in this server — play it with /wordchain word:<your word>.",
+            inv,
+            "A word chain is already running in this server — play it with uwu wordchain <your word>.",
           );
           return;
         }
         wordChainGames.set(guildId, createWordChain());
-        await interaction.reply({
+        await inv.reply({
           embeds: [
             selenaEmbed(
               "🔗 Word Chain",
-              "A new word chain has started!\n\n**Rules:** each word must be at least 3 letters, letters only, start with the last letter of the previous word, and never repeat a word.\n\nPlay with `/wordchain word:<your word>` — any word can start the chain.",
+              "A new word chain has started!\n\n**Rules:** each word must be at least 3 letters, letters only, start with the last letter of the previous word, and never repeat a word.\n\nPlay with `uwu wordchain <your word>` — any word can start the chain.",
             ),
           ],
         });
@@ -655,20 +641,20 @@ export const commands: Command[] = [
       }
       const state = wordChainGames.get(guildId);
       if (!state) {
-        await replyError(interaction, "No word chain is running — start one with /wordchain first.");
+        await replyError(inv, "No word chain is running — start one with uwu wordchain first.");
         return;
       }
       const result = submitWord(state, word);
       if (!result.ok) {
-        await replyError(interaction, result.reason ?? "That word doesn't work.");
+        await replyError(inv, result.reason ?? "That word doesn't work.");
         return;
       }
       wordChainGames.set(guildId, result.state);
-      await interaction.reply({
+      await inv.reply({
         embeds: [
           selenaEmbed(
             "🔗 Word Chain",
-            `**${interaction.user.username}** played **${word.trim().toLowerCase()}**.\n\n` +
+            `**${inv.user.username}** played **${word.trim().toLowerCase()}**.\n\n` +
               `Next word must start with **${result.state.currentLetter!.toUpperCase()}**.\n` +
               `Chain length: ${result.state.moves} word${result.state.moves === 1 ? "" : "s"}.`,
           ),
@@ -677,33 +663,28 @@ export const commands: Command[] = [
     },
   },
   {
-    data: slash("giveaway", "Start a giveaway. Winners are drawn automatically when it ends.", (b) => {
-      b.addStringOption((o) => o.setName("prize").setDescription("What the winners get").setRequired(true));
-      b.addIntegerOption((o) =>
-        o.setName("duration").setDescription("Duration in minutes (1–10080)").setRequired(true).setMinValue(1).setMaxValue(10080),
-      );
-      b.addIntegerOption((o) =>
-        o.setName("winners").setDescription("Number of winners (1–10)").setRequired(true).setMinValue(1).setMaxValue(10),
-      );
-    }),
-    async execute(interaction, ctx) {
-      const prize = interaction.options.getString("prize");
-      const duration = interaction.options.getInteger("duration");
-      const winners = interaction.options.getInteger("winners");
+    name: "giveaway",
+    description: "Start a giveaway. Winners are drawn automatically when it ends.",
+    aliases: ["gaway", "gw"],
+    args: [{ name: "prize", type: "string", required: true }, { name: "duration", type: "integer", required: true }, { name: "winners", type: "integer", required: true }],
+    async execute(inv, ctx) {
+      const prize = inv.options.getString("prize");
+      const duration = inv.options.getInteger("duration");
+      const winners = inv.options.getInteger("winners");
       if (!prize?.trim()) {
-        await replyError(interaction, "Tell me what the prize is!");
+        await replyError(inv, "Tell me what the prize is!");
         return;
       }
       if (prize.trim().length > 200) {
-        await replyError(interaction, "The prize description is too long (max 200 characters).");
+        await replyError(inv, "The prize description is too long (max 200 characters).");
         return;
       }
       if (duration === null || duration < 1 || duration > 10080) {
-        await replyError(interaction, "Duration must be between 1 and 10080 minutes.");
+        await replyError(inv, "Duration must be between 1 and 10080 minutes.");
         return;
       }
       if (winners === null || winners < 1 || winners > 10) {
-        await replyError(interaction, "Winners must be between 1 and 10.");
+        await replyError(inv, "Winners must be between 1 and 10.");
         return;
       }
       const endsAt = Date.now() + duration * 60_000;
@@ -711,7 +692,7 @@ export const commands: Command[] = [
         .prepare(
           "INSERT INTO giveaways (guild_id, channel_id, message_id, prize, ends_at, winners_count, ended, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)",
         )
-        .run(ctx.guildId, "", null, prize.trim(), endsAt, winners, interaction.user.id, Date.now());
+        .run(ctx.guildId, "", null, prize.trim(), endsAt, winners, inv.user.id, Date.now());
       const giveawayId = Number(res.lastInsertRowid);
       const endsIn = duration >= 60 ? `${(duration / 60).toFixed(1)} hours` : `${duration} minutes`;
       const button = new ButtonBuilder()
@@ -719,7 +700,7 @@ export const commands: Command[] = [
         .setLabel("🎉 Enter Giveaway")
         .setStyle(ButtonStyle.Success);
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(button);
-      await interaction.reply({
+      await inv.reply({
         embeds: [
           selenaEmbed(
             emoji("party") + " Giveaway!",
@@ -731,42 +712,39 @@ export const commands: Command[] = [
     },
   },
   {
-    data: slash("poll", "Start a button poll — one vote per person, click again to change it.", (b) => {
-      b.addStringOption((o) => o.setName("question").setDescription("The poll question").setRequired(true));
-      b.addStringOption((o) => o.setName("option1").setDescription("First option").setRequired(true));
-      b.addStringOption((o) => o.setName("option2").setDescription("Second option").setRequired(true));
-      b.addStringOption((o) => o.setName("option3").setDescription("Third option (optional)").setRequired(false));
-      b.addStringOption((o) => o.setName("option4").setDescription("Fourth option (optional)").setRequired(false));
-    }),
-    async execute(interaction, ctx) {
-      const question = interaction.options.getString("question");
+    name: "poll",
+    description: "Start a button poll — one vote per person, click again to change it.",
+    aliases: ["vote"],
+    args: [{ name: "question", type: "string", required: true }, { name: "option1", type: "string", required: true }, { name: "option2", type: "string", required: true }, { name: "option3", type: "string" }, { name: "option4", type: "string" }],
+    async execute(inv, ctx) {
+      const question = inv.options.getString("question");
       const rawOptions = [
-        interaction.options.getString("option1"),
-        interaction.options.getString("option2"),
-        interaction.options.getString("option3"),
-        interaction.options.getString("option4"),
+        inv.options.getString("option1"),
+        inv.options.getString("option2"),
+        inv.options.getString("option3"),
+        inv.options.getString("option4"),
       ];
       if (!question?.trim()) {
-        await replyError(interaction, "Ask a question for the poll!");
+        await replyError(inv, "Ask a question for the poll!");
         return;
       }
       const options = rawOptions.filter((o): o is string => !!o?.trim()).map((o) => o.trim());
       if (options.length < 2) {
-        await replyError(interaction, "A poll needs at least two options.");
+        await replyError(inv, "A poll needs at least two options.");
         return;
       }
       if (new Set(options.map((o) => o.toLowerCase())).size !== options.length) {
-        await replyError(interaction, "Poll options must all be different.");
+        await replyError(inv, "Poll options must all be different.");
         return;
       }
       const res = await ctx.db
         .prepare(
           "INSERT INTO polls (guild_id, channel_id, message_id, question, options_json, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
-        .run(ctx.guildId, "", null, question.trim(), JSON.stringify(options), interaction.user.id, Date.now());
+        .run(ctx.guildId, "", null, question.trim(), JSON.stringify(options), inv.user.id, Date.now());
       const pollId = Number(res.lastInsertRowid);
       const counts = Array<number>(options.length).fill(0);
-      await interaction.reply({
+      await inv.reply({
         embeds: [pollEmbed(question.trim(), options, counts)],
         components: pollComponents(pollId, options, counts),
       });

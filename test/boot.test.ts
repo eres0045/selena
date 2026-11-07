@@ -59,12 +59,12 @@ describe("buildClient", () => {
 
 describe("registry completeness", () => {
   it("has no duplicate command names and every command has a description", async () => {
-    const names = allCommands.map((c) => c.data.name);
+    const names = allCommands.map((c) => c.name);
     expect(new Set(names).size).toBe(names.length);
     expect(names.length).toBeGreaterThan(0);
     for (const cmd of allCommands) {
-      expect(cmd.data.name.length).toBeGreaterThan(0);
-      expect(cmd.data.description.length).toBeGreaterThan(0);
+      expect(cmd.name.length).toBeGreaterThan(0);
+      expect(cmd.description.length).toBeGreaterThan(0);
       expect(typeof cmd.execute).toBe("function");
     }
   });

@@ -12,7 +12,7 @@ const GUILD = "guild-1";
 
 function execCmd(cmds: Command[], name: string, opts: Record<string, unknown> = {}, userId = "user-1", permissions: string[] = []) {
   const db = getTestDb();
-  const cmd = cmds.find((c) => c.data.name === name);
+  const cmd = cmds.find((c) => c.name === name);
   if (!cmd) throw new Error(`command not found: ${name}`);
   const fake = new FakeChatInput({ commandName: name, options: opts, userId, username: "tester", permissions });
   return { db, fake, promise: (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(fake, { db, guildId: GUILD }) };
@@ -109,7 +109,7 @@ describe("utility commands", () => {
     resetXpCooldowns();
     await awardXp(db, GUILD, "user-1", 200, 1000);
     const fake = new FakeChatInput({ commandName: "rank", options: {} });
-    const cmd = utilityCommands.find((c) => c.data.name === "rank")!;
+    const cmd = utilityCommands.find((c) => c.name === "rank")!;
     await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(fake, { db, guildId: GUILD });
     expect(fake.allText()).toContain("Level");
     expect(fake.allText()).toContain("1");
@@ -127,7 +127,7 @@ describe("utility commands", () => {
     await awardXp(db, GUILD, "user-b", 200, 1000);
     expect((await topByXp(db, GUILD, 10)).map((u) => u.user_id)).toEqual(["user-a", "user-b"]);
     const fake = new FakeChatInput({ commandName: "leaderboard-xp", options: {} });
-    const cmd = utilityCommands.find((c) => c.data.name === "leaderboard-xp")!;
+    const cmd = utilityCommands.find((c) => c.name === "leaderboard-xp")!;
     await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(fake, { db, guildId: GUILD });
     expect(fake.allText().indexOf("user-a")).toBeLessThan(fake.allText().indexOf("user-b"));
     resetXpCooldowns();
@@ -173,7 +173,7 @@ describe("utility commands", () => {
     await awardXp(db, GUILD, "user-a", 300, 1000);
     await db.prepare("UPDATE users SET points = 42 WHERE guild_id = ? AND user_id = ?").run(GUILD, "user-a");
     const fake = new FakeChatInput({ commandName: "serverstats", options: {} });
-    const cmd = utilityCommands.find((c) => c.data.name === "serverstats")!;
+    const cmd = utilityCommands.find((c) => c.name === "serverstats")!;
     await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(fake, { db, guildId: GUILD });
     expect(fake.allText()).toContain("user-a");
     expect(fake.allText()).toContain("42");
@@ -202,29 +202,29 @@ describe("/help", () => {
     // uniqueness is asserted by boot.test.ts — two cross-worker commands
     // currently collide, see the report.)
     for (const cmd of allCommands) {
-      expect(grouped).toContain(cmd.data.name);
+      expect(grouped).toContain(cmd.name);
     }
     expect(allCommands.length).toBeGreaterThan(0);
 
     const fake = new FakeChatInput({ commandName: "help", options: {} });
-    const cmd = helpCommands.find((c) => c.data.name === "help")!;
+    const cmd = helpCommands.find((c) => c.name === "help")!;
     const db = getTestDb();
     await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(fake, { db, guildId: GUILD });
     for (const c of allCommands) {
-      expect(fake.allText()).toContain(`/${c.data.name}`);
+      expect(fake.allText()).toContain(`uwu ${c.name}`);
     }
   });
 
   it("errors on an unknown category, filters on a known one", async () => {
     const db = getTestDb();
     const bad = new FakeChatInput({ commandName: "help", options: { category: "Nope" } });
-    const cmd = helpCommands.find((c) => c.data.name === "help")!;
+    const cmd = helpCommands.find((c) => c.name === "help")!;
     await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(bad, { db, guildId: GUILD });
     expect(bad.allText()).toContain("Unknown category");
 
     const good = new FakeChatInput({ commandName: "help", options: { category: "Utility" } });
     await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(good, { db, guildId: GUILD });
-    expect(good.allText()).toContain("/rank");
-    expect(good.allText()).not.toContain("/warn");
+    expect(good.allText()).toContain("uwu rank");
+    expect(good.allText()).not.toContain("uwu warn");
   });
 });

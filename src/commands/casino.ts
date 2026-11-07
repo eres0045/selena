@@ -3,10 +3,9 @@ import {
   AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
-  SlashCommandBuilder,
   type APIEmbed,
 } from "discord.js";
-import type { Command, CommandContext } from "../lib/command.js";
+import type { Command, CommandContext, CommandInvocation } from "../lib/command.js";
 import { emoji } from "../lib/emoji.js";
 import { errorEmbed, fmt, pointsEmbed } from "../lib/command.js";
 import { getBalance } from "../lib/economy.js";
@@ -53,29 +52,17 @@ import {
   tryReadAsset,
 } from "../lib/visualgames.js";
 
-type Interaction = Parameters<Command["execute"]>[0];
+type Inv = CommandInvocation;
 
-async function replyError(interaction: Interaction, message: string): Promise<void> {
-  await interaction.reply({ embeds: [errorEmbed(message).toJSON()], ephemeral: true });
-}
-
-/**
- * Build a SlashCommandBuilder without chaining add*Option calls onto the
- * `data:` expression: chaining narrows the type to
- * SlashCommandOptionsOnlyBuilder, which is not assignable to the
- * SlashCommandBuilder type the Command interface requires.
- */
-function buildCmd(name: string, description: string, configure: (b: SlashCommandBuilder) => void): SlashCommandBuilder {
-  const b = new SlashCommandBuilder().setName(name).setDescription(description);
-  configure(b);
-  return b;
+async function replyError(inv: Inv, message: string): Promise<void> {
+  await inv.reply({ embeds: [errorEmbed(message).toJSON()], ephemeral: true });
 }
 
 /** Read and validate the bet option; returns null after replying on bad input. */
-async function readBet(interaction: Interaction): Promise<number | null> {
-  const bet = interaction.options.getInteger("bet");
+async function readBet(inv: Inv): Promise<number | null> {
+  const bet = inv.options.getInteger("bet");
   if (bet === null || !Number.isInteger(bet) || bet <= 0) {
-    await replyError(interaction, "Bet must be a positive whole number of gold.");
+    await replyError(inv, "Bet must be a positive whole number of gold.");
     return null;
   }
   return bet;
@@ -191,19 +178,19 @@ async function bjReplyPayload(
  * attachment — so the settled edit must omit `files` entirely.
  */
 async function playSingleGif(
-  interaction: Interaction,
+  inv: Inv,
   gif: Buffer,
   suspenseEmbed: ReturnType<typeof pointsEmbed>,
   settledEmbed: ReturnType<typeof pointsEmbed>,
 ): Promise<void> {
   suspenseEmbed.setImage("attachment://game.gif");
   settledEmbed.setImage("attachment://game.gif");
-  await interaction.editReply({
+  await inv.editReply({
     embeds: [suspenseEmbed.toJSON()],
     files: [new AttachmentBuilder(gif, { name: "game.gif" })],
   });
   await sleep(VISUAL_SUSPENSE.ms);
-  await interaction.editReply({ embeds: [settledEmbed.toJSON()] });
+  await inv.editReply({ embeds: [settledEmbed.toJSON()] });
 }
 
 /**
@@ -215,15 +202,15 @@ async function playSingleGif(
  * can never break the game.
  */
 async function playVisual(
-  interaction: Interaction,
+  inv: Inv,
   spin: { embeds: APIEmbed[]; files: AttachmentBuilder[] } | null,
   settled: { embeds: APIEmbed[]; files: AttachmentBuilder[] },
 ): Promise<void> {
   if (spin) {
-    await interaction.editReply(spin);
+    await inv.editReply(spin);
     await sleep(VISUAL_SUSPENSE.ms);
   }
-  await interaction.editReply(settled);
+  await inv.editReply(settled);
 }
 
 /** Embed + image payload, or the text-only payload when image is null. */
@@ -246,14 +233,14 @@ function attachPayload(
  * stays ephemeral.
  */
 async function checkBalance(
-  interaction: Interaction,
+  inv: Inv,
   ctx: CommandContext,
   bet: number,
 ): Promise<boolean> {
-  const balance = (await getBalance(ctx.db, ctx.guildId, interaction.user.id)).points;
+  const balance = (await getBalance(ctx.db, ctx.guildId, inv.user.id)).points;
   if (bet > balance) {
     await replyError(
-      interaction,
+      inv,
       `Insufficient gold. You have ${fmt(balance)} gold, but bet ${fmt(bet)}.`,
     );
     return false;
@@ -263,25 +250,22 @@ async function checkBalance(
 
 export const commands: Command[] = [
   {
-    data: buildCmd(
-      "slots",
-      "Spin the 3-reel slot machine. Jackpot 7️⃣7️⃣7️⃣ pays 50x, any 3-of-a-kind 10x, a pair 2x.",
-      (b) => {
-        b.addIntegerOption((o) => o.setName("bet").setDescription("Gold to bet").setRequired(true).setMinValue(1));
-      },
-    ),
-    async execute(interaction, ctx) {
-      const bet = await readBet(interaction);
+    name: "slots",
+    description: "Spin the 3-reel slot machine. Jackpot 7️⃣7️⃣7️⃣ pays 50x, any 3-of-a-kind 10x, a pair 2x.",
+    aliases: ["slot", "spin"],
+    args: [{ name: "bet", type: "integer", required: true }],
+    async execute(inv, ctx) {
+      const bet = await readBet(inv);
       if (bet === null) return;
-      const placed = await placeBet(ctx.db, ctx.guildId, interaction.user.id, bet, "slots");
+      const placed = await placeBet(ctx.db, ctx.guildId, inv.user.id, bet, "slots");
       if (!placed.ok) {
-        await replyError(interaction, placed.error ?? "Could not place that bet.");
+        await replyError(inv, placed.error ?? "Could not place that bet.");
         return;
       }
       const spin = slotsSpin(secureFloat);
       const winAmount = bet * spin.multiplier;
-      if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "slots win");
-      const balance = (await getBalance(ctx.db, ctx.guildId, interaction.user.id)).points;
+      if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, inv.user.id, winAmount, "slots win");
+      const balance = (await getBalance(ctx.db, ctx.guildId, inv.user.id)).points;
       const outcome =
         spin.multiplier > 0
           ? `You won **${fmt(winAmount)} gold** (${spin.multiplier}x)!`
@@ -302,10 +286,10 @@ export const commands: Command[] = [
       // the real symbols and freeze); the settle edit changes only
       // the text. Falls back to the two-image flow when composing
       // fails — the game never breaks on a missing asset.
-      await interaction.deferReply();
+      await inv.deferReply();
       const gif = await composeSlotsResult(spin.symbols).catch(() => null);
       if (gif) {
-        await playSingleGif(interaction, gif, spinEmbed, settledEmbed);
+        await playSingleGif(inv, gif, spinEmbed, settledEmbed);
         return;
       }
       // The settled strip shows the REAL result symbols (never a canned
@@ -314,44 +298,45 @@ export const commands: Command[] = [
       if (!settledStrip) settledEmbed.setDescription(`${spin.symbols.join(" | ")}\n\n${outcome}`);
       const spinBuf = tryReadAsset(slotsSpinPath());
       await playVisual(
-        interaction,
+        inv,
         spinBuf ? attachPayload(spinEmbed, { buffer: spinBuf, name: "spin.gif" }) : null,
         attachPayload(settledEmbed, settledStrip ? { buffer: settledStrip, name: "settled.gif" } : null),
       );
     },
   },
   {
-    data: buildCmd("blackjack", "Play blackjack against the dealer. Dealer stands on 17. Blackjack pays 3:2.", (b) => {
-      b.addIntegerOption((o) => o.setName("bet").setDescription("Gold to bet").setRequired(true).setMinValue(1));
-    }),
-    async execute(interaction, ctx) {
-      const bet = await readBet(interaction);
+    name: "blackjack",
+    description: "Play blackjack against the dealer. Dealer stands on 17. Blackjack pays 3:2.",
+    aliases: ["bj", "21"],
+    args: [{ name: "bet", type: "integer", required: true }],
+    async execute(inv, ctx) {
+      const bet = await readBet(inv);
       if (bet === null) return;
-      if (!(await checkBalance(interaction, ctx, bet))) return;
-      const placed = await placeBet(ctx.db, ctx.guildId, interaction.user.id, bet, "blackjack");
+      if (!(await checkBalance(inv, ctx, bet))) return;
+      const placed = await placeBet(ctx.db, ctx.guildId, inv.user.id, bet, "blackjack");
       if (!placed.ok) {
-        await replyError(interaction, placed.error ?? "Could not place that bet.");
+        await replyError(inv, placed.error ?? "Could not place that bet.");
         return;
       }
       // Acknowledge immediately so the reply never waits on a slow container.
-      await interaction.deferReply();
-      const game = createBlackjackGame(ctx.guildId, interaction.user.id, bet);
+      await inv.deferReply();
+      const game = createBlackjackGame(ctx.guildId, inv.user.id, bet);
       // Natural blackjack settles immediately — no buttons needed.
       if (isBlackjack(game.playerHand)) {
         const settled = settleBlackjack(game.playerHand, game.dealerHand);
         const winAmount = Math.floor(bet * settled.multiplier);
-        if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "blackjack win");
+        if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, inv.user.id, winAmount, "blackjack win");
         endBlackjackGame(game.id);
         const footerLine =
           settled.outcome === "player_blackjack"
             ? `${emoji("party")} Blackjack! You won ${fmt(winAmount)} gold (3:2).`
             : `Both you and the dealer have blackjack — push, your ${fmt(bet)} gold are returned.`;
-        await interaction.editReply(
+        await inv.editReply(
           await bjReplyPayload(game, { over: true, outcome: bjOutcomeOf(settled), footerLine }, ctx),
         );
         return;
       }
-      const replyMsg = (await interaction.editReply({
+      const replyMsg = (await inv.editReply({
         ...(await bjReplyPayload(game, { over: false, outcome: "playing", footerLine: "Hit or Stand?" }, ctx)),
         components: [bjButtons(game.id)],
       })) as unknown as { id?: string } | undefined;
@@ -362,33 +347,27 @@ export const commands: Command[] = [
     },
   },
   {
-    data: buildCmd(
-      "roulette",
-      "Bet on the European roulette wheel. Red/black/even/odd pay 2x, a single number pays 36x.",
-      (b) => {
-        b.addIntegerOption((o) => o.setName("bet").setDescription("Gold to bet").setRequired(true).setMinValue(1));
-        b.addStringOption((o) =>
-          o.setName("bet-on").setDescription("red, black, even, odd, or a number 0-36").setRequired(true),
-        );
-      },
-    ),
-    async execute(interaction, ctx) {
-      const bet = await readBet(interaction);
+    name: "roulette",
+    description: "Bet on the European roulette wheel. Red/black/even/odd pay 2x, a single number pays 36x.",
+    aliases: ["roul"],
+    args: [{ name: "bet", type: "integer", required: true }, { name: "bet-on", type: "string", required: true }],
+    async execute(inv, ctx) {
+      const bet = await readBet(inv);
       if (bet === null) return;
-      const betOn = interaction.options.getString("bet-on");
+      const betOn = inv.options.getString("bet-on");
       if (!betOn || !isValidRouletteBet(betOn)) {
-        await replyError(interaction, "Invalid bet. Bet on red, black, even, odd, or a single number 0-36.");
+        await replyError(inv, "Invalid bet. Bet on red, black, even, odd, or a single number 0-36.");
         return;
       }
-      const placed = await placeBet(ctx.db, ctx.guildId, interaction.user.id, bet, "roulette");
+      const placed = await placeBet(ctx.db, ctx.guildId, inv.user.id, bet, "roulette");
       if (!placed.ok) {
-        await replyError(interaction, placed.error ?? "Could not place that bet.");
+        await replyError(inv, placed.error ?? "Could not place that bet.");
         return;
       }
       const result = rouletteOutcome(betOn, rouletteRoll());
       const winAmount = bet * result.multiplier;
-      if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "roulette win");
-      const balance = (await getBalance(ctx.db, ctx.guildId, interaction.user.id)).points;
+      if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, inv.user.id, winAmount, "roulette win");
+      const balance = (await getBalance(ctx.db, ctx.guildId, inv.user.id)).points;
       const outcome = result.win
         ? `${emoji("party")} You won **${fmt(winAmount)} gold** (${result.multiplier}x)!`
         : "You lost this spin.";
@@ -410,17 +389,17 @@ export const commands: Command[] = [
       // window is 3s. Then one continuous motion (the ball rolls into
       // the real pocket and stops); the settle edit changes only the
       // text. Falls back to the two-image flow when composing fails.
-      await interaction.deferReply();
+      await inv.deferReply();
       const gif = await composeRouletteResult(result.roll).catch(() => null);
       if (gif) {
-        await playSingleGif(interaction, gif, spinEmbed, settledEmbed);
+        await playSingleGif(inv, gif, spinEmbed, settledEmbed);
         return;
       }
       // Settled wheel: the ball sits on the ACTUAL winning pocket.
       const wheelBuf = tryReadAsset(rouletteWheelPath(result.roll));
       const spinBuf = tryReadAsset(rouletteSpinPath());
       await playVisual(
-        interaction,
+        inv,
         spinBuf ? attachPayload(spinEmbed, { buffer: spinBuf, name: "spin.gif" }) : null,
         attachPayload(
           settledEmbed,
@@ -430,33 +409,27 @@ export const commands: Command[] = [
     },
   },
   {
-    data: buildCmd("coinflip", "Flip a coin. Call it right and win 1.9x your bet.", (b) => {
-      b.addIntegerOption((o) => o.setName("bet").setDescription("Gold to bet").setRequired(true).setMinValue(1));
-      b.addStringOption((o) =>
-        o
-          .setName("guess")
-          .setDescription("Heads or tails")
-          .setRequired(true)
-          .addChoices({ name: "Heads", value: "heads" }, { name: "Tails", value: "tails" }),
-      );
-    }),
-    async execute(interaction, ctx) {
-      const bet = await readBet(interaction);
+    name: "coinflip",
+    description: "Flip a coin. Call it right and win 1.9x your bet.",
+    aliases: ["cf", "flip", "coin"],
+    args: [{ name: "bet", type: "integer", required: true }, { name: "guess", type: "string", required: true }],
+    async execute(inv, ctx) {
+      const bet = await readBet(inv);
       if (bet === null) return;
-      const guess = interaction.options.getString("guess");
+      const guess = inv.options.getString("guess");
       if (guess !== "heads" && guess !== "tails") {
-        await replyError(interaction, "Guess must be heads or tails.");
+        await replyError(inv, "Guess must be heads or tails.");
         return;
       }
-      const placed = await placeBet(ctx.db, ctx.guildId, interaction.user.id, bet, "coinflip");
+      const placed = await placeBet(ctx.db, ctx.guildId, inv.user.id, bet, "coinflip");
       if (!placed.ok) {
-        await replyError(interaction, placed.error ?? "Could not place that bet.");
+        await replyError(inv, placed.error ?? "Could not place that bet.");
         return;
       }
       const result = coinflipOutcome(guess, secureFloat());
       const winAmount = Math.floor(bet * result.multiplier);
-      if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "coinflip win");
-      const balance = (await getBalance(ctx.db, ctx.guildId, interaction.user.id)).points;
+      if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, inv.user.id, winAmount, "coinflip win");
+      const balance = (await getBalance(ctx.db, ctx.guildId, inv.user.id)).points;
       const outcome = result.win
         ? `${emoji("party")} You won **${fmt(winAmount)} gold** (1.9x)!`
         : "Wrong call — you lost this flip.";
@@ -477,10 +450,10 @@ export const commands: Command[] = [
       // window is 3s. Then one continuous motion (the toss lands on
       // the real face and freezes); the settle edit changes only the
       // text. Falls back to the two-image flow when composing fails.
-      await interaction.deferReply();
+      await inv.deferReply();
       const gif = await composeCoinflipResult(result.result).catch(() => null);
       if (gif) {
-        await playSingleGif(interaction, gif, spinEmbed, settledEmbed);
+        await playSingleGif(inv, gif, spinEmbed, settledEmbed);
         return;
       }
       // The coin spins, then LANDS on the actual result face (heads = the
@@ -489,51 +462,41 @@ export const commands: Command[] = [
       const landedBuf = tryReadAsset(coinflipLandedPath(result.result));
       const spinBuf = tryReadAsset(coinflipFlipPath());
       await playVisual(
-        interaction,
+        inv,
         spinBuf ? attachPayload(spinEmbed, { buffer: spinBuf, name: "flip.gif" }) : null,
         attachPayload(settledEmbed, landedBuf ? { buffer: landedBuf, name: `${result.result}.png` } : null),
       );
     },
   },
   {
-    data: buildCmd(
-      "highlow",
-      "Guess whether the next card is higher or lower. Win pays 1.9x, a tie pushes your bet back.",
-      (b) => {
-        b.addIntegerOption((o) => o.setName("bet").setDescription("Gold to bet").setRequired(true).setMinValue(1));
-        b.addStringOption((o) =>
-          o
-            .setName("guess")
-            .setDescription("Will the next card be higher or lower?")
-            .setRequired(true)
-            .addChoices({ name: "Higher", value: "higher" }, { name: "Lower", value: "lower" }),
-        );
-      },
-    ),
-    async execute(interaction, ctx) {
-      const bet = await readBet(interaction);
+    name: "highlow",
+    description: "Guess whether the next card is higher or lower. Win pays 1.9x, a tie pushes your bet back.",
+    aliases: ["hl"],
+    args: [{ name: "bet", type: "integer", required: true }, { name: "guess", type: "string", required: true }],
+    async execute(inv, ctx) {
+      const bet = await readBet(inv);
       if (bet === null) return;
-      const guess = interaction.options.getString("guess");
+      const guess = inv.options.getString("guess");
       if (guess !== "higher" && guess !== "lower") {
-        await replyError(interaction, "Guess must be higher or lower.");
+        await replyError(inv, "Guess must be higher or lower.");
         return;
       }
-      if (!(await checkBalance(interaction, ctx, bet))) return;
-      const placed = await placeBet(ctx.db, ctx.guildId, interaction.user.id, bet, "highlow");
+      if (!(await checkBalance(inv, ctx, bet))) return;
+      const placed = await placeBet(ctx.db, ctx.guildId, inv.user.id, bet, "highlow");
       if (!placed.ok) {
-        await replyError(interaction, placed.error ?? "Could not place that bet.");
+        await replyError(inv, placed.error ?? "Could not place that bet.");
         return;
       }
       // Acknowledge immediately so the reply never waits on a slow container.
-      await interaction.deferReply();
+      await inv.deferReply();
       // Guess is locked in before any card is revealed, so extreme first
       // cards cannot be exploited (see lib/casino.ts edge notes).
       const card = drawCard();
       const next = drawCard();
       const result = highlowOutcome(card, guess, next);
       const winAmount = Math.floor(bet * result.multiplier);
-      if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "highlow win");
-      const balance = (await getBalance(ctx.db, ctx.guildId, interaction.user.id)).points;
+      if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, inv.user.id, winAmount, "highlow win");
+      const balance = (await getBalance(ctx.db, ctx.guildId, inv.user.id)).points;
       const outcome =
         result.outcome === "win"
           ? `You won ${fmt(winAmount)} gold (1.9x)!`
@@ -574,29 +537,26 @@ export const commands: Command[] = [
         embed.setImage("attachment://hand.gif");
         files.push(new AttachmentBuilder(strip.buffer, { name: "hand.gif" }));
       }
-      await interaction.editReply({ embeds: [embed.toJSON()], files });
+      await inv.editReply({ embeds: [embed.toJSON()], files });
     },
   },
   {
-    data: buildCmd(
-      "scratch",
-      "Scratch a card: reveal 3 symbols. 3 matching pay 5x, 2 matching pay your bet back.",
-      (b) => {
-        b.addIntegerOption((o) => o.setName("bet").setDescription("Gold to bet").setRequired(true).setMinValue(1));
-      },
-    ),
-    async execute(interaction, ctx) {
-      const bet = await readBet(interaction);
+    name: "scratch",
+    description: "Scratch a card: reveal 3 symbols. 3 matching pay 5x, 2 matching pay your bet back.",
+    aliases: ["scratchcard", "sc"],
+    args: [{ name: "bet", type: "integer", required: true }],
+    async execute(inv, ctx) {
+      const bet = await readBet(inv);
       if (bet === null) return;
-      const placed = await placeBet(ctx.db, ctx.guildId, interaction.user.id, bet, "scratch");
+      const placed = await placeBet(ctx.db, ctx.guildId, inv.user.id, bet, "scratch");
       if (!placed.ok) {
-        await replyError(interaction, placed.error ?? "Could not place that bet.");
+        await replyError(inv, placed.error ?? "Could not place that bet.");
         return;
       }
       const result = scratchDraw(secureFloat);
       const winAmount = bet * result.multiplier;
-      if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, interaction.user.id, winAmount, "scratch win");
-      const balance = (await getBalance(ctx.db, ctx.guildId, interaction.user.id)).points;
+      if (winAmount > 0) await creditWin(ctx.db, ctx.guildId, inv.user.id, winAmount, "scratch win");
+      const balance = (await getBalance(ctx.db, ctx.guildId, inv.user.id)).points;
       const outcome =
         result.multiplier === 5
           ? `${emoji("party")} Three of a kind! You won **${fmt(winAmount)} gold** (5x)!`
@@ -608,7 +568,7 @@ export const commands: Command[] = [
       // the real symbols and holds); the settle edit changes only
       // the text. Falls back to the two-image flow when composing
       // fails — the game never breaks on a missing asset.
-      await interaction.deferReply();
+      await inv.deferReply();
       const gif = await composeScratchResult(result.symbols).catch(() => null);
       if (gif) {
         const settledEmbed = pointsEmbed("🎫 Scratch Card", outcome)
@@ -624,7 +584,7 @@ export const commands: Command[] = [
         const spinEmbed = pointsEmbed("🎫 Scratch Card", "Scratching…")
           .addFields({ name: "Bet", value: fmt(bet), inline: true })
           .setColor(BJ_COLORS.playing);
-        await playSingleGif(interaction, gif, spinEmbed, settledEmbed);
+        await playSingleGif(inv, gif, spinEmbed, settledEmbed);
         return;
       }
       // Visual reveal: three covered foil tiles first, then the same
@@ -649,7 +609,7 @@ export const commands: Command[] = [
         .addFields({ name: "Bet", value: fmt(bet), inline: true })
         .setColor(BJ_COLORS.playing);
       await playVisual(
-        interaction,
+        inv,
         coveredStrip ? attachPayload(spinEmbed, { buffer: coveredStrip, name: "covered.gif" }) : null,
         attachPayload(settledEmbed, revealedStrip ? { buffer: revealedStrip, name: "revealed.gif" } : null),
       );
@@ -661,30 +621,30 @@ export const commands: Command[] = [
 // Blackjack button flow (customId: selena:bj:<gameId>:hit|stand)
 // ---------------------------------------------------------------------------
 
-async function handleBlackjackButton(interaction: any, ctx: CommandContext): Promise<void> {
-  const parts = String(interaction.customId ?? "").split(":");
+async function handleBlackjackButton(inv: any, ctx: CommandContext): Promise<void> {
+  const parts = String(inv.customId ?? "").split(":");
   const gameId = parts[2] ?? "";
   const action = parts[3] ?? "";
   // Look up by game id from the customId; fall back to the message id key
   // (the game is also stored under its message id once the reply is known).
   const game: BlackjackGame | undefined =
-    getBlackjackGame(gameId) ?? getBlackjackGame(interaction.message?.id ?? "");
+    getBlackjackGame(gameId) ?? getBlackjackGame(inv.message?.id ?? "");
   if (!game) {
-    await interaction.reply({ content: "This blackjack game has expired or was already finished.", ephemeral: true });
+    await inv.reply({ content: "This blackjack game has expired or was already finished.", ephemeral: true });
     return;
   }
-  if (interaction.user?.id !== game.userId) {
-    await interaction.reply({ content: "Only the player who started this game can use these buttons.", ephemeral: true });
+  if (inv.user?.id !== game.userId) {
+    await inv.reply({ content: "Only the player who started this game can use these buttons.", ephemeral: true });
     return;
   }
   if (action !== "hit" && action !== "stand") {
-    await interaction.reply({ content: "Unknown blackjack action.", ephemeral: true });
+    await inv.reply({ content: "Unknown blackjack action.", ephemeral: true });
     return;
   }
 
   // Acknowledge immediately: composing the strip image takes a moment and
   // the button ack must not wait on it.
-  await interaction.deferUpdate();
+  await inv.deferUpdate();
 
   const settleAndShow = async (note: string): Promise<void> => {
     const settled = settleBlackjack(game.playerHand, game.dealerHand);
@@ -699,7 +659,7 @@ async function handleBlackjackButton(interaction: any, ctx: CommandContext): Pro
           : settled.outcome === "push"
             ? `Push — your ${fmt(game.bet)} gold are returned.`
             : `You lost ${fmt(game.bet)} gold.`;
-    await interaction.editReply({
+    await inv.editReply({
       ...(await bjReplyPayload(
         game,
         {
@@ -725,7 +685,7 @@ async function handleBlackjackButton(interaction: any, ctx: CommandContext): Pro
       await settleAndShow("You hit 21 — the dealer plays out.");
       return;
     }
-    await interaction.editReply({
+    await inv.editReply({
       ...(await bjReplyPayload(game, { over: false, outcome: "playing", footerLine: "Hit or Stand?" }, ctx)),
       components: [bjButtons(game.id)],
     });
@@ -737,6 +697,6 @@ async function handleBlackjackButton(interaction: any, ctx: CommandContext): Pro
   await settleAndShow("You stood — the dealer plays out.");
 }
 
-export const buttonHandlers: Record<string, (interaction: any, ctx: CommandContext) => Promise<void>> = {
+export const buttonHandlers: Record<string, (inv: any, ctx: CommandContext) => Promise<void>> = {
   "selena:bj": handleBlackjackButton,
 };

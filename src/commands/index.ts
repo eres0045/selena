@@ -30,7 +30,7 @@ export const PENDING_MODULES: readonly string[] = [];
 
 export interface HelpGroup {
   category: string;
-  commands: { name: string; description: string }[];
+  commands: { name: string; description: string; aliases: string[] }[];
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -62,7 +62,7 @@ const MODULES: { key: string; module: CommandModule }[] = [
 function toHelpGroup(key: string, cmds: Command[]): HelpGroup {
   return {
     category: CATEGORY_LABELS[key] ?? key,
-    commands: cmds.map((c) => ({ name: c.data.name, description: c.data.description })),
+    commands: cmds.map((c) => ({ name: c.name, description: c.description, aliases: c.aliases })),
   };
 }
 
@@ -78,7 +78,7 @@ export const allModalHandlers: Record<string, (...args: never[]) => Promise<unkn
   ...MODULES.map((m) => m.module.modalHandlers ?? {}),
 );
 
-/** Grouped command list for /help — built from the live registry, never hardcoded. */
+/** Grouped command list for `uwu help` — built from the live registry, never hardcoded. */
 export const HELP_GROUPS: HelpGroup[] = MODULES.filter((m) => (m.module.commands?.length ?? 0) > 0).map((m) =>
   toHelpGroup(m.key, m.module.commands ?? []),
 );

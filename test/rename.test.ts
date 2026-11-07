@@ -13,7 +13,7 @@ const GUILD = "guild-1";
 
 describe("grantpoints removal", () => {
   it("no longer registers a grantpoints command", () => {
-    expect(allCommands.some((c) => c.data.name === "grantpoints")).toBe(false);
+    expect(allCommands.some((c) => c.name === "grantpoints")).toBe(false);
   });
 
   it("has no Owner help group", () => {
@@ -23,14 +23,14 @@ describe("grantpoints removal", () => {
 
 describe("uwu rename (user-visible strings)", () => {
   it("the /balance description names uwu, not Selena", () => {
-    const cmd = allCommands.find((c) => c.data.name === "balance");
+    const cmd = allCommands.find((c) => c.name === "balance");
     expect(cmd).toBeDefined();
-    expect(cmd!.data.description).toContain("uwu");
-    expect(cmd!.data.description).not.toContain("Selena");
+    expect(cmd!.description).toContain("uwu");
+    expect(cmd!.description).not.toContain("Selena");
   });
 
   it("the /help embed title is 'uwu — all commands'", async () => {
-    const cmd = allCommands.find((c) => c.data.name === "help")!;
+    const cmd = allCommands.find((c) => c.name === "help")!;
     const fake = new FakeChatInput({ commandName: "help", options: {} });
     await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(fake, {
       db: await getTestDb(),

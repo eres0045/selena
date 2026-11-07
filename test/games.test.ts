@@ -10,7 +10,7 @@ vi.mock("node:sqlite", () => {
   return req("node:sqlite");
 });
 
-import type { ChatInputCommandInteraction } from "discord.js";
+import type { CommandInvocation } from "../src/lib/command.js";
 import { FakeButton, FakeChatInput } from "../src/lib/testkit.js";
 import { type SelenaDb } from "../src/lib/db.js";
 import { getTestDb } from "./testDb.js";
@@ -79,10 +79,10 @@ async function run(
   userId = "user-1",
   username = "tester",
 ): Promise<FakeChatInput> {
-  const cmd = commands.find((c) => c.data.name === name);
+  const cmd = commands.find((c) => c.name === name);
   if (!cmd) throw new Error(`command ${name} not found`);
   const fake = new FakeChatInput({ commandName: name, options, userId, username });
-  await cmd.execute(fake as unknown as ChatInputCommandInteraction, { db, guildId: "guild-1" });
+  await cmd.execute(fake as unknown as CommandInvocation, { db, guildId: "guild-1" });
   return fake;
 }
 

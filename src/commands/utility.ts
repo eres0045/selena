@@ -1,16 +1,6 @@
-import { SlashCommandBuilder } from "discord.js";
-import type { Command } from "../lib/command.js";
+import type { Command, CommandInvocation } from "../lib/command.js";
 import { errorEmbed, fmt, selenaEmbed } from "../lib/command.js";
 import { getUserXp, progressBar, rankCard } from "../lib/levels.js";
-
-/** Build a slash-command definition without the discord.js chained-builder
- * narrowing (chaining .addXOption() narrows SlashCommandBuilder to
- * SlashCommandOptionsOnlyBuilder, which Command.data rejects). */
-function build(name: string, description: string, add: (b: SlashCommandBuilder) => void): SlashCommandBuilder {
-  const b = new SlashCommandBuilder().setName(name).setDescription(description);
-  add(b);
-  return b;
-}
 
 // ---------------------------------------------------------------------------
 // Pure DB helpers (exported so tests can exercise them without Discord).
@@ -62,10 +52,10 @@ export async function topByXp(db: Parameters<typeof getUserXp>[0], guildId: stri
 // Commands
 // ---------------------------------------------------------------------------
 
-type AnyInteraction = Parameters<Command["execute"]>[0];
+type AnyInv = CommandInvocation;
 
-function avatarUrlFor(interaction: AnyInteraction, userId: string): string {
-  const user = (interaction as unknown as { user?: { displayAvatarURL?: () => string } }).user;
+function avatarUrlFor(inv: AnyInv, userId: string): string {
+  const user = (inv as unknown as { user?: { displayAvatarURL?: () => string } }).user;
   // Real discord.js Users have displayAvatarURL(); the test fake does not,
   // so fall back to the deterministic default-avatar CDN URL.
   if (typeof user?.displayAvatarURL === "function") {
@@ -90,11 +80,12 @@ export const modalHandlers: Record<string, (...args: never[]) => Promise<void>> 
 
 export const commands: Command[] = [
   {
-    data: build("userinfo", "Show info about a user", (b) => {
-      b.addUserOption((o) => o.setName("user").setDescription("User to look up (defaults to you)"));
-    }),
-    async execute(interaction, ctx) {
-      const target = interaction.options.getUser("user") ?? interaction.user;
+    name: "userinfo",
+    description: "Show info about a user",
+    aliases: ["ui", "whois", "user"],
+    args: [{ name: "user", type: "user" }],
+    async execute(inv, ctx) {
+      const target = inv.options.getUser("user") ?? inv.user;
       const { xp, level } = await getUserXp(ctx.db, ctx.guildId, target.id);
       const afk = await getAfk(ctx.db, ctx.guildId, target.id);
       const embed = selenaEmbed(`User info — ${target.username}`, `ID: \`${target.id}\``)
@@ -103,25 +94,27 @@ export const commands: Command[] = [
           { name: "XP", value: fmt(xp), inline: true },
           { name: "AFK", value: afk.reason ? `${afk.reason}` : "No", inline: true },
         );
-      await interaction.reply({ embeds: [embed.toJSON()] });
+      await inv.reply({ embeds: [embed.toJSON()] });
     },
   },
   {
-    data: build("avatar", "Show a user's avatar", (b) => {
-      b.addUserOption((o) => o.setName("user").setDescription("User whose avatar to show (defaults to you)"));
-    }),
-    async execute(interaction, ctx) {
-      const target = interaction.options.getUser("user") ?? interaction.user;
-      const url = avatarUrlFor(interaction, target.id);
+    name: "avatar",
+    description: "Show a user's avatar",
+    aliases: ["av", "pfp"],
+    args: [{ name: "user", type: "user" }],
+    async execute(inv, ctx) {
+      const target = inv.options.getUser("user") ?? inv.user;
+      const url = avatarUrlFor(inv, target.id);
       const embed = selenaEmbed(`Avatar — ${target.username}`).setImage(url);
-      await interaction.reply({ embeds: [embed.toJSON()] });
+      await inv.reply({ embeds: [embed.toJSON()] });
     },
   },
   {
-    data: build("serverstats", "Show server stats and top members", (b) => {
-    }),
-    async execute(interaction, ctx) {
-      const guild = (interaction as unknown as { guild?: { memberCount?: number; channels?: { cache?: { size?: number } } } }).guild;
+    name: "serverstats",
+    description: "Show server stats and top members",
+    aliases: ["serverinfo", "stats", "server"],
+    async execute(inv, ctx) {
+      const guild = (inv as unknown as { guild?: { memberCount?: number; channels?: { cache?: { size?: number } } } }).guild;
       const memberCount =
         guild?.memberCount ??
         Number((await ctx.db.prepare("SELECT COUNT(*) AS c FROM users WHERE guild_id = ?").get(ctx.guildId))?.c ?? 0);
@@ -145,23 +138,24 @@ export const commands: Command[] = [
             inline: false,
           },
         );
-      await interaction.reply({ embeds: [embed.toJSON()] });
+      await inv.reply({ embeds: [embed.toJSON()] });
     },
   },
   {
-    data: build("afk", "Set yourself AFK, or clear AFK by running it with no reason", (b) => {
-      b.addStringOption((o) => o.setName("reason").setDescription("Why you're away (omit to clear AFK)"));
-    }),
-    async execute(interaction, ctx) {
-      const reason = interaction.options.getString("reason");
-      await setAfk(ctx.db, ctx.guildId, interaction.user.id, reason);
+    name: "afk",
+    description: "Set yourself AFK, or clear AFK by running it with no reason",
+    aliases: ["away"],
+    args: [{ name: "reason", type: "string", rest: true }],
+    async execute(inv, ctx) {
+      const reason = inv.options.getString("reason");
+      await setAfk(ctx.db, ctx.guildId, inv.user.id, reason);
       if (reason) {
-        await interaction.reply({
+        await inv.reply({
           embeds: [selenaEmbed("You're now AFK", `Reason: ${reason}`).toJSON()],
           ephemeral: true,
         });
       } else {
-        await interaction.reply({
+        await inv.reply({
           embeds: [selenaEmbed("Welcome back", "Your AFK status has been cleared.").toJSON()],
           ephemeral: true,
         });
@@ -169,31 +163,32 @@ export const commands: Command[] = [
     },
   },
   {
-    data: build("remind", "Remind yourself of something in a number of minutes", (b) => {
-      b.addIntegerOption((o) => o.setName("minutes").setDescription("Minutes from now (1-10080)").setRequired(true).setMinValue(1).setMaxValue(10080));
-      b.addStringOption((o) => o.setName("text").setDescription("What to remind you about").setRequired(true));
-    }),
-    async execute(interaction, ctx) {
-      const minutes = interaction.options.getInteger("minutes");
-      const text = interaction.options.getString("text");
+    name: "remind",
+    description: "Remind yourself of something in a number of minutes",
+    aliases: ["reminder", "remindme"],
+    args: [{ name: "minutes", type: "integer", required: true }, { name: "text", type: "string", required: true, rest: true }],
+    async execute(inv, ctx) {
+      const minutes = inv.options.getInteger("minutes");
+      const text = inv.options.getString("text");
       if (minutes === null || !text) {
-        await interaction.reply({ embeds: [errorEmbed("Minutes and reminder text are required.").toJSON()], ephemeral: true });
+        await inv.reply({ embeds: [errorEmbed("Minutes and reminder text are required.").toJSON()], ephemeral: true });
         return;
       }
-      const channelId = (interaction as unknown as { channelId?: string }).channelId ?? "";
-      const { id, dueAt } = await createReminder(ctx.db, ctx.guildId, interaction.user.id, channelId, text, minutes);
-      await interaction.reply({
+      const channelId = (inv as unknown as { channelId?: string }).channelId ?? "";
+      const { id, dueAt } = await createReminder(ctx.db, ctx.guildId, inv.user.id, channelId, text, minutes);
+      await inv.reply({
         embeds: [selenaEmbed("Reminder set", `I'll remind you in ${minutes} minute(s) (<t:${Math.floor(dueAt / 1000)}:R>): ${text}\nReminder #${id}`).toJSON()],
         ephemeral: true,
       });
     },
   },
   {
-    data: build("rank", "Show your rank card (level + XP progress)", (b) => {
-      b.addUserOption((o) => o.setName("user").setDescription("User to check (defaults to you)"));
-    }),
-    async execute(interaction, ctx) {
-      const target = interaction.options.getUser("user") ?? interaction.user;
+    name: "rank",
+    description: "Show your rank card (level + XP progress)",
+    aliases: ["level", "xp"],
+    args: [{ name: "user", type: "user" }],
+    async execute(inv, ctx) {
+      const target = inv.options.getUser("user") ?? inv.user;
       const { xp } = await getUserXp(ctx.db, ctx.guildId, target.id);
       const card = rankCard(xp);
       const embed = selenaEmbed(`Rank — ${target.username}`)
@@ -202,20 +197,21 @@ export const commands: Command[] = [
           { name: "XP", value: `${fmt(card.xp)} / ${fmt(card.xpForNext)}`, inline: true },
           { name: "Progress", value: `${progressBar(card.progress)}\n${fmt(card.xpIntoLevel)} XP into this level — ${fmt(card.xpNeeded)} to go`, inline: false },
         );
-      await interaction.reply({ embeds: [embed.toJSON()] });
+      await inv.reply({ embeds: [embed.toJSON()] });
     },
   },
   {
-    data: build("leaderboard-xp", "Top 10 members by XP", (b) => {
-    }),
-    async execute(interaction, ctx) {
+    name: "leaderboard-xp",
+    description: "Top 10 members by XP",
+    aliases: ["lbxp", "xplb", "top-xp"],
+    async execute(inv, ctx) {
       const top = await topByXp(ctx.db, ctx.guildId, 10);
       if (top.length === 0) {
-        await interaction.reply({ embeds: [selenaEmbed("XP leaderboard", "No XP earned yet — say something in chat to start earning.").toJSON()] });
+        await inv.reply({ embeds: [selenaEmbed("XP leaderboard", "No XP earned yet — say something in chat to start earning.").toJSON()] });
         return;
       }
       const lines = top.map((u, i) => `${i + 1}. <@${u.user_id}> — Level ${rankCard(u.xp).level} · ${fmt(u.xp)} XP`);
-      await interaction.reply({ embeds: [selenaEmbed("XP leaderboard (top 10)", lines.join("\n")).toJSON()] });
+      await inv.reply({ embeds: [selenaEmbed("XP leaderboard (top 10)", lines.join("\n")).toJSON()] });
     },
   },
 ];

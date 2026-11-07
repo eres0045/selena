@@ -19,7 +19,7 @@ const MOD = "mod-1";
 const USER = "user-9";
 
 function run(name: string, opts: Record<string, unknown> = {}, permissions: string[] = ["ModerateMembers", "KickMembers", "BanMembers", "ManageRoles"]) {
-  const cmd = commands.find((c) => c.data.name === name);
+  const cmd = commands.find((c) => c.name === name);
   if (!cmd) throw new Error(`command not found: ${name}`);
   const fake = new FakeChatInput({ commandName: name, options: opts, userId: MOD, username: "mod", permissions });
   return { cmd: cmd as Command, fake };
@@ -109,7 +109,7 @@ describe("warnings / modlog", () => {
     await warnUser(db, GUILD, USER, MOD, "first", 1000);
     await warnUser(db, GUILD, USER, MOD, "second", 2000);
     const { fake } = run("warnings", { user: target });
-    const cmd = commands.find((c) => c.data.name === "warnings")!;
+    const cmd = commands.find((c) => c.name === "warnings")!;
     await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(fake, { db, guildId: GUILD });
     const text = fake.allText();
     expect(text.indexOf("second")).toBeLessThan(text.indexOf("first"));
@@ -126,7 +126,7 @@ describe("warnings / modlog", () => {
     const rows = await listModActions(db, GUILD, 10);
     expect(rows.map((r) => r.action)).toEqual(["kick", "ban", "warn"]);
     const { fake } = run("modlog", {});
-    const cmd = commands.find((c) => c.data.name === "modlog")!;
+    const cmd = commands.find((c) => c.name === "modlog")!;
     await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(fake, { db, guildId: GUILD });
     expect(fake.allText()).toContain("kick");
   });

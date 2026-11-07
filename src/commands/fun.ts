@@ -1,9 +1,9 @@
-import { SlashCommandBuilder } from "discord.js";
 import {
   errorEmbed,
   fmt,
   selenaEmbed,
   type Command,
+  type CommandInvocation,
 } from "../lib/command.js";
 import { emoji } from "../lib/emoji.js";
 import {
@@ -30,43 +30,26 @@ import {
  */
 
 async function replyError(
-  interaction: Parameters<Command["execute"]>[0],
+  inv: CommandInvocation,
   message: string,
 ): Promise<void> {
-  await interaction.reply({ embeds: [errorEmbed(message)], ephemeral: true });
-}
-
-/**
- * Build a SlashCommandBuilder with statement-style calls. Chaining
- * .add*Option() narrows the type to SlashCommandOptionsOnlyBuilder, which
- * the scaffold's Command interface (data: SlashCommandBuilder) rejects;
- * calling the adders as statements keeps the wide SlashCommandBuilder type.
- */
-function slash(
-  name: string,
-  description: string,
-  configure?: (b: SlashCommandBuilder) => void,
-): SlashCommandBuilder {
-  const b = new SlashCommandBuilder();
-  b.setName(name);
-  b.setDescription(description);
-  configure?.(b);
-  return b;
+  await inv.reply({ embeds: [errorEmbed(message)], ephemeral: true });
 }
 
 export const commands: Command[] = [
   {
-    data: slash("8ball", "Ask the magic 8-ball a question.", (b) => {
-      b.addStringOption((o) => o.setName("question").setDescription("Your question").setRequired(true));
-    }),
-    async execute(interaction, _ctx) {
-      const question = interaction.options.getString("question");
+    name: "8ball",
+    description: "Ask the magic 8-ball a question.",
+    aliases: ["8b", "eightball", "ask"],
+    args: [{ name: "question", type: "string", required: true, rest: true }],
+    async execute(inv, _ctx) {
+      const question = inv.options.getString("question");
       if (!question?.trim()) {
-        await replyError(interaction, "Ask me a question first!");
+        await replyError(inv, "Ask me a question first!");
         return;
       }
       const answer = eightBall();
-      await interaction.reply({
+      await inv.reply({
         embeds: [
           selenaEmbed("🎱 Magic 8-Ball", `**Question:** ${question.trim()}\n**Answer:** ${answer}`),
         ],
@@ -74,50 +57,41 @@ export const commands: Command[] = [
     },
   },
   {
-    data: slash("meme", "Generate a random meme (text-only — no image rendering in this build).", (b) => {
-      b.addStringOption((o) => o.setName("top").setDescription("Custom top text").setRequired(false));
-      b.addStringOption((o) => o.setName("bottom").setDescription("Custom bottom text").setRequired(false));
-      b.addStringOption((o) =>
-        o
-          .setName("effect")
-          .setDescription("A named image effect (text description only)")
-          .setRequired(false)
-          .addChoices(
-            ...Object.keys(MEME_EFFECTS).map((key) => ({ name: key, value: key })),
-          ),
-      );
-    }),
-    async execute(interaction, _ctx) {
-      const effect = interaction.options.getString("effect");
+    name: "meme",
+    description: "Generate a random meme (text-only — no image rendering in this build).",
+    aliases: ["memes"],
+    args: [{ name: "top", type: "string" }, { name: "bottom", type: "string" }, { name: "effect", type: "string" }],
+    async execute(inv, _ctx) {
+      const effect = inv.options.getString("effect");
       if (effect !== null && !(effect in MEME_EFFECTS)) {
-        await replyError(interaction, `Unknown effect "${effect}". Pick one of: ${Object.keys(MEME_EFFECTS).join(", ")}.`);
+        await replyError(inv, `Unknown effect "${effect}". Pick one of: ${Object.keys(MEME_EFFECTS).join(", ")}.`);
         return;
       }
       const meme = generateMeme(undefined, {
-        topText: interaction.options.getString("top") ?? undefined,
-        bottomText: interaction.options.getString("bottom") ?? undefined,
+        topText: inv.options.getString("top") ?? undefined,
+        bottomText: inv.options.getString("bottom") ?? undefined,
         effect: effect ?? undefined,
       });
-      await interaction.reply({
+      await inv.reply({
         embeds: [selenaEmbed(`😂 ${meme.template.name}`, memeDescription(meme))],
       });
     },
   },
   {
-    data: slash("ship", "Check the compatibility between two members.", (b) => {
-      b.addUserOption((o) => o.setName("user1").setDescription("First person").setRequired(true));
-      b.addUserOption((o) => o.setName("user2").setDescription("Second person").setRequired(true));
-    }),
-    async execute(interaction, _ctx) {
-      const user1 = interaction.options.getUser("user1");
-      const user2 = interaction.options.getUser("user2");
+    name: "ship",
+    description: "Check the compatibility between two members.",
+    aliases: ["love"],
+    args: [{ name: "user1", type: "user", required: true }, { name: "user2", type: "user", required: true }],
+    async execute(inv, _ctx) {
+      const user1 = inv.options.getUser("user1");
+      const user2 = inv.options.getUser("user2");
       if (!user1 || !user2) {
-        await replyError(interaction, "Pick two members to ship!");
+        await replyError(inv, "Pick two members to ship!");
         return;
       }
       const { percent, label } = shipCompatibility(user1.id, user2.id);
       const hearts = "💜".repeat(Math.max(1, Math.round(percent / 20)));
-      await interaction.reply({
+      await inv.reply({
         embeds: [
           selenaEmbed(
             "💘 Ship Result",
@@ -128,17 +102,18 @@ export const commands: Command[] = [
     },
   },
   {
-    data: slash("rate", "Rate something from 0 to 100.", (b) => {
-      b.addStringOption((o) => o.setName("thing").setDescription("What to rate").setRequired(true));
-    }),
-    async execute(interaction, _ctx) {
-      const thing = interaction.options.getString("thing");
+    name: "rate",
+    description: "Rate something from 0 to 100.",
+    aliases: ["rating"],
+    args: [{ name: "thing", type: "string", required: true, rest: true }],
+    async execute(inv, _ctx) {
+      const thing = inv.options.getString("thing");
       if (!thing?.trim()) {
-        await replyError(interaction, "Tell me what to rate!");
+        await replyError(inv, "Tell me what to rate!");
         return;
       }
-      const percent = rateThing(thing, interaction.user.id);
-      await interaction.reply({
+      const percent = rateThing(thing, inv.user.id);
+      await inv.reply({
         embeds: [
           selenaEmbed(
             emoji("star") + " Rating",
@@ -149,64 +124,61 @@ export const commands: Command[] = [
     },
   },
   {
-    data: slash("joke", "Tell a random joke."),
-    async execute(interaction, _ctx) {
-      await interaction.reply({ embeds: [selenaEmbed("😂 Joke", randomJoke())] });
+    name: "joke",
+    description: "Tell a random joke.",
+    aliases: ["jokes"],
+    async execute(inv, _ctx) {
+      await inv.reply({ embeds: [selenaEmbed("😂 Joke", randomJoke())] });
     },
   },
   {
-    data: slash("roast", "Get a friendly roast (keep it light — no slurs, no NSFW).", (b) => {
-      b.addUserOption((o) => o.setName("user").setDescription("Who to roast (defaults to you)").setRequired(false));
-    }),
-    async execute(interaction, _ctx) {
-      const target = interaction.options.getUser("user") ?? interaction.user;
-      await interaction.reply({
+    name: "roast",
+    description: "Get a friendly roast (keep it light — no slurs, no NSFW).",
+    aliases: ["burn"],
+    args: [{ name: "user", type: "user" }],
+    async execute(inv, _ctx) {
+      const target = inv.options.getUser("user") ?? inv.user;
+      await inv.reply({
         embeds: [selenaEmbed(emoji("fire") + " Friendly Roast", `<@${target.id}> — ${randomRoast()}`)],
       });
     },
   },
   {
-    data: slash("compliment", "Give someone a genuine compliment.", (b) => {
-      b.addUserOption((o) => o.setName("user").setDescription("Who to compliment (defaults to you)").setRequired(false));
-    }),
-    async execute(interaction, _ctx) {
-      const target = interaction.options.getUser("user") ?? interaction.user;
-      await interaction.reply({
+    name: "compliment",
+    description: "Give someone a genuine compliment.",
+    aliases: ["comp", "praise"],
+    args: [{ name: "user", type: "user" }],
+    async execute(inv, _ctx) {
+      const target = inv.options.getUser("user") ?? inv.user;
+      await inv.reply({
         embeds: [selenaEmbed("💜 Compliment", `<@${target.id}> — ${randomCompliment()}`)],
       });
     },
   },
   {
-    data: slash("wouldyourather", "Get a would-you-rather question."),
-    async execute(interaction, _ctx) {
+    name: "wouldyourather",
+    description: "Get a would-you-rather question.",
+    aliases: ["wyr", "rather"],
+    async execute(inv, _ctx) {
       const q = randomWouldYouRather();
-      await interaction.reply({
+      await inv.reply({
         embeds: [selenaEmbed("🤔 Would You Rather…", `**A:** ${q.a}\n\n**B:** ${q.b}`)],
       });
     },
   },
   {
-    data: slash("truthordare", "Get a truth or a dare.", (b) => {
-      b.addStringOption((o) =>
-        o
-          .setName("kind")
-          .setDescription("Truth, dare, or random")
-          .setRequired(false)
-          .addChoices(
-            { name: "Truth", value: "truth" },
-            { name: "Dare", value: "dare" },
-            { name: "Random", value: "random" },
-          ),
-      );
-    }),
-    async execute(interaction, _ctx) {
-      const kind = interaction.options.getString("kind");
+    name: "truthordare",
+    description: "Get a truth or a dare.",
+    aliases: ["tod"],
+    args: [{ name: "kind", type: "string" }],
+    async execute(inv, _ctx) {
+      const kind = inv.options.getString("kind");
       if (kind !== null && kind !== "truth" && kind !== "dare" && kind !== "random") {
-        await replyError(interaction, 'Kind must be "truth", "dare", or "random".');
+        await replyError(inv, 'Kind must be "truth", "dare", or "random".');
         return;
       }
       const picked = randomTruthOrDare((kind as "truth" | "dare" | "random" | null) ?? "random");
-      await interaction.reply({
+      await inv.reply({
         embeds: [
           selenaEmbed(
             picked.kind === "truth" ? "🤫 Truth" : "😈 Dare",
@@ -217,24 +189,26 @@ export const commands: Command[] = [
     },
   },
   {
-    data: slash("uwu", "Uwu-ify some text.", (b) => {
-      b.addStringOption((o) => o.setName("text").setDescription("Text to uwu-ify").setRequired(true));
-    }),
-    async execute(interaction, _ctx) {
-      const text = interaction.options.getString("text");
+    name: "uwu",
+    description: "Uwu-ify some text.",
+    aliases: ["uwuify", "owo"],
+    args: [{ name: "text", type: "string", required: true, rest: true }],
+    async execute(inv, _ctx) {
+      const text = inv.options.getString("text");
       if (!text?.trim()) {
-        await replyError(interaction, "Give me some text to uwu-ify!");
+        await replyError(inv, "Give me some text to uwu-ify!");
         return;
       }
-      await interaction.reply({ embeds: [selenaEmbed("🥺 uwu", uwuify(text))] });
+      await inv.reply({ embeds: [selenaEmbed("🥺 uwu", uwuify(text))] });
     },
   },
   {
-    data: slash("profile", "Show a member's profile card (gold, XP, level, rank).", (b) => {
-      b.addUserOption((o) => o.setName("user").setDescription("Whose profile (defaults to you)").setRequired(false));
-    }),
-    async execute(interaction, ctx) {
-      const target = interaction.options.getUser("user") ?? interaction.user;
+    name: "profile",
+    description: "Show a member's profile card (gold, XP, level, rank).",
+    aliases: ["prof", "me"],
+    args: [{ name: "user", type: "user" }],
+    async execute(inv, ctx) {
+      const target = inv.options.getUser("user") ?? inv.user;
       const profile = await getProfileData(ctx.db, ctx.guildId, target.id);
       const embed = selenaEmbed(`👤 ${target.username}'s Profile`)
         .addFields(
@@ -244,7 +218,7 @@ export const commands: Command[] = [
           { name: "Server Rank", value: `#${profile.rank} of ${profile.totalRanked}`, inline: true },
         )
         .setFooter({ text: "Profile cards are text/embeds only in this build — no Canvas image rendering." });
-      await interaction.reply({ embeds: [embed] });
+      await inv.reply({ embeds: [embed] });
     },
   },
 ];
