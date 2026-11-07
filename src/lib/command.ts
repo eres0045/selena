@@ -11,6 +11,8 @@ export interface CommandContext {
 export interface CommandUser {
   id: string;
   username: string;
+  /** Global display name (discord.js User.displayName); absent in fakes. */
+  displayName?: string;
   displayAvatarURL?: () => string;
 }
 

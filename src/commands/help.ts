@@ -31,15 +31,41 @@ export interface HelpGroupLike {
   commands: Array<{ name: string; description: string; aliases: string[] }>;
 }
 
+/** The embed author block for the help boxes: the requesting user's
+ * display name + avatar, OwO-style, so everyone can see who asked.
+ * Never throws: a missing display name falls back to the username, and
+ * a missing (or throwing) displayAvatarURL just means no icon — a real
+ * discord.js User's displayAvatarURL() returns the default-avatar URL
+ * when the user has no custom avatar, so the icon is present live. */
+export function helpAuthor(user: {
+  username: string;
+  displayName?: string;
+  displayAvatarURL?: () => string;
+}): { name: string; iconURL?: string } {
+  const name = user.displayName ?? user.username;
+  let iconURL: string | undefined;
+  try {
+    iconURL = user.displayAvatarURL?.();
+  } catch {
+    iconURL = undefined;
+  }
+  return iconURL ? { name, iconURL } : { name };
+}
+
 /** Build the one-box command list: title + short intro, then one field
  * per category holding ONLY the command names as inline `code` chips —
  * no descriptions, no aliases in the list. That is what keeps it short:
- * all 47 commands fit in a single embed. */
-export function buildHelpEmbed(groups: HelpGroupLike[]): EmbedBuilder {
+ * all 47 commands fit in a single embed. When `author` is given, the
+ * requesting user's name + avatar head the box (OwO-style). */
+export function buildHelpEmbed(
+  groups: HelpGroupLike[],
+  author?: { name: string; iconURL?: string },
+): EmbedBuilder {
   const embed = selenaEmbed(
     "Command List",
     "Here is the list of commands!\nFor more info on a specific command, use `uwu help {command}`",
   );
+  if (author) embed.setAuthor(author);
   for (const group of groups) {
     const emoji = CATEGORY_EMOJI[group.category] ?? "📌";
     const chips = group.commands.map((c) => `\`${c.name}\``).join(" ");
@@ -53,6 +79,7 @@ export function buildHelpEmbed(groups: HelpGroupLike[]): EmbedBuilder {
 export function helpEmbedLength(embed: EmbedBuilder): number {
   const json = embed.toJSON();
   let total = (json.title ?? "").length + (json.description ?? "").length;
+  total += (json.author?.name ?? "").length;
   total += (json.footer?.text ?? "").length;
   for (const field of json.fields ?? []) {
     total += field.name.length + field.value.length;
@@ -86,7 +113,8 @@ export const commands: Command[] = [
         const wanted = topic.toLowerCase();
         const groups = HELP_GROUPS.filter((g) => g.category.toLowerCase() === wanted);
         if (groups.length > 0) {
-          await inv.reply({ embeds: [buildHelpEmbed(groups).toJSON()], ephemeral: true });
+          const embed = buildHelpEmbed(groups, helpAuthor(inv.user));
+          await inv.reply({ embeds: [embed.toJSON()], ephemeral: true });
           return;
         }
         // `uwu help <command>` (or an alias): plain-text detail for that
@@ -113,17 +141,19 @@ export const commands: Command[] = [
       // `uwu help`: ONE compact embed box with every command name, no
       // descriptions, no aliases — OwO-style, short, not three messages.
       // (The old 3-message split is gone: the name-only list is ~1.3k
-      // chars, far under Discord's 6000-char embed cap.)
-      const embed = buildHelpEmbed(HELP_GROUPS);
+      // chars, far under Discord's 6000-char embed cap.) The box is
+      // headed by the requesting user's name + avatar.
+      const embed = buildHelpEmbed(HELP_GROUPS, helpAuthor(inv.user));
       if (helpEmbedLength(embed) <= HELP_EMBED_LIMIT) {
         await inv.reply({ embeds: [embed.toJSON()], ephemeral: true });
         return;
       }
       // Guard, only if the registry ever grows past the embed cap: one
       // embed per category instead of one giant one.
-      await inv.reply({ embeds: [buildHelpEmbed([HELP_GROUPS[0]!]).toJSON()], ephemeral: true });
+      const author = helpAuthor(inv.user);
+      await inv.reply({ embeds: [buildHelpEmbed([HELP_GROUPS[0]!], author).toJSON()], ephemeral: true });
       for (const group of HELP_GROUPS.slice(1)) {
-        await inv.followUp({ embeds: [buildHelpEmbed([group]).toJSON()], ephemeral: true });
+        await inv.followUp({ embeds: [buildHelpEmbed([group], author).toJSON()], ephemeral: true });
       }
     },
   },

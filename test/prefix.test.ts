@@ -334,6 +334,10 @@ describe("handlePrefixMessage", () => {
     const embeds = payload.embeds as Array<Record<string, unknown>>;
     expect(embeds.length).toBe(1);
     expect(embeds[0]!.title).toBe("Command List");
+    // The box is headed by the requesting user, OwO-style: the fake
+    // author has no display name or avatar, so the author falls back
+    // to the username with no icon.
+    expect(embeds[0]!.author).toEqual({ name: "tester" });
     const text = msg.allText();
     expect(text).toContain("Here is the list of commands!");
     for (const cmd of allCommands) {

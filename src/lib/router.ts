@@ -275,7 +275,7 @@ export interface SentMessageLike {
 
 export interface PrefixMessageLike {
   content: string;
-  author: { id: string; username: string; bot?: boolean; displayAvatarURL?: () => string };
+  author: { id: string; username: string; bot?: boolean; displayName?: string; displayAvatarURL?: () => string };
   webhookId?: string | null;
   guildId?: string | null;
   channelId?: string;
