@@ -251,8 +251,37 @@ describe("trivia bank", () => {
     expect(isTriviaAnswerCorrect(q, (q.answerIndex + 1) % 4)).toBe(false);
   });
 
-  it("picks a question from the bank", async () => {
-    expect(GENERAL_QUESTIONS).toContain(pickTriviaQuestion());
+  it("picks a question from the bank (shuffled copy, same question text)", async () => {
+    const picked = pickTriviaQuestion();
+    const bankEntry = GENERAL_QUESTIONS.find((q) => q.question === picked.question);
+    expect(bankEntry).toBeDefined();
+    // Same 4 options, just possibly in a different order.
+    expect([...picked.options].sort()).toEqual([...bankEntry!.options].sort());
+  });
+
+  it("shuffles the correct answer across slots (no always-A bug)", async () => {
+    const counts = [0, 0, 0, 0];
+    for (let i = 0; i < 200; i++) {
+      counts[pickTriviaQuestion().answerIndex]! += 1;
+    }
+    const distinct = counts.filter((c) => c > 0).length;
+    expect(distinct).toBeGreaterThanOrEqual(3);
+    // No single slot dominates: each slot should hold well under half the
+    // picks (expected ~50/200 each; >100 would mean the shuffle is broken).
+    for (const c of counts) expect(c).toBeLessThanOrEqual(100);
+  });
+
+  it("shuffled picks still point at the bank's correct option", async () => {
+    for (let i = 0; i < 50; i++) {
+      const picked = pickTriviaQuestion();
+      const bankEntry = GENERAL_QUESTIONS.find((q) => q.question === picked.question)!;
+      const bankCorrect = bankEntry.options[bankEntry.answerIndex]!;
+      expect(picked.options[picked.answerIndex]).toBe(bankCorrect);
+      expect(isTriviaAnswerCorrect(picked, picked.answerIndex)).toBe(true);
+      for (let j = 0; j < 4; j++) {
+        if (j !== picked.answerIndex) expect(isTriviaAnswerCorrect(picked, j)).toBe(false);
+      }
+    }
   });
 });
 

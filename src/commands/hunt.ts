@@ -440,23 +440,6 @@ export const commands: Command[] = [
     },
   },
   {
-    name: "map",
-    description: "Show the hunt areas and their unlock levels.",
-    aliases: ["areas"],
-    async execute(inv, ctx) {
-      const bal = await getBalance(ctx.db, ctx.guildId, inv.user.id);
-      const lines = AREAS.map((a) => {
-        const locked = bal.level < a.unlockLevel;
-        const tiers = a.tiers.join(", ");
-        const pool = monstersInArea(a.id).length;
-        return `${locked ? "🔒" : "📍"} ${a.name} — Level ${a.unlockLevel} · ${tiers} · ${pool} monsters · ${a.blurb}`;
-      });
-      await inv.reply({
-        content: `🗺️ Hunt Map — you are level ${bal.level}\n${lines.join("\n")}\nHunt with \`uwu hunt\` or \`uwu hunt <area>\`.`,
-      });
-    },
-  },
-  {
     name: "zoo",
     description: "Show your caught monsters, or detail on one monster.",
     aliases: ["monsters"],

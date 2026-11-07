@@ -1,4 +1,4 @@
-import { securePick } from "./rng.js";
+import { secureInt, securePick } from "./rng.js";
 
 /**
  * Trivia question bank for Selena (general knowledge only — the MLBB
@@ -123,9 +123,26 @@ export const GENERAL_QUESTIONS: readonly TriviaQuestion[] = [
   },
 ];
 
-/** Pick a random question from the bank. */
+/**
+ * Pick a random question from the bank, with the 4 options shuffled so the
+ * correct answer is not always in the same slot. The bank itself is the
+ * source of truth (every entry there has answerIndex 0, i.e. the correct
+ * option listed first); the shuffle happens here at pick time and the
+ * returned answerIndex is remapped to the shuffled position of the correct
+ * option. Callers render `options` in order and check `answerIndex`, so a
+ * shuffled pick fixes both the displayed letters and the buttons.
+ */
 export function pickTriviaQuestion(): TriviaQuestion {
-  return securePick(GENERAL_QUESTIONS);
+  const base = securePick(GENERAL_QUESTIONS);
+  const correct = base.options[base.answerIndex]!;
+  const options = [...base.options] as TriviaQuestion["options"];
+  // Fisher-Yates shuffle, crypto-backed via secureInt.
+  for (let i = options.length - 1; i > 0; i--) {
+    const j = secureInt(0, i + 1);
+    [options[i], options[j]] = [options[j]!, options[i]!];
+  }
+  // Options are distinct (see validateBank), so indexOf is unambiguous.
+  return { question: base.question, options, answerIndex: options.indexOf(correct) };
 }
 
 /** True when the chosen option index is the question's answer. */

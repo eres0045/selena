@@ -356,7 +356,7 @@ export const commands: Command[] = [
   {
     name: "modlog",
     description: "Show recent moderation actions",
-    aliases: ["mlog", "logs"],
+    aliases: ["mlog", "modlogs"],
     args: [{ name: "limit", type: "integer" }],
     async execute(inv, ctx) {
       if (!hasPerm(inv, "ModerateMembers")) return deny(inv, "ModerateMembers");

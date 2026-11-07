@@ -24,6 +24,9 @@ export const CATEGORY_EMOJI: Record<string, string> = {
   Moderation: "🛡️",
   Utility: "🔧",
   Help: "❓",
+  World: "🌍",
+  Guilds: "👥",
+  Announcements: "📢",
 };
 
 export interface HelpGroupLike {

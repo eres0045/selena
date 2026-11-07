@@ -132,7 +132,7 @@ describe("tokenizeArgs", () => {
 
 describe("resolveCommand / alias table", () => {
   it("resolves every command by name", () => {
-    expect(allCommands.length).toBe(42);
+    expect(allCommands.length).toBe(49);
     for (const cmd of allCommands) {
       expect(resolveCommand(cmd.name)).toBe(cmd);
     }

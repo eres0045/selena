@@ -137,6 +137,32 @@ export async function runDueTasks(db: SelenaDb, client: Client | null): Promise<
       }
     }
   }
+
+  // Phase 2 world sweeps (design docs/hunt-world-phase2-design.md §2 +
+  // §11): travel arrivals, auto-hunt ticks, rare-log posts. Each sweep
+  // is a no-op when there is nothing due and never throws; a null
+  // client still advances travel/auto-hunt clocks (DB-only mode), but
+  // rare-log posts need a client to send anywhere, so they wait.
+  try {
+    const { travelDueSweep, processAutoHuntTicks } = (await import("./commands/world.js")) as {
+      travelDueSweep: (db: SelenaDb, client: Client | null) => Promise<void>;
+      processAutoHuntTicks: (db: SelenaDb, client: Client | null, nowMs: number) => Promise<void>;
+    };
+    await travelDueSweep(db, client);
+    await processAutoHuntTicks(db, client, now);
+  } catch (e) {
+    console.error("Selena: world sweep failed:", e instanceof Error ? e.message : e);
+  }
+  if (client) {
+    try {
+      const { rareLogSweep } = (await import("./lib/feeds.js")) as {
+        rareLogSweep: (db: SelenaDb, client: Client) => Promise<void>;
+      };
+      await rareLogSweep(db, client);
+    } catch (e) {
+      console.error("Selena: rare-log sweep failed:", e instanceof Error ? e.message : e);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

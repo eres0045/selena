@@ -432,15 +432,19 @@ describe("hunt commands", () => {
   it("registers hunt commands in a Hunt help category", () => {
     const hunt = HELP_GROUPS.find((g) => g.category === "Hunt");
     expect(hunt).toBeDefined();
-    expect(hunt!.commands.map((c) => c.name).sort()).toEqual(["hunt", "inv", "map", "roll", "sell", "zoo"]);
+    expect(hunt!.commands.map((c) => c.name).sort()).toEqual(["hunt", "inv", "roll", "sell", "zoo"]);
     expect(allCommands.find((c) => c.name === "roll")?.aliases).toContain("gacha");
   });
 
-  it("uwu map lists all four areas", async () => {
+  it("uwu map is now the world map and lists the four starting areas", async () => {
+    // Phase 2: the old hunt-only map was replaced by the world map
+    // (Starting Lands region). The four starting areas are still here.
     const msg = await run("uwu map");
+    expect(msg.allText()).toContain("World Map");
     expect(msg.allText()).toContain("Meadow of Beginnings");
     expect(msg.allText()).toContain("The Hollow Deep");
-    expect(msg.allText()).toContain("Level 15");
+    expect(msg.allText()).toContain("Whispering Woods");
+    expect(msg.allText()).toContain("Ember Peaks");
   });
 
   it("uwu zoo is empty at first, uwu inv is empty at first", async () => {

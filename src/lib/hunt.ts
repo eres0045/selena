@@ -694,9 +694,15 @@ export function catchRate(tier: Tier): number {
   return TIERS[tier].catchRate;
 }
 
-/** Attempt a catch: true when the random roll beats the tier's rate. */
-export function attemptCatch(tier: Tier, rand: () => number = secureFloat): boolean {
-  return rand() * 100 < TIERS[tier].catchRate;
+/** Attempt a catch: true when the random roll beats the tier's rate.
+ * `bonus` adds flat percentage points (guild catch bonus, pet buffs);
+ * the caller caps the combined bonus at +30pp (design §1.3). */
+export function attemptCatch(
+  tier: Tier,
+  rand: () => number = secureFloat,
+  bonus: number = 0,
+): boolean {
+  return rand() * 100 < TIERS[tier].catchRate + bonus;
 }
 
 /** Gold for selling one copy of a monster of this tier (design §2.4). */

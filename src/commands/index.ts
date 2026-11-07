@@ -24,6 +24,9 @@ import * as games from "./games.js";
 import * as mod from "./mod.js";
 import * as utility from "./utility.js";
 import * as help from "./help.js";
+import * as world from "./world.js";
+import * as guilds from "./guilds.js";
+import * as feeds from "./feeds.js";
 
 /** Command modules that do not exist yet (empty when the registry is complete). */
 export const PENDING_MODULES: readonly string[] = [];
@@ -41,6 +44,9 @@ const CATEGORY_LABELS: Record<string, string> = {
   casino: "Casino",
   hunt: "Hunt",
   games: "Games",
+  world: "World",
+  guilds: "Guilds",
+  feeds: "Announcements",
 };
 
 interface CommandModule {
@@ -57,6 +63,12 @@ const MODULES: { key: string; module: CommandModule }[] = [
   { key: "mod", module: mod },
   { key: "utility", module: utility },
   { key: "help", module: help },
+  // Phase 2: world (map/travel/auto-hunt) before feeds so `uwu map`
+  // resolves to the world map; feeds after mod so `uwu logs` resolves
+  // to the rare-catch feed, not mod's modlog (alias now "modlogs").
+  { key: "world", module: world },
+  { key: "guilds", module: guilds },
+  { key: "feeds", module: feeds },
 ];
 
 function toHelpGroup(key: string, cmds: Command[]): HelpGroup {

@@ -1,4 +1,5 @@
-import { AREAS, type Tier } from "./hunt.js";
+import { AREAS, encounterMonster, monstersInArea, monstersOfTier, type Monster, type Tier } from "./hunt.js";
+import { secureFloat, weightedPick } from "./rng.js";
 
 /**
  * World map catalogue (Phase 2, design §2.1 + §6.1).
@@ -158,4 +159,48 @@ export function travelMinutes(a: WorldArea, b: WorldArea): number {
 export function wildLevelForArea(area: WorldArea, rand: () => number = Math.random): number {
   const [lo, hi] = area.wildLevels;
   return lo + Math.floor(rand() * (hi - lo + 1));
+}
+
+/**
+ * A random monster encountered in a world area (Phase 2 roaming /
+ * auto-hunt pool, design §2.4).
+ *
+ * Region 1 areas delegate to the Phase 1 encounter (area-code pool from
+ * hunt.ts). Deeper regions have no area-coded roster monsters, so the
+ * tier is picked from the area's encounterWeights renormalised over the
+ * tiers that actually have monsters in the roster, then a random monster
+ * of that tier is drawn from the whole roster.
+ */
+export function encounterMonsterInWorldArea(area: WorldArea, rand: () => number = secureFloat): Monster {
+  if (area.regionId === "starting-lands") {
+    const a = AREAS.find((x) => x.id === area.id);
+    if (!a) throw new Error(`encounterMonsterInWorldArea: unknown Region 1 area ${area.id}`);
+    return encounterMonster(a, rand);
+  }
+  const entries = area.tiers
+    .filter((t) => monstersOfTier(t).length > 0)
+    .map((t) => [t, area.encounterWeights[t] ?? 1] as const);
+  if (entries.length === 0) throw new Error(`encounterMonsterInWorldArea: no monsters for area ${area.id}`);
+  const tier = weightedPick(entries, rand);
+  const pool = monstersOfTier(tier);
+  return pool[Math.floor(rand() * pool.length)]!;
+}
+
+/**
+ * A random monster of one tier from a world area's pool (used for the
+ * cap-downgrade re-draw in auto-hunt, so a downgraded award still comes
+ * from the destination area). Region 1 uses its area-code pool;
+ * deeper regions use the whole roster of that tier.
+ */
+export function drawMonsterFromWorldArea(area: WorldArea, tier: Tier, rand: () => number = secureFloat): Monster {
+  if (area.regionId === "starting-lands") {
+    const a = AREAS.find((x) => x.id === area.id);
+    if (a) {
+      const pool = monstersInArea(a.id).filter((m) => m.tier === tier);
+      if (pool.length > 0) return pool[Math.floor(rand() * pool.length)]!;
+    }
+  }
+  const pool = monstersOfTier(tier);
+  if (pool.length === 0) throw new Error(`drawMonsterFromWorldArea: no monsters of tier ${tier}`);
+  return pool[Math.floor(rand() * pool.length)]!;
 }
