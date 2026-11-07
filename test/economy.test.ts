@@ -166,17 +166,23 @@ describe("getLeaderboard", () => {
 // ---------------------------------------------------------------------------
 
 describe("/balance command", () => {
-  it("happy path: shows the caller's points", async () => {
+  it("happy path: one plain-text line, no embed, no attachment", async () => {
     await seed("user-1", 250);
     const fake = await run("balance", {});
-    expect(fake.allText()).toMatch(/250/);
+    const payload = fake.firstReplyPayload() as Record<string, unknown>;
+    expect(typeof payload.content).toBe("string");
+    expect(payload.embeds).toBeUndefined();
+    expect(payload.files).toBeUndefined();
+    expect(payload.content).toMatch(/Hey <@user-1>, you currently have 250 points!/);
+    expect(payload.content).toMatch(/0 XP · Level 0/);
   });
 
   it("happy path: shows another user's balance", async () => {
     await seed("user-2", 42);
     const fake = await run("balance", { user: { id: "user-2", username: "friend" } });
-    expect(fake.allText()).toMatch(/42/);
-    expect(fake.allText()).toMatch(/friend/);
+    const payload = fake.firstReplyPayload() as Record<string, unknown>;
+    expect(payload.content).toMatch(/Hey <@user-2>, you currently have 42 points!/);
+    expect(payload.content).toMatch(/0 XP · Level 0/);
   });
 
   it("error path: a brand-new user shows 0, not a crash", async () => {

@@ -28,13 +28,10 @@ export const commands: Command[] = [
     async execute(interaction, ctx) {
       const target = interaction.options.getUser("user") ?? interaction.user;
       const bal = await getBalance(ctx.db, ctx.guildId, target.id);
+      // OwO-style: one plain line, no embed box — the animated coin +
+      // the mention + points with XP/level inline, so nothing is lost.
       await interaction.reply({
-        embeds: [
-          pointsEmbed(
-            `${emoji("coin")} ${target.username}'s Balance`,
-            `**${fmt(bal.points)}** points\n${fmt(bal.xp)} XP · Level ${bal.level}`,
-          ).toJSON(),
-        ],
+        content: `${emoji("coin")} Hey <@${target.id}>, you currently have ${fmt(bal.points)} points! (${fmt(bal.xp)} XP · Level ${bal.level})`,
       });
     },
   },

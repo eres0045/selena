@@ -525,7 +525,7 @@ describe("/coinflip command", () => {
   });
 });
 
-describe("visual games: suspense -> reveal flow", () => {
+describe("visual games: one continuous motion, text-only settle edit", () => {
   function edits(fake: FakeChatInput) {
     return fake.replies.filter((r) => r.kind === "editReply");
   }
@@ -538,63 +538,76 @@ describe("visual games: suspense -> reveal flow", () => {
     return p.embeds?.[0];
   }
 
-  it("coinflip: defers, shows the flip, then edits to the landed face matching the result text", async () => {
+  it("coinflip: defers, shows one toss GIF that lands on the face, then edits TEXT ONLY", async () => {
     await seed("user-1", 1000);
     const fake = await run("coinflip", { bet: 100, guess: "heads" });
     expect(fake.replies[0]?.kind).toBe("deferReply");
     const [spin, settled] = edits(fake);
     expect(spin).toBeDefined();
     expect(settled).toBeDefined();
+    // Suspense: the same game.gif the settle keeps — never a different
+    // image, and the text names the guess but NOT the result.
     expect(embedOf(spin!.payload)?.description).toMatch(/Flipping/);
-    expect(fileNames(spin!.payload)).toEqual(["flip.gif"]);
+    expect(embedOf(spin!.payload)?.description).not.toMatch(/landed \*\*/);
+    expect(fileNames(spin!.payload)).toEqual(["game.gif"]);
+    expect(embedOf(spin!.payload)?.image?.url).toBe("attachment://game.gif");
+    // Settle: NO new attachment (no `files` key at all — `files: []`
+    // would REMOVE the GIF); the picture stays game.gif, only the
+    // text changes to name the landed face.
+    expect("files" in (settled!.payload as object)).toBe(false);
     const settledEmbed = embedOf(settled!.payload);
+    expect(settledEmbed?.image?.url).toBe("attachment://game.gif");
     const landed = /landed \*\*(heads|tails)\*\*/.exec(settledEmbed?.description ?? "")?.[1];
     expect(landed).toMatch(/^(heads|tails)$/);
-    expect(fileNames(settled!.payload)).toEqual([`${landed}.png`]);
-    expect(settledEmbed?.image?.url).toBe(`attachment://${landed}.png`);
   });
 
-  it("slots: defers, shows the spinning reels, then edits to the settled strip", async () => {
+  it("slots: defers, shows one spin GIF that stops on the real symbols, then edits TEXT ONLY", async () => {
     await seed("user-1", 1000);
     const fake = await run("slots", { bet: 100 });
     expect(fake.replies[0]?.kind).toBe("deferReply");
     const [spin, settled] = edits(fake);
     expect(spin).toBeDefined();
     expect(settled).toBeDefined();
-    expect(embedOf(spin!.payload)?.description).toMatch(/Spinning/);
-    expect(fileNames(spin!.payload)).toEqual(["spin.gif"]);
-    expect(fileNames(settled!.payload)).toEqual(["settled.gif"]);
-    expect(embedOf(settled!.payload)?.image?.url).toBe("attachment://settled.gif");
+    expect(embedOf(spin!.payload)?.description).toBe("Spinning…");
+    expect(fileNames(spin!.payload)).toEqual(["game.gif"]);
+    expect(embedOf(spin!.payload)?.image?.url).toBe("attachment://game.gif");
+    expect("files" in (settled!.payload as object)).toBe(false);
+    const settledEmbed = embedOf(settled!.payload);
+    expect(settledEmbed?.image?.url).toBe("attachment://game.gif");
+    expect(settledEmbed?.description).toMatch(/won|No match/);
   });
 
-  it("roulette: defers, shows the spinning wheel, then edits to the wheel with the ball on the rolled number", async () => {
+  it("roulette: defers, shows one spin GIF with the ball settling in the pocket, then edits TEXT ONLY", async () => {
     await seed("user-1", 1000);
     const fake = await run("roulette", { bet: 100, "bet-on": "red" });
     expect(fake.replies[0]?.kind).toBe("deferReply");
     const [spin, settled] = edits(fake);
     expect(spin).toBeDefined();
     expect(settled).toBeDefined();
-    expect(embedOf(spin!.payload)?.description).toMatch(/Spinning/);
-    expect(fileNames(spin!.payload)).toEqual(["spin.gif"]);
+    expect(embedOf(spin!.payload)?.description).toBe("Spinning…");
+    expect(fileNames(spin!.payload)).toEqual(["game.gif"]);
+    expect(embedOf(spin!.payload)?.image?.url).toBe("attachment://game.gif");
+    expect("files" in (settled!.payload as object)).toBe(false);
     const settledEmbed = embedOf(settled!.payload);
+    expect(settledEmbed?.image?.url).toBe("attachment://game.gif");
     const rolled = /landed on \*\*(\d+) /.exec(settledEmbed?.description ?? "")?.[1];
     expect(rolled).toMatch(/^\d+$/);
-    const wheelName = `wheel-${String(rolled).padStart(2, "0")}.png`;
-    expect(fileNames(settled!.payload)).toEqual([wheelName]);
-    expect(settledEmbed?.image?.url).toBe(`attachment://${wheelName}`);
   });
 
-  it("scratch: defers, shows the covered foil tiles, then edits to the revealed tiles", async () => {
+  it("scratch: defers, shows one reveal GIF that peels to the real symbols, then edits TEXT ONLY", async () => {
     await seed("user-1", 1000);
     const fake = await run("scratch", { bet: 100 });
     expect(fake.replies[0]?.kind).toBe("deferReply");
     const [spin, settled] = edits(fake);
     expect(spin).toBeDefined();
     expect(settled).toBeDefined();
-    expect(embedOf(spin!.payload)?.description).toMatch(/Scratching/);
-    expect(fileNames(spin!.payload)).toEqual(["covered.gif"]);
-    expect(fileNames(settled!.payload)).toEqual(["revealed.gif"]);
-    expect(embedOf(settled!.payload)?.image?.url).toBe("attachment://revealed.gif");
+    expect(embedOf(spin!.payload)?.description).toBe("Scratching…");
+    expect(fileNames(spin!.payload)).toEqual(["game.gif"]);
+    expect(embedOf(spin!.payload)?.image?.url).toBe("attachment://game.gif");
+    expect("files" in (settled!.payload as object)).toBe(false);
+    const settledEmbed = embedOf(settled!.payload);
+    expect(settledEmbed?.image?.url).toBe("attachment://game.gif");
+    expect(settledEmbed?.description).toMatch(/won|returned|No match/);
   });
 
   it("visual games reply with a single message (defer + 2 edits), never a new reply", async () => {

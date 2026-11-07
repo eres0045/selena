@@ -7,13 +7,15 @@ touched. This script builds the assets for the other four games:
   * coinflip — flip.gif: a real TOSS, like a camera filming it — the
     coin goes UP, gets BIG as it comes toward the viewer, comes DOWN
     spinning fast, and the view zooms in close as it lands edge-on
-    (neutral — the face is revealed by the edit to heads/tails.png).
-    heads.png / tails.png: the landed face on a WIDE canvas, the coin
-    ~330px so it displays ~160px on a phone (NOT a tight close-up
-    that fills the frame — that was the old too-big version). Both
-    faces are PIL-drawn (the emoji.gg $ face carries a faint stock
-    watermark that shows at 320px, so heads is a clean redrawn $
-    disc in the same style; tails is a star-emboss disc).
+    (neutral — the face is revealed by the runtime composer landing
+    on heads/tails). heads.png / tails.png (+ heads.gif / tails.gif,
+    same face as a single-frame GIF for the composer): the landed
+    face on a WIDE canvas, the coin ~250px so it displays ~122px on
+    a phone (NOT a tight close-up that fills the frame — that was
+    the old too-big version). Both faces are PIL-drawn (the emoji.gg
+    $ face carries a faint stock watermark that shows at 320px, so
+    heads is a clean redrawn $ disc in the same style; tails is a
+    star-emboss disc).
   * slots — spin.gif: the machine with all three reels scrolling
     (seamless loop, never settles on a combination); machine.gif: the
     machine frame with TRANSPARENT reel windows; tiles/<key>.gif: one
@@ -21,10 +23,13 @@ touched. This script builds the assets for the other four games:
     The settled strip is composed at reply time by src/lib/visualgames.ts
     from the real spin result — never a canned 7-7-7.
   * roulette — spin.gif: the 37-pocket European wheel spinning with the
-    ball orbiting; wheel-<nn>.png: one settled wheel per number (0-36)
-    with the ball on the ACTUAL winning pocket. Wheel order is the
-    canonical European clockwise order from 0, verified against
-    multiple published references:
+    ball orbiting (9 frames, -45 deg each, ending back at the base
+    orientation so the runtime composer can take over without a snap);
+    base.gif: the wheel with NO ball (the composer draws the ball
+    onto it at the winning pocket's angle); wheel-<nn>.png: one
+    settled wheel per number (0-36) with the ball on the ACTUAL
+    winning pocket. Wheel order is the canonical European clockwise
+    order from 0, verified against multiple published references:
     0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,
     20,14,31,9,22,18,29,7,28,12,35,3,26.
     Pocket i is centred at angle -90 + (i+0.5)*360/37 degrees (PIL
@@ -54,10 +59,13 @@ pass, so it stays crisp. If a visual can't stay readable small,
 prefer a tighter crop/zoom on the important part over bigger art.
 
 Ship sizes (canvas size = what src/lib/visualgames.ts expects):
-coin 700x280 (coin art <= 340px -> ~165px on screen), slots
-700x280 (machine art 350x230 -> ~170px), roulette 700x500
-(wheel art 606x485, wheel 450px -> ~219px), scratch 700x150
-(tiles 110x127 -> ~53px); slots tiles 75x85, scratch tiles 110x127.
+coin 700x280 (coin art ~250px -> ~122px on screen — the landed face
+was ~330px/~160px and still looked big/prominent, so the face is
+smaller now; the toss peak is ~218px), slots 700x280 (machine art
+350x230 -> ~170px), roulette 700x500 (wheel art 471x377, wheel 350px
+-> ~170px on screen — was 450px/~219px and still looked big), scratch
+700x150 (tiles 110x127 -> ~53px); slots tiles 75x85, scratch tiles
+110x127.
 
 Usage: python3 scripts/render_visual_games.py
 Writes: assets/games/** (+ assets/games/verify/contact-sheet.png)
@@ -155,8 +163,8 @@ COIN_SHIP = (700, 280)          # coin art <= 340px -> ~165px on screen
 SLOTS_SHIP = (700, 280)         # machine art 350x230 -> ~170px on screen
 SLOTS_ART = (350, 230)
 SLOTS_TILE_SHIP = (75, 85)
-ROULETTE_SHIP = (700, 500)      # wheel art 450px -> ~219px on screen
-ROULETTE_ART = (606, 485)
+ROULETTE_SHIP = (700, 500)      # wheel art 350px -> ~170px on screen
+ROULETTE_ART = (471, 377)
 SCRATCH_SHIP = (700, 150)       # tiles 110x127 -> ~53px on screen
 SCRATCH_TILE_SHIP = (110, 127)
 
@@ -208,7 +216,7 @@ def draw_twemoji_symbol(draw: ImageDraw.ImageDraw, img: Image.Image,
 
 COIN_W, COIN_H = 1400, 560  # render canvas = exactly 2x the 700x280 ship size
 COIN_CX, COIN_CY = COIN_W // 2, COIN_H // 2
-COIN_CLOSE_D = 660  # landed coin diameter (render px -> 330 shipped, ~160px on screen)
+COIN_CLOSE_D = 500  # landed coin diameter (render px -> 250 shipped, ~122px on screen)
 
 
 def draw_heads_disc(d: int = COIN_CLOSE_D) -> Image.Image:
@@ -272,29 +280,34 @@ def build_coinflip(face: Image.Image) -> tuple[Path, Path, Path]:
     """
     out = GAMES / "coinflip"
     out.mkdir(parents=True, exist_ok=True)
-    # Landed faces: the coin ~330px on the 700x280 canvas — small on
-    # screen (~160px on a phone), but the $ / star still read clearly.
+    # Landed faces: the coin ~250px on the 700x280 canvas — small on
+    # screen (~122px on a phone), but the $ / star still read clearly.
+    # Saved as PNG (the settled image) AND as single-frame GIFs
+    # (heads.gif/tails.gif) so the runtime composer can decode the
+    # face with the same GIF path as the toss frames.
     heads = Image.new("RGBA", (COIN_W, COIN_H), (0, 0, 0, 0))
     heads.alpha_composite(face, ((COIN_W - COIN_CLOSE_D) // 2,
                                  (COIN_H - COIN_CLOSE_D) // 2))
     heads_path = out / "heads.png"
     ship(heads, COIN_SHIP).save(heads_path)
+    save_transparent_gif([ship(heads, COIN_SHIP)], out / "heads.gif", 100)
     tails_img = draw_tails_disc()
     tails = Image.new("RGBA", (COIN_W, COIN_H), (0, 0, 0, 0))
     tails.alpha_composite(tails_img, ((COIN_W - COIN_CLOSE_D) // 2,
                                       (COIN_H - COIN_CLOSE_D) // 2))
     tails_path = out / "tails.png"
     ship(tails, COIN_SHIP).save(tails_path)
+    save_transparent_gif([ship(tails, COIN_SHIP)], out / "tails.gif", 100)
     # Toss keyframes (render px, canvas 1400x560): (centre-y, diameter).
-    # Ship px are half these: the coin rises from the bottom (410,300),
-    # gets BIG toward the viewer (peak 288 ship px at the top, ~140px on
+    # Ship px are half these: the coin rises from the bottom (410,227),
+    # gets BIG toward the viewer (peak 218 ship px at the top, ~106px on
     # screen, looming past the top edge), falls spinning fast, and lands
     # edge-on at the centre. The y values keep the coin inside the
     # frame except for the deliberate top-clip at the peak.
     keys = [
-        (410, 300), (360, 374), (288, 450), (220, 512), (160, 562), (120, 576),
-        (148, 538), (208, 488), (280, 438), (340, 400), (370, 374), (370, 374),
-        (370, 438), (348, 524), (308, 612), (280, 660),
+        (410, 227), (360, 283), (288, 341), (220, 388), (160, 426), (120, 437),
+        (148, 408), (208, 370), (280, 332), (340, 303), (370, 283), (370, 283),
+        (370, 332), (348, 397), (308, 464), (280, 500),
     ]
     frames: list[Image.Image] = []
     for i, (cy, d) in enumerate(keys):
@@ -489,8 +502,15 @@ def build_roulette() -> list[Path]:
     out.mkdir(parents=True, exist_ok=True)
     made: list[Path] = []
     base = draw_wheel_base()
-    # Settled wheels, one per number: the wheel is art 606x485 (wheel
-    # 450px) centred on the 700x500 canvas.
+    # The wheel base with NO ball (base.gif): the runtime composer
+    # draws the ball onto it at the winning pocket's angle, so the
+    # ball can ROLL into the pocket over the last frames instead of
+    # snapping there in an image swap.
+    p = out / "base.gif"
+    save_transparent_gif([ship_padded(base, ROULETTE_ART, ROULETTE_SHIP)], p, 100)
+    made.append(p)
+    # Settled wheels, one per number: the wheel is art 471x377 (wheel
+    # 350px) centred on the 700x500 canvas.
     for n in range(37):
         img = base.copy()
         draw_ball(img, n)
@@ -498,13 +518,20 @@ def build_roulette() -> list[Path]:
         ship_padded(img, ROULETTE_ART, ROULETTE_SHIP).save(p)
         made.append(p)
     # Spin: wheel turning clockwise, ball orbiting the other way.
+    # 9 frames x -45 deg = -360 deg, so the last frame is back at the
+    # base orientation (f=8 uses base.copy() exactly, not a -360 deg
+    # resample, so there is no snap when the runtime takes over from
+    # there). The ball's angle at f=8 is 200 - 42*8 = -136 deg — the
+    # runtime settles it from there to the winning pocket.
     frames: list[Image.Image] = []
-    for f in range(12):
-        wheel = base.rotate(-30 * f, resample=Image.BICUBIC,
-                            center=(ROULETTE_CX, ROULETTE_CY))
-        img = wheel.copy()
+    for f in range(9):
+        if f == 8:
+            img = base.copy()
+        else:
+            img = base.rotate(-45 * f, resample=Image.BICUBIC,
+                              center=(ROULETTE_CX, ROULETTE_CY))
         d = ImageDraw.Draw(img)
-        ball_angle = math.radians(200 - 28 * f)
+        ball_angle = math.radians(200 - 42 * f)
         r = BALL_R
         bx = ROULETTE_CX + r * math.cos(ball_angle)
         by = ROULETTE_CY + r * math.sin(ball_angle)
@@ -513,7 +540,7 @@ def build_roulette() -> list[Path]:
                   outline=(120, 120, 120), width=4)
         frames.append(img)
     p = out / "spin.gif"
-    save_looping_gif([ship_padded(f, ROULETTE_ART, ROULETTE_SHIP) for f in frames], p, 100)
+    save_looping_gif([ship_padded(f, ROULETTE_ART, ROULETTE_SHIP) for f in frames], p, 130)
     made.append(p)
     return made
 
@@ -522,9 +549,9 @@ def verify_wheels() -> None:
     """Every settled wheel must have its (white) ball on the right pocket:
     the pocket index at the ball's angle must be the wheel's number.
     Samples the SHIPPED 700x500 PNGs, so the centres use ship-scale
-    geometry (centre 350,250; ball radius 201)."""
+    geometry (centre 350,250; ball radius 156)."""
     out = GAMES / "roulette"
-    scx, scy, sball_r = 350, 250, 201
+    scx, scy, sball_r = 350, 250, 156
     for n in range(37):
         img = Image.open(out / f"wheel-{n:02d}.png").convert("RGBA")
         a = math.radians(pocket_center_angle(n))
@@ -636,8 +663,8 @@ def verify_contact_sheet() -> Path:
     # 3x zoom on the ball of wheel-17 (is it findable at 700px?).
     w17 = Image.open(GAMES / "roulette" / "wheel-17.png").convert("RGBA")
     a = math.radians(pocket_center_angle(17))
-    bx = int(round(350 + 201 * math.cos(a)))
-    by = int(round(250 + 201 * math.sin(a)))
+    bx = int(round(350 + 156 * math.cos(a)))
+    by = int(round(250 + 156 * math.sin(a)))
     zoom = w17.crop((bx - 30, by - 30, bx + 30, by + 30)).resize((150, 150), Image.LANCZOS)
     add_img("wheel-17 ball 3x", zoom)
     add("scratch cover", GAMES / "scratch" / "tiles" / "cover.gif", [0])

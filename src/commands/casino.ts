@@ -40,7 +40,11 @@ import {
   VISUAL_SUSPENSE,
   coinflipFlipPath,
   coinflipLandedPath,
+  composeCoinflipResult,
+  composeRouletteResult,
   composeScratch,
+  composeScratchResult,
+  composeSlotsResult,
   composeSlotsSettled,
   rouletteSpinPath,
   rouletteWheelPath,
@@ -173,10 +177,39 @@ async function bjReplyPayload(
 }
 
 /**
- * Suspense -> reveal (Ronit: the player must WATCH the flip/spin, then
- * see it land — not a text result). The bot defers, shows the action
- * animation with neutral text that leaks nothing about the result,
- * waits, then edits the SAME reply to the settled visual + result.
+ * ONE continuous motion (Ronit: the animation must not cut/glitch at
+ * the end and then show the result — it has to look like the thing
+ * actually landed). The caller defers FIRST (before composing, so the
+ * ~1s composition never eats the 3s ack window), then this sends ONE
+ * play-once GIF that IS the result — the coin tosses and lands on the
+ * real face, the reels stop on the real symbols, the ball settles in
+ * the real pocket, the foil peels to the real symbols — and freezes
+ * there. ~2.4s later it edits the SAME reply and changes ONLY the
+ * text: the settled edit carries NO `files` key at all (Discord keeps
+ * the attachment already on the message; the embed still points at
+ * attachment://game.gif). Passing `files: []` would REMOVE the
+ * attachment — so the settled edit must omit `files` entirely.
+ */
+async function playSingleGif(
+  interaction: Interaction,
+  gif: Buffer,
+  suspenseEmbed: ReturnType<typeof pointsEmbed>,
+  settledEmbed: ReturnType<typeof pointsEmbed>,
+): Promise<void> {
+  suspenseEmbed.setImage("attachment://game.gif");
+  settledEmbed.setImage("attachment://game.gif");
+  await interaction.editReply({
+    embeds: [suspenseEmbed.toJSON()],
+    files: [new AttachmentBuilder(gif, { name: "game.gif" })],
+  });
+  await sleep(VISUAL_SUSPENSE.ms);
+  await interaction.editReply({ embeds: [settledEmbed.toJSON()] });
+}
+
+/**
+ * FALLBACK two-image flow (only when the runtime composition fails):
+ * the generic suspense GIF, then an edit to the settled image + result.
+ * The caller already deferred (before composing) — this never defers.
  * When the spin asset is missing (spin === null) the suspense is
  * skipped and the settled reply goes out directly, so a missing file
  * can never break the game.
@@ -186,7 +219,6 @@ async function playVisual(
   spin: { embeds: APIEmbed[]; files: AttachmentBuilder[] } | null,
   settled: { embeds: APIEmbed[]; files: AttachmentBuilder[] },
 ): Promise<void> {
-  await interaction.deferReply();
   if (spin) {
     await interaction.editReply(spin);
     await sleep(VISUAL_SUSPENSE.ms);
@@ -254,13 +286,7 @@ export const commands: Command[] = [
         spin.multiplier > 0
           ? `You won **${fmt(winAmount)} points** (${spin.multiplier}x)!`
           : "No match — better luck next spin.";
-      // The settled strip shows the REAL result symbols (never a canned
-      // 7-7-7); the text symbols stay only as the no-asset fallback.
-      const settledStrip = await composeSlotsSettled(spin.symbols);
-      const settledEmbed = pointsEmbed(
-        emoji("slots") + " Slots",
-        settledStrip ? outcome : `${spin.symbols.join(" | ")}\n\n${outcome}`,
-      )
+      const settledEmbed = pointsEmbed(emoji("slots") + " Slots", outcome)
         .addFields(
           { name: "Bet", value: fmt(bet), inline: true },
           { name: "Multiplier", value: `${spin.multiplier}x`, inline: true },
@@ -268,10 +294,25 @@ export const commands: Command[] = [
         )
         .setFooter({ text: "Odds: jackpot 7️⃣7️⃣7️⃣ 50x · 3-of-a-kind 10x · pair 2x · house edge ~10.9%. Points only, no real money." })
         .setColor(spin.multiplier > 0 ? BJ_COLORS.win : BJ_COLORS.lose);
-      const spinBuf = tryReadAsset(slotsSpinPath());
       const spinEmbed = pointsEmbed(emoji("slots") + " Slots", "Spinning…")
         .addFields({ name: "Bet", value: fmt(bet), inline: true })
         .setColor(BJ_COLORS.playing);
+      // Defer BEFORE composing: the runtime GIF takes ~1s and the ack
+      // window is 3s. Then one continuous motion (the reels stop on
+      // the real symbols and freeze); the settle edit changes only
+      // the text. Falls back to the two-image flow when composing
+      // fails — the game never breaks on a missing asset.
+      await interaction.deferReply();
+      const gif = await composeSlotsResult(spin.symbols).catch(() => null);
+      if (gif) {
+        await playSingleGif(interaction, gif, spinEmbed, settledEmbed);
+        return;
+      }
+      // The settled strip shows the REAL result symbols (never a canned
+      // 7-7-7); the text symbols stay only as the no-asset fallback.
+      const settledStrip = await composeSlotsSettled(spin.symbols);
+      if (!settledStrip) settledEmbed.setDescription(`${spin.symbols.join(" | ")}\n\n${outcome}`);
+      const spinBuf = tryReadAsset(slotsSpinPath());
       await playVisual(
         interaction,
         spinBuf ? attachPayload(spinEmbed, { buffer: spinBuf, name: "spin.gif" }) : null,
@@ -351,8 +392,6 @@ export const commands: Command[] = [
       const outcome = result.win
         ? `${emoji("party")} You won **${fmt(winAmount)} points** (${result.multiplier}x)!`
         : "You lost this spin.";
-      // Settled wheel: the ball sits on the ACTUAL winning pocket.
-      const wheelBuf = tryReadAsset(rouletteWheelPath(result.roll));
       const settledEmbed = pointsEmbed(emoji("roulette") + " Roulette", `The ball landed on **${result.roll} ${result.color}**.\nYou bet on **${result.betOn}**.\n\n${outcome}`)
         .addFields(
           { name: "Bet", value: fmt(bet), inline: true },
@@ -361,13 +400,25 @@ export const commands: Command[] = [
         )
         .setFooter({ text: "European wheel (single zero) · even-money 2x · single number 36x · house edge 2.70%. Points only, no real money." })
         .setColor(result.win ? BJ_COLORS.win : BJ_COLORS.lose);
-      const spinBuf = tryReadAsset(rouletteSpinPath());
       const spinEmbed = pointsEmbed(emoji("roulette") + " Roulette", "Spinning…")
         .addFields(
           { name: "Bet", value: fmt(bet), inline: true },
           { name: "You bet on", value: `**${result.betOn}**`, inline: true },
         )
         .setColor(BJ_COLORS.playing);
+      // Defer BEFORE composing: the runtime GIF takes ~1s and the ack
+      // window is 3s. Then one continuous motion (the ball rolls into
+      // the real pocket and stops); the settle edit changes only the
+      // text. Falls back to the two-image flow when composing fails.
+      await interaction.deferReply();
+      const gif = await composeRouletteResult(result.roll).catch(() => null);
+      if (gif) {
+        await playSingleGif(interaction, gif, spinEmbed, settledEmbed);
+        return;
+      }
+      // Settled wheel: the ball sits on the ACTUAL winning pocket.
+      const wheelBuf = tryReadAsset(rouletteWheelPath(result.roll));
+      const spinBuf = tryReadAsset(rouletteSpinPath());
       await playVisual(
         interaction,
         spinBuf ? attachPayload(spinEmbed, { buffer: spinBuf, name: "spin.gif" }) : null,
@@ -409,10 +460,6 @@ export const commands: Command[] = [
       const outcome = result.win
         ? `${emoji("party")} You won **${fmt(winAmount)} points** (1.9x)!`
         : "Wrong call — you lost this flip.";
-      // The coin spins, then LANDS on the actual result face (heads = the
-      // $ face, tails = the star disc — same canvas, so the edit feels
-      // like the coin just stops).
-      const landedBuf = tryReadAsset(coinflipLandedPath(result.result));
       const settledEmbed = pointsEmbed(emoji("coin") + " Coinflip", `You called **${guess}**. The coin landed **${result.result}**.\n\n${outcome}`)
         .addFields(
           { name: "Bet", value: fmt(bet), inline: true },
@@ -420,13 +467,27 @@ export const commands: Command[] = [
         )
         .setFooter({ text: "50/50 flip · win pays 1.9x · house edge 5%. Points only, no real money." })
         .setColor(result.win ? BJ_COLORS.win : BJ_COLORS.lose);
-      const spinBuf = tryReadAsset(coinflipFlipPath());
       const spinEmbed = pointsEmbed(emoji("coin") + " Coinflip", "Flipping…")
         .addFields(
           { name: "Bet", value: fmt(bet), inline: true },
           { name: "You called", value: `**${guess}**`, inline: true },
         )
         .setColor(BJ_COLORS.playing);
+      // Defer BEFORE composing: the runtime GIF takes ~1s and the ack
+      // window is 3s. Then one continuous motion (the toss lands on
+      // the real face and freezes); the settle edit changes only the
+      // text. Falls back to the two-image flow when composing fails.
+      await interaction.deferReply();
+      const gif = await composeCoinflipResult(result.result).catch(() => null);
+      if (gif) {
+        await playSingleGif(interaction, gif, spinEmbed, settledEmbed);
+        return;
+      }
+      // The coin spins, then LANDS on the actual result face (heads = the
+      // $ face, tails = the star disc — same canvas, so the edit feels
+      // like the coin just stops).
+      const landedBuf = tryReadAsset(coinflipLandedPath(result.result));
+      const spinBuf = tryReadAsset(coinflipFlipPath());
       await playVisual(
         interaction,
         spinBuf ? attachPayload(spinEmbed, { buffer: spinBuf, name: "flip.gif" }) : null,
@@ -542,6 +603,30 @@ export const commands: Command[] = [
           : result.multiplier === 1
             ? `Two matching — your **${fmt(bet)} points** are returned.`
             : "No match — better luck next card.";
+      // Defer BEFORE composing: the runtime GIF takes ~1s and the ack
+      // window is 3s. Then one continuous motion (the foil peels to
+      // the real symbols and holds); the settle edit changes only
+      // the text. Falls back to the two-image flow when composing
+      // fails — the game never breaks on a missing asset.
+      await interaction.deferReply();
+      const gif = await composeScratchResult(result.symbols).catch(() => null);
+      if (gif) {
+        const settledEmbed = pointsEmbed("🎫 Scratch Card", outcome)
+          .addFields(
+            { name: "Bet", value: fmt(bet), inline: true },
+            { name: "Multiplier", value: `${result.multiplier}x`, inline: true },
+            { name: "Balance", value: fmt(balance), inline: true },
+          )
+          .setFooter({ text: "Odds: 3 matching 5x · 2 matching 1x · house edge 12.5%. Points only, no real money." })
+          .setColor(
+            result.multiplier === 5 ? BJ_COLORS.win : result.multiplier === 1 ? BJ_COLORS.push : BJ_COLORS.lose,
+          );
+        const spinEmbed = pointsEmbed("🎫 Scratch Card", "Scratching…")
+          .addFields({ name: "Bet", value: fmt(bet), inline: true })
+          .setColor(BJ_COLORS.playing);
+        await playSingleGif(interaction, gif, spinEmbed, settledEmbed);
+        return;
+      }
       // Visual reveal: three covered foil tiles first, then the same
       // three tiles revealed with the real drawn symbols. The text
       // symbols stay only as the no-asset fallback.
