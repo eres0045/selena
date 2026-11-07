@@ -130,6 +130,8 @@ describe("utility commands", () => {
     const cmd = utilityCommands.find((c) => c.name === "leaderboard-xp")!;
     await (cmd.execute as (i: unknown, ctx: unknown) => Promise<void>)(fake, { db, guildId: GUILD });
     expect(fake.allText().indexOf("user-a")).toBeLessThan(fake.allText().indexOf("user-b"));
+    // A leaderboard anyone can see must not ping the people on it.
+    expect(fake.allText()).not.toContain("<@");
     resetXpCooldowns();
   });
 

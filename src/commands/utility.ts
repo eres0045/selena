@@ -1,5 +1,5 @@
 import type { Command, CommandInvocation } from "../lib/command.js";
-import { errorEmbed, fmt } from "../lib/command.js";
+import { errorEmbed, fmt, resolveDisplayNames } from "../lib/command.js";
 import { getUserXp, progressBar, rankCard } from "../lib/levels.js";
 
 // ---------------------------------------------------------------------------
@@ -204,7 +204,10 @@ export const commands: Command[] = [
         });
         return;
       }
-      const lines = top.map((u, i) => `${i + 1}. <@${u.user_id}> — Level ${rankCard(u.xp).level} · ${fmt(u.xp)} XP`);
+      // Plain display names, never <@id> mentions — a leaderboard anyone can
+      // see must not ping the people on it every time it is viewed.
+      const names = await resolveDisplayNames(inv, top.map((u) => u.user_id));
+      const lines = top.map((u, i) => `${i + 1}. ${names[i]} — Level ${rankCard(u.xp).level} · ${fmt(u.xp)} XP`);
       await inv.reply({ content: `XP leaderboard (top 10)\n${lines.join("\n")}` });
     },
   },

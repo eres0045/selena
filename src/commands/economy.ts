@@ -1,6 +1,6 @@
 import type { Command, CommandInvocation } from "../lib/command.js";
 import { emoji } from "../lib/emoji.js";
-import { errorEmbed, fmt, pointsEmbed } from "../lib/command.js";
+import { errorEmbed, fmt, pointsEmbed, resolveDisplayNames } from "../lib/command.js";
 import { claimDaily, getBalance, getLeaderboard, transferPoints } from "../lib/economy.js";
 
 async function replyError(inv: CommandInvocation, message: string): Promise<void> {
@@ -98,8 +98,11 @@ export const commands: Command[] = [
         return;
       }
       const medals = ["🥇", "🥈", "🥉"];
+      // Plain display names, never <@id> mentions — a leaderboard anyone can
+      // see must not ping the people on it every time it is viewed.
+      const names = await resolveDisplayNames(inv, top.map((e) => e.userId));
       const lines = top.map(
-        (e, i) => `${medals[i] ?? `${i + 1}.`} <@${e.userId}> — ${fmt(e.points)} gold (Level ${e.level})`,
+        (e, i) => `${medals[i] ?? `${i + 1}.`} ${names[i]} — ${fmt(e.points)} gold (Level ${e.level})`,
       );
       await inv.reply({
         content: `${emoji("trophy")} Gold Leaderboard\n${lines.join("\n")}`,

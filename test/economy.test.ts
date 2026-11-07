@@ -251,6 +251,13 @@ describe("/leaderboard command", () => {
     expect(text.indexOf("90 gold")).toBeLessThan(text.indexOf("10 gold"));
   });
 
+  it("never pings anyone on the board: no <@ mentions in the output", async () => {
+    await seed("user-a", 10);
+    await seed("user-b", 90);
+    const fake = await run("leaderboard", {});
+    expect(fake.allText()).not.toContain("<@");
+  });
+
   it("error path: empty guild explains nobody has gold yet", async () => {
     const fake = await run("leaderboard", {});
     expect(fake.allText()).toMatch(/nobody has any gold/i);

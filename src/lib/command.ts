@@ -123,3 +123,28 @@ export function pointsEmbed(title: string, description: string): EmbedBuilder {
 export function fmt(n: number): string {
   return Math.trunc(n).toLocaleString("en-US");
 }
+
+/**
+ * Resolve user IDs to plain display names for list output (leaderboards).
+ * Uses the real guild's member list when available; falls back to the raw
+ * ID when there is no guild access (tests) or the member cannot be fetched
+ * (left the server). Names are PLAIN TEXT — never `<@id>` mentions — so
+ * showing a leaderboard never pings anyone on it, no matter how many
+ * people view it.
+ */
+export async function resolveDisplayNames(
+  inv: CommandInvocation,
+  userIds: string[],
+): Promise<string[]> {
+  const guild = (inv as unknown as { guild?: { members: { fetch: (id: string) => Promise<{ displayName: string }> } } }).guild;
+  if (!guild) return userIds;
+  return Promise.all(
+    userIds.map(async (id) => {
+      try {
+        return (await guild.members.fetch(id)).displayName;
+      } catch {
+        return id;
+      }
+    }),
+  );
+}
