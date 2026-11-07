@@ -1,14 +1,14 @@
 import { secureFloat, weightedPick } from "./rng.js";
+import { HUNT_EMOJI_IDS } from "./hunt-emoji-ids.js";
 
 /**
  * Hunt world — static data + pure math for Phase 1 (hunt + roll/gacha +
  * zoo/inventory + sell). Spec: docs/hunt-world-design.md.
  *
  * The rosters here ARE the design doc's §5/§6 tables, transcribed
- * verbatim (stats, tiers, areas, effects). Emoji are Unicode
- * placeholders per monster/weapon/pet — real application-emoji art is
- * a separate step, and tier assignment is re-checked against visuals
- * then (design §5 header).
+ * verbatim (stats, tiers, areas, effects). Emoji are the animated
+ * application emoji uploaded to the bot (see hunt-emoji-ids.ts),
+ * with the Unicode placeholders as fallback when an ID is missing.
  */
 
 export type Tier = "Common" | "Uncommon" | "Rare" | "Epic" | "Legendary" | "Mythic" | "UwU";
@@ -258,6 +258,30 @@ export function nameEmoji(name: string): string | null {
   return null;
 }
 
+/**
+ * Slug of a roster name, exactly as scripts/upload_application_emoji.py
+ * slugs it when uploading (lowercase, runs of non-alphanumerics become
+ * one "_", trimmed). "Storm King's Axe" -> "storm_king_s_axe".
+ */
+export function slugifyName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+/**
+ * Animated application-emoji markup for a roster item (`<a:slug:id>`),
+ * or the supplied Unicode `fallback` when the item has no uploaded ID.
+ * Fail-soft by design: a missing ID never crashes a command, it just
+ * shows the old Unicode placeholder.
+ */
+export function huntEmoji(name: string, fallback: string): string {
+  const id = HUNT_EMOJI_IDS[slugifyName(name)];
+  if (id) return `<a:${slugifyName(name)}:${id}>`;
+  return fallback;
+}
+
 // ---------------------------------------------------------------------------
 // Monster roster (design §5) — [id, name, type, tier, hp, atk, def,
 // move, effects, area]. Area codes: M = Meadow, W = Woods, P = Peaks,
@@ -418,7 +442,7 @@ export const MONSTERS: readonly Monster[] = MONSTER_ROWS.map(
 export const MONSTER_BY_ID = new Map<number, Monster>(MONSTERS.map((m) => [m.id, m]));
 
 export function monsterEmoji(m: Monster): string {
-  return nameEmoji(m.name) ?? TYPE_EMOJI[m.type];
+  return huntEmoji(m.name, nameEmoji(m.name) ?? TYPE_EMOJI[m.type]);
 }
 
 export function monstersOfTier(tier: Tier): Monster[] {
@@ -543,7 +567,7 @@ const WEAPON_EMOJI: Record<string, string> = {
 };
 
 export function weaponEmoji(w: Weapon): string {
-  return WEAPON_EMOJI[w.kind] ?? "⚔️";
+  return huntEmoji(w.name, WEAPON_EMOJI[w.kind] ?? "⚔️");
 }
 
 // ---------------------------------------------------------------------------
@@ -596,7 +620,7 @@ export const PETS: readonly Pet[] = PET_ROWS.map(([id, name, tier, buffType, buf
 export const PET_BY_ID = new Map<number, Pet>(PETS.map((p) => [p.id, p]));
 
 export function petEmoji(p: Pet): string {
-  return nameEmoji(p.name) ?? "🐾";
+  return huntEmoji(p.name, nameEmoji(p.name) ?? "🐾");
 }
 
 export function petBuffText(p: Pet): string {

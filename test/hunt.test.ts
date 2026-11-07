@@ -20,15 +20,21 @@ import {
   encounterMonster,
   encounterTier,
   findMonsterByName,
+  huntEmoji,
+  monsterEmoji,
   monstersInArea,
+  petEmoji,
   pityTier,
   powerBudget,
   rollTier,
   sellPriceFor,
   shouldUsePity,
+  slugifyName,
   tierDown,
   type Tier,
+  weaponEmoji,
 } from "../src/lib/hunt.js";
+import { HUNT_EMOJI_IDS } from "../src/lib/hunt-emoji-ids.js";
 import {
   awardMonster,
   countMonsterInGuild,
@@ -131,6 +137,46 @@ describe("hunt roster", () => {
 
   it("pet buffs never exceed the +25% cap", () => {
     for (const p of PETS) expect(p.buffValue).toBeLessThanOrEqual(25);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Animated application emoji (uploaded to the bot; Unicode fallback)
+// ---------------------------------------------------------------------------
+
+describe("hunt emoji", () => {
+  it("slugifies roster names exactly like the upload script", () => {
+    expect(slugifyName("Storm King's Axe")).toBe("storm_king_s_axe");
+    expect(slugifyName("The UwU Sovereign")).toBe("the_uwu_sovereign");
+    expect(slugifyName("Spike Puffer")).toBe("spike_puffer");
+  });
+
+  it("emits animated application-emoji markup for a monster with an id", () => {
+    expect(huntEmoji("Stone Beetle", "🪲")).toBe(
+      `<a:stone_beetle:${HUNT_EMOJI_IDS["stone_beetle"]}>`,
+    );
+    expect(huntEmoji("Spike Puffer", "🐡")).toBe(
+      `<a:spike_puffer:${HUNT_EMOJI_IDS["spike_puffer"]}>`,
+    );
+  });
+
+  it("falls back to Unicode when the name has no uploaded id", () => {
+    expect(huntEmoji("No Such Monster", "🔥")).toBe("🔥");
+    expect(huntEmoji("No Such Monster", "🐾")).toBe("🐾");
+  });
+
+  it("every roster monster, weapon and pet renders animated emoji (no fallback)", () => {
+    for (const m of MONSTERS) expect(monsterEmoji(m)).toMatch(/^<a:[a-z0-9_]+:\d+>$/);
+    for (const w of WEAPONS) expect(weaponEmoji(w)).toMatch(/^<a:[a-z0-9_]+:\d+>$/);
+    for (const p of PETS) expect(petEmoji(p)).toMatch(/^<a:[a-z0-9_]+:\d+>$/);
+  });
+
+  it("Thorn Hedgehog is gone and Spike Puffer is in the roster", () => {
+    expect(findMonsterByName("Thorn Hedgehog")).toBeUndefined();
+    const puffer = findMonsterByName("Spike Puffer");
+    expect(puffer).toBeDefined();
+    expect(puffer!.tier).toBe("Common");
+    expect(monsterEmoji(puffer!)).toMatch(/^<a:spike_puffer:\d+>$/);
   });
 });
 
