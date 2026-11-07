@@ -1,6 +1,6 @@
 import { randomInt } from "node:crypto";
 
-/** Crypto-backed random integer in [min, max). Use for all gambling/gacha. */
+/** Crypto-backed random integer in [min, max). Use for all gambling. */
 export function secureInt(min: number, max: number): number {
   return randomInt(min, max);
 }
@@ -21,7 +21,7 @@ export function securePick<T>(arr: readonly T[]): T {
 
 /**
  * Deterministic PRNG (mulberry32) for tests and for reproducible simulations.
- * NEVER use for real gambling/gacha outcomes — those must use secureInt.
+ * NEVER use for real gambling outcomes — those must use secureInt.
  */
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;

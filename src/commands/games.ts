@@ -14,7 +14,6 @@ import {
 } from "../lib/command.js";
 import { emoji } from "../lib/emoji.js";
 import {
-  GUESS_HERO_POINTS,
   TRIVIA_POINTS,
   TRIVIA_TIME_LIMIT_MS,
   awardPoints,
@@ -23,14 +22,11 @@ import {
   c4IsFull,
   c4Render,
   c4Winner,
-  checkGuess,
   createWordChain,
   emptyC4Board,
   emptyTttBoard,
   getPollCounts,
-  guessHeroRounds,
   newGameId,
-  pickGuessHero,
   recordPollVote,
   rpsEmoji,
   rpsGames,
@@ -50,7 +46,7 @@ import {
   type TttGame,
   type TttPlayer,
 } from "../lib/games.js";
-import { isTriviaAnswerCorrect, pickTriviaQuestion, type TriviaCategory } from "../lib/trivia.js";
+import { isTriviaAnswerCorrect, pickTriviaQuestion } from "../lib/trivia.js";
 
 /**
  * Games slash commands + button handlers.
@@ -615,26 +611,9 @@ export const commands: Command[] = [
     },
   },
   {
-    data: slash("trivia", "Answer a timed trivia question — first correct answer earns points.", (b) => {
-      b.addStringOption((o) =>
-        o
-          .setName("category")
-          .setDescription("Question category (random if omitted)")
-          .setRequired(false)
-          .addChoices(
-            { name: "MLBB", value: "mlbb" },
-            { name: "General", value: "general" },
-          ),
-      );
-    }),
+    data: slash("trivia", "Answer a timed trivia question — first correct answer earns points."),
     async execute(interaction, _ctx) {
-      const category = interaction.options.getString("category");
-      if (category !== null && category !== "mlbb" && category !== "general") {
-        await replyError(interaction, 'Category must be "mlbb" or "general".');
-        return;
-      }
-      const picked: TriviaCategory = (category as TriviaCategory | null) ?? (Math.random() < 0.5 ? "mlbb" : "general");
-      const question = pickTriviaQuestion(picked);
+      const question = pickTriviaQuestion();
       const game: TriviaGame = {
         id: newGameId("triv"),
         guildId: interaction.guildId ?? "",
@@ -692,72 +671,6 @@ export const commands: Command[] = [
             `**${interaction.user.username}** played **${word.trim().toLowerCase()}**.\n\n` +
               `Next word must start with **${result.state.currentLetter!.toUpperCase()}**.\n` +
               `Chain length: ${result.state.moves} word${result.state.moves === 1 ? "" : "s"}.`,
-          ),
-        ],
-      });
-    },
-  },
-  {
-    data: slash("guesshero", "Guess the MLBB hero from a clue. You get 3 attempts.", (b) => {
-      b.addStringOption((o) =>
-        o.setName("guess").setDescription("Your hero guess (omit to start a round)").setRequired(false),
-      );
-    }),
-    async execute(interaction, ctx) {
-      const guildId = interaction.guildId ?? "";
-      const key = `${guildId}:${interaction.user.id}`;
-      const guess = interaction.options.getString("guess");
-      if (!guess) {
-        const hero = pickGuessHero();
-        guessHeroRounds.set(key, { guildId, userId: interaction.user.id, hero, attemptsLeft: 3, startedAt: Date.now() });
-        await interaction.reply({
-          embeds: [
-            selenaEmbed(
-              "🦸 Guess the Hero",
-              `**Role:** ${hero.role}\n**Lane:** ${hero.lane}\n**Clue:** ${hero.clue}\n\n` +
-                `You have **3 attempts**. Guess with \`/guesshero guess:<hero name>\`. ` +
-                `A correct guess earns **${GUESS_HERO_POINTS} points**.`,
-            ),
-          ],
-        });
-        return;
-      }
-      const round = guessHeroRounds.get(key);
-      if (!round) {
-        await replyError(interaction, "No round is running for you — start one with /guesshero first.");
-        return;
-      }
-      if (checkGuess(round.hero, guess)) {
-        guessHeroRounds.delete(key);
-        await awardPoints(ctx.db, guildId, interaction.user.id, GUESS_HERO_POINTS, "guesshero");
-        await interaction.reply({
-          embeds: [
-            selenaEmbed(
-              emoji("party") + " Correct!",
-              `It was **${round.hero.hero}**! <@${interaction.user.id}> earned **${GUESS_HERO_POINTS} points**.`,
-            ),
-          ],
-        });
-        return;
-      }
-      round.attemptsLeft -= 1;
-      if (round.attemptsLeft <= 0) {
-        guessHeroRounds.delete(key);
-        await interaction.reply({
-          embeds: [
-            selenaEmbed(
-              "😢 Out of attempts!",
-              `The hero was **${round.hero.hero}** (${round.hero.role}, ${round.hero.lane}). Better luck next time — start a new round with /guesshero.`,
-            ),
-          ],
-        });
-        return;
-      }
-      await interaction.reply({
-        embeds: [
-          selenaEmbed(
-            "❌ Not quite!",
-            `"${guess.trim()}" isn't the hero. You have **${round.attemptsLeft}** attempt${round.attemptsLeft === 1 ? "" : "s"} left.`,
           ),
         ],
       });

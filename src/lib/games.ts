@@ -6,11 +6,10 @@ export { isTriviaAnswerCorrect };
 export type { TriviaQuestion };
 
 export const TRIVIA_POINTS = 25;
-export const GUESS_HERO_POINTS = 20;
 export const TRIVIA_TIME_LIMIT_MS = 30_000;
 
 // ---------------------------------------------------------------------------
-// Points helper (shared by trivia / guesshero rewards).
+// Points helper (shared by trivia rewards).
 // ---------------------------------------------------------------------------
 
 export async function awardPoints(db: SelenaDb, guildId: string, userId: string, delta: number, reason: string): Promise<void> {
@@ -209,130 +208,6 @@ export function submitWord(
 }
 
 // ---------------------------------------------------------------------------
-// Guess the hero — clues written from public knowledge, no invented stats.
-// ---------------------------------------------------------------------------
-
-export interface GuessHero {
-  hero: string;
-  role: string;
-  lane: string;
-  clue: string;
-}
-
-export const HERO_CLUES: readonly GuessHero[] = [
-  {
-    hero: "Selena",
-    role: "Assassin / Mage",
-    lane: "Mid Lane",
-    clue: "Fires a long-range Abyssal Arrow that stuns, sets Abyssal Traps, and transforms into an Abyssal form that dashes and slashes with claws.",
-  },
-  {
-    hero: "Tigreal",
-    role: "Tank",
-    lane: "Roam",
-    clue: "A knight who charges into enemies and uses his ultimate, Implosion, to pull nearby enemies toward him.",
-  },
-  {
-    hero: "Layla",
-    role: "Marksman",
-    lane: "Gold Lane",
-    clue: "Her basic attacks reach further than most marksmen, and her ultimate fires a huge energy blast in a straight line.",
-  },
-  {
-    hero: "Kagura",
-    role: "Mage",
-    lane: "Mid Lane",
-    clue: "Fights by controlling her Seimei Umbrella, which she can throw out to deal damage and then pull herself toward.",
-  },
-  {
-    hero: "Alucard",
-    role: "Fighter / Assassin",
-    lane: "Jungle",
-    clue: "A demon hunter who dashes between enemies, spins his blade around him, and heals himself by dealing damage.",
-  },
-  {
-    hero: "Miya",
-    role: "Marksman",
-    lane: "Gold Lane",
-    clue: "Fires a rain of arrows and can turn invisible with her ultimate, Moonlight Shadow, to reposition or escape.",
-  },
-  {
-    hero: "Eudora",
-    role: "Mage",
-    lane: "Mid Lane",
-    clue: "A lightning mage who bursts a single target down with Forked Lightning and stuns them with Ball Lightning.",
-  },
-  {
-    hero: "Franco",
-    role: "Tank",
-    lane: "Roam",
-    clue: "Throws his Iron Hook to drag an enemy toward him, then holds them down with his suppressing ultimate.",
-  },
-  {
-    hero: "Fanny",
-    role: "Assassin",
-    lane: "Jungle",
-    clue: "Swings across the map on steel cables, flying over walls to dive onto her targets.",
-  },
-  {
-    hero: "Gusion",
-    role: "Assassin",
-    lane: "Mid / Jungle",
-    clue: "Throws daggers that fly back to him, then dashes in to burst his target down in a blink.",
-  },
-  {
-    hero: "Johnson",
-    role: "Tank",
-    lane: "Roam",
-    clue: "Transforms into a car and drives his teammates around the map, crashing into enemies to stun them.",
-  },
-  {
-    hero: "Angela",
-    role: "Support",
-    lane: "Roam / Mid",
-    clue: "Attaches herself to an ally with Heartguard, shielding and healing them from across the map.",
-  },
-  {
-    hero: "Lesley",
-    role: "Marksman",
-    lane: "Gold Lane",
-    clue: "A sniper who lines up long-range shots and uses her ultimate to fire at enemies from far away.",
-  },
-  {
-    hero: "Chou",
-    role: "Fighter",
-    lane: "EXP Lane",
-    clue: "A martial artist who dashes around with Jeet Kune Do and can kick a single enemy flying back into his team.",
-  },
-  {
-    hero: "Aurora",
-    role: "Mage",
-    lane: "Mid Lane",
-    clue: "A queen of ice who freezes enemies solid, then calls down a huge freezing blast with her ultimate.",
-  },
-  {
-    hero: "Balmond",
-    role: "Fighter",
-    lane: "EXP Lane",
-    clue: "A spinning orc who whirls his axe around him and finishes low-health enemies with a huge executing chop.",
-  },
-];
-
-export function pickGuessHero(rand: () => number = secureFloat): GuessHero {
-  return securePickWithRand(HERO_CLUES, rand);
-}
-
-/** Case-insensitive, whitespace-tolerant hero name match. */
-export function checkGuess(hero: GuessHero, guess: string): boolean {
-  return guess.trim().toLowerCase() === hero.hero.toLowerCase();
-}
-
-function securePickWithRand<T>(arr: readonly T[], rand: () => number): T {
-  if (arr.length === 0) throw new Error("pick: empty array");
-  return arr[Math.floor(rand() * arr.length)]!;
-}
-
-// ---------------------------------------------------------------------------
 // Giveaway — pure winner picking (Fisher-Yates partial shuffle).
 // ---------------------------------------------------------------------------
 
@@ -434,20 +309,10 @@ export interface TriviaGame {
   expiresAt: number;
 }
 
-export interface GuessHeroRound {
-  guildId: string;
-  userId: string;
-  hero: GuessHero;
-  attemptsLeft: number;
-  startedAt: number;
-}
-
 export const tttGames = new Map<string, TttGame>();
 export const c4Games = new Map<string, C4Game>();
 export const rpsGames = new Map<string, RpsGame>();
 export const triviaGames = new Map<string, TriviaGame>();
-/** One active guess-the-hero round per (guild, user). */
-export const guessHeroRounds = new Map<string, GuessHeroRound>();
 /** One active word-chain game per guild. */
 export const wordChainGames = new Map<string, WordChainState>();
 
@@ -457,7 +322,6 @@ export function resetGameState(): void {
   c4Games.clear();
   rpsGames.clear();
   triviaGames.clear();
-  guessHeroRounds.clear();
   wordChainGames.clear();
 }
 

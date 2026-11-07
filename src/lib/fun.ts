@@ -148,7 +148,7 @@ export const WOULD_YOU_RATHER: readonly { a: string; b: string }[] = [
   { a: "Have a personal chef", b: "Have a personal chauffeur" },
   { a: "Never need sleep", b: "Never need to eat" },
   { a: "Time travel to the past", b: "Time travel to the future" },
-  { a: "Play MLBB on a phone with 1% battery forever", b: "Play MLBB on a 10-year-old tablet" },
+  { a: "Play your favourite game on a phone with 1% battery forever", b: "Play it on a 10-year-old tablet" },
 ];
 
 export const TRUTHS: readonly string[] = [
@@ -295,10 +295,7 @@ export function memeDescription(meme: GeneratedMeme): string {
 }
 
 // ---------------------------------------------------------------------------
-// /profile — reads the users table. IGN / rank come from the member's
-// latest tryout record when one exists (self-reported on the tryout form),
-// and are otherwise shown as not set. There is no MLBB profile store:
-// Selena cannot verify MLBB IDs or ranks, so she does not keep them.
+// /profile — reads the users table (points, XP, level, server rank).
 // ---------------------------------------------------------------------------
 
 export interface ProfileData {
@@ -308,9 +305,6 @@ export interface ProfileData {
   level: number;
   rank: number;
   totalRanked: number;
-  ign: string | null;
-  rankName: string | null;
-  favouriteHero: string | null;
 }
 
 export async function getProfileData(db: SelenaDb, guildId: string, userId: string): Promise<ProfileData> {
@@ -330,15 +324,6 @@ export async function getProfileData(db: SelenaDb, guildId: string, userId: stri
     .get(guildId) as { c: number } | undefined;
   const totalRanked = Math.max(Number(totalRow?.c ?? 0), 1);
 
-  const tryout = await db
-    .prepare(
-      "SELECT ign, rank_name, heroes FROM tryouts WHERE guild_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 1",
-    )
-    .get(guildId, userId) as { ign: string | null; rank_name: string | null; heroes: string } | undefined;
-  const favouriteHero = tryout?.heroes
-    ? tryout.heroes.split(",").map((h) => h.trim()).filter(Boolean)[0] ?? null
-    : null;
-
   return {
     userId,
     points,
@@ -346,8 +331,5 @@ export async function getProfileData(db: SelenaDb, guildId: string, userId: stri
     level,
     rank,
     totalRanked,
-    ign: tryout?.ign ?? null,
-    rankName: tryout?.rank_name ?? null,
-    favouriteHero,
   };
 }

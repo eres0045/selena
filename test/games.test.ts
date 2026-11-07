@@ -17,24 +17,19 @@ import { getTestDb } from "./testDb.js";
 import { mulberry32 } from "../src/lib/rng.js";
 import {
   GENERAL_QUESTIONS,
-  MLBB_QUESTIONS,
   isTriviaAnswerCorrect,
   pickTriviaQuestion,
   validateBank,
 } from "../src/lib/trivia.js";
 import {
-  GUESS_HERO_POINTS,
   TRIVIA_POINTS,
   c4Drop,
   c4Winner,
-  checkGuess,
   countPollVotes,
   createWordChain,
   emptyC4Board,
   emptyTttBoard,
   getPollCounts,
-  guessHeroRounds,
-  pickGuessHero,
   pickWinners,
   recordPollVote,
   resetGameState,
@@ -241,26 +236,23 @@ describe("rpsOutcome", () => {
 // Lib: trivia banks
 // ---------------------------------------------------------------------------
 
-describe("trivia banks", () => {
-  it("has at least 20 MLBB and 20 general questions", async () => {
-    expect(MLBB_QUESTIONS.length).toBeGreaterThanOrEqual(20);
+describe("trivia bank", () => {
+  it("has at least 20 general-knowledge questions", async () => {
     expect(GENERAL_QUESTIONS.length).toBeGreaterThanOrEqual(20);
   });
 
   it("every question has 4 distinct options and a valid answerIndex", async () => {
-    expect(validateBank(MLBB_QUESTIONS)).toEqual([]);
     expect(validateBank(GENERAL_QUESTIONS)).toEqual([]);
   });
 
   it("checks answers correctly", async () => {
-    const q = MLBB_QUESTIONS[0]!;
+    const q = GENERAL_QUESTIONS[0]!;
     expect(isTriviaAnswerCorrect(q, q.answerIndex)).toBe(true);
     expect(isTriviaAnswerCorrect(q, (q.answerIndex + 1) % 4)).toBe(false);
   });
 
-  it("picks a question from the requested bank", async () => {
-    expect(MLBB_QUESTIONS).toContain(pickTriviaQuestion("mlbb"));
-    expect(GENERAL_QUESTIONS).toContain(pickTriviaQuestion("general"));
+  it("picks a question from the bank", async () => {
+    expect(GENERAL_QUESTIONS).toContain(pickTriviaQuestion());
   });
 });
 
@@ -312,27 +304,6 @@ describe("word chain", () => {
     submitWord(state, "apple");
     expect(state.used).toEqual([]);
     expect(state.moves).toBe(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Lib: guess the hero
-// ---------------------------------------------------------------------------
-
-describe("guess the hero", () => {
-  it("picks a hero with role, lane and a written clue", async () => {
-    const hero = pickGuessHero(mulberry32(3));
-    expect(hero.hero.length).toBeGreaterThan(0);
-    expect(hero.role.length).toBeGreaterThan(0);
-    expect(hero.lane.length).toBeGreaterThan(0);
-    expect(hero.clue.length).toBeGreaterThan(20);
-  });
-
-  it("matches guesses case-insensitively", async () => {
-    const hero = { hero: "Selena", role: "x", lane: "y", clue: "z" };
-    expect(checkGuess(hero, "selena")).toBe(true);
-    expect(checkGuess(hero, "  SELENA  ")).toBe(true);
-    expect(checkGuess(hero, "Kagura")).toBe(false);
   });
 });
 
@@ -559,24 +530,19 @@ describe("rock-paper-scissors button handler", () => {
 // ---------------------------------------------------------------------------
 
 describe("/trivia command", () => {
-  it("asks an MLBB question with 4 buttons", async () => {
-    const fake = await run("trivia", { category: "mlbb" });
+  it("asks a general-knowledge question with 4 buttons", async () => {
+    const fake = await run("trivia", {});
     const text = replyText(fake);
     expect(text).toMatch(/Trivia/);
     expect(text).toMatch(/\*\*A\.\*\*/);
     expect(text).toMatch(/\*\*D\.\*\*/);
     expect(triviaGames.size).toBe(1);
   });
-
-  it("errors on an invalid category", async () => {
-    const fake = await run("trivia", { category: "sports" });
-    expect(replyText(fake)).toMatch(/Category must be/i);
-  });
 });
 
 describe("trivia button handler", () => {
   it("awards 25 points for a correct first answer", async () => {
-    await run("trivia", { category: "general" });
+    await run("trivia", {});
     const game = [...triviaGames.values()][0]!;
     const btn = new FakeButton({
       customId: `selena:trivia:${game.id}:${game.question.answerIndex}`,
@@ -588,7 +554,7 @@ describe("trivia button handler", () => {
   });
 
   it("awards nothing for a wrong answer, and blocks a second answer", async () => {
-    await run("trivia", { category: "general" });
+    await run("trivia", {});
     const game = [...triviaGames.values()][0]!;
     const wrong = (game.question.answerIndex + 1) % 4;
     const btn = new FakeButton({ customId: `selena:trivia:${game.id}:${wrong}`, userId: "user-9" });
@@ -637,48 +603,6 @@ describe("/wordchain command", () => {
     const wrongLetter = await run("wordchain", { word: "banana" });
     expect(replyText(wrongLetter)).toMatch(/must start with/i);
     expect(wordChainGames.get("guild-1")!.moves).toBe(2);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Commands: /guesshero
-// ---------------------------------------------------------------------------
-
-describe("/guesshero command", () => {
-  it("starts a round with a clue but not the hero name", async () => {
-    const fake = await run("guesshero", {});
-    const text = replyText(fake);
-    expect(text).toMatch(/Role:/);
-    expect(text).toMatch(/Clue:/);
-    expect(text).toMatch(/3 attempts/);
-    const round = guessHeroRounds.get("guild-1:user-1")!;
-    expect(text).not.toContain(round.hero.hero);
-  });
-
-  it("errors when guessing with no active round", async () => {
-    const fake = await run("guesshero", { guess: "Selena" });
-    expect(replyText(fake)).toMatch(/No round is running/i);
-  });
-
-  it("counts a wrong guess down, then awards points on the right one", async () => {
-    await run("guesshero", {});
-    const round = guessHeroRounds.get("guild-1:user-1")!;
-    const wrong = await run("guesshero", { guess: "DefinitelyNotAHero" });
-    expect(replyText(wrong)).toMatch(/2.*attempts left/);
-    const right = await run("guesshero", { guess: round.hero.hero.toLowerCase() });
-    expect(replyText(right)).toMatch(/Correct!/);
-    expect(await userPoints("user-1")).toBe(GUESS_HERO_POINTS);
-    expect(guessHeroRounds.has("guild-1:user-1")).toBe(false);
-  });
-
-  it("reveals the hero after 3 wrong guesses", async () => {
-    await run("guesshero", {});
-    const round = guessHeroRounds.get("guild-1:user-1")!;
-    await run("guesshero", { guess: "Nope1" });
-    await run("guesshero", { guess: "Nope2" });
-    const third = await run("guesshero", { guess: "Nope3" });
-    expect(replyText(third)).toMatch(/Out of attempts/);
-    expect(replyText(third)).toContain(round.hero.hero);
   });
 });
 

@@ -9,16 +9,18 @@ import type { Command } from "../lib/command.js";
 //
 // Status at registry time (2026-11-06): nine command modules. The MLBB
 // stats module was removed the same day (no verifiable stats exist — no
-// official MLBB API), so hero names live only in src/data/heroes.ts as a
-// gacha/draft catalogue.
+// official MLBB API).
+// 2026-11-07: ALL MLBB features removed on Ronit's order (the bot is
+// becoming an OwO alternative) — gacha (/roll, /collection, /trade,
+// /gacha-leaderboard), squads/lineups/scrims/tryouts/brackets/matches/
+// draft, /guesshero and the MLBB trivia category are gone, with their
+// lib/data/tests. The Supabase tables stay (dormant, no data deleted).
 // Each module must export `commands: Command[]` and (optionally)
 // `buttonHandlers` / `modalHandlers`.
 import * as economy from "./economy.js";
 import * as casino from "./casino.js";
 import * as fun from "./fun.js";
 import * as games from "./games.js";
-import * as manage from "./manage.js";
-import * as gacha from "./gacha.js";
 import * as mod from "./mod.js";
 import * as utility from "./utility.js";
 import * as help from "./help.js";
@@ -43,8 +45,6 @@ const CATEGORY_LABELS: Record<string, string> = {
   casino: "Casino",
   fun: "Fun",
   games: "Games",
-  manage: "Manage",
-  gacha: "Gacha",
   grantpoints: "Owner",
 };
 
@@ -59,8 +59,6 @@ const MODULES: { key: string; module: CommandModule }[] = [
   { key: "casino", module: casino },
   { key: "fun", module: fun },
   { key: "games", module: games },
-  { key: "manage", module: manage },
-  { key: "gacha", module: gacha },
   { key: "mod", module: mod },
   { key: "utility", module: utility },
   { key: "help", module: help },

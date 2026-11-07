@@ -230,7 +230,7 @@ export const commands: Command[] = [
     },
   },
   {
-    data: slash("profile", "Show a member's profile card (points, XP, level, rank, MLBB info).", (b) => {
+    data: slash("profile", "Show a member's profile card (points, XP, level, rank).", (b) => {
       b.addUserOption((o) => o.setName("user").setDescription("Whose profile (defaults to you)").setRequired(false));
     }),
     async execute(interaction, ctx) {
@@ -242,9 +242,6 @@ export const commands: Command[] = [
           { name: "XP", value: fmt(profile.xp), inline: true },
           { name: "Level", value: String(profile.level), inline: true },
           { name: "Server Rank", value: `#${profile.rank} of ${profile.totalRanked}`, inline: true },
-          { name: "MLBB IGN", value: profile.ign ?? "Not linked", inline: true },
-          { name: "MLBB Rank", value: profile.rankName ?? "Not set", inline: true },
-          { name: "Favourite Hero", value: profile.favouriteHero ?? "Not set", inline: true },
         )
         .setFooter({ text: "Profile cards are text/embeds only in this build — no Canvas image rendering." });
       await interaction.reply({ embeds: [embed] });

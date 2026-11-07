@@ -189,16 +189,14 @@ describe("generateMeme / memeDescription", () => {
 // ---------------------------------------------------------------------------
 
 describe("getProfileData", () => {
-  it("returns zeros and nulls for an unknown user", async () => {
+  it("returns zeros for an unknown user", async () => {
     const p = await getProfileData(db, "guild-1", "ghost");
     expect(p.points).toBe(0);
     expect(p.xp).toBe(0);
     expect(p.level).toBe(0);
-    expect(p.ign).toBeNull();
-    expect(p.favouriteHero).toBeNull();
   });
 
-  it("reads points/xp/level, tryout IGN/rank and favourite hero", async () => {
+  it("reads points/xp/level and server rank", async () => {
     await db.prepare("INSERT INTO users (guild_id, user_id, points, xp, level) VALUES (?, ?, ?, ?, ?)").run(
       "guild-1",
       "user-1",
@@ -213,18 +211,12 @@ describe("getProfileData", () => {
       0,
       0,
     );
-    await db.prepare(
-      "INSERT INTO tryouts (guild_id, user_id, ign, role, rank_name, heroes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    ).run("guild-1", "user-1", "Eres", "Mid", "Mythic", "Selena,Kagura", Date.now());
 
     const p = await getProfileData(db, "guild-1", "user-1");
     expect(p.points).toBe(150);
     expect(p.xp).toBe(40);
     expect(p.level).toBe(2);
     expect(p.rank).toBe(2); // user-2 has more points
-    expect(p.ign).toBe("Eres");
-    expect(p.rankName).toBe("Mythic");
-    expect(p.favouriteHero).toBe("Selena");
   });
 });
 
@@ -366,6 +358,5 @@ describe("/profile command", () => {
     const text = replyText(fake);
     expect(text).toContain("Ghost");
     expect(text).toMatch(/Points: 0/);
-    expect(text).toMatch(/Not linked/);
   });
 });
